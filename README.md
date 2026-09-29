@@ -10,8 +10,8 @@ and `.zip` archives in one app, with **zero permissions, no ads, no tracking and
 access at all**.
 
 > [!NOTE]
-> **Gander is coming to Google Play.** [Join the mailing list](https://groups.google.com/g/gander-testers)
-> to hear when it lands. Announcements only.
+> **Gander is on [Google Play](https://play.google.com/store/apps/details?id=com.arjun.gander).**
+> [Join the mailing list](https://groups.google.com/g/gander-testers) for announcements.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mokshablr/gander)](../../releases/latest)
