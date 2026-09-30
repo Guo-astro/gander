@@ -128,10 +128,11 @@ the same key.
 
 Updating: install the new APK over the old one; recents and folder grants survive.
 
-**Automatic updates without a store**: install
-[Obtainium](https://github.com/ImranR98/Obtainium) and add
-`https://github.com/mokshablr/gander` as an app source. It follows the tagged
-GitHub releases here and updates Gander like a store would.
+**Automatic updates without a store**: with
+[Obtainium](https://github.com/ImranR98/Obtainium) installed,
+[add Gander in one tap](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.arjun.gander%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fmokshablr%2Fgander%22%2C%22author%22%3A%22mokshablr%22%2C%22name%22%3A%22Gander%22%7D),
+or add `https://github.com/mokshablr/gander` as an app source yourself. It follows the
+tagged GitHub releases here and updates Gander like a store would.
 
 **Verify before installing**: every release is signed with the same key, so you can
 confirm an APK really came from this repo. Obtainium can pin the fingerprint below,
