@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
+import androidx.core.view.accessibility.AccessibilityViewCommand
 import androidx.recyclerview.widget.RecyclerView
 
 /**
@@ -25,7 +26,11 @@ internal sealed interface Row {
         val title: String,
         val subtitle: String?,
         val onClick: () -> Unit,
-        val onLongClick: (() -> Unit)? = null,
+        /**
+         * Asks whether to remove the row, and calls back if the answer is no, so a row swiped
+         * away can come back. Null for a row that cannot be removed.
+         */
+        val onRemove: ((kept: () -> Unit) -> Unit)? = null,
         val thumbUri: Uri? = null,
         val thumbExt: String = ""
     ) : Row
@@ -49,6 +54,16 @@ internal class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
      */
     fun isFullSpan(position: Int): Boolean =
         position !in rows.indices || rows[position] !is Row.Item
+
+    /** Whether the row at [position] can be swiped away. See [SwipeToRemove]. */
+    fun removable(position: Int): Boolean = (rows.getOrNull(position) as? Row.Item)?.onRemove != null
+
+    /** The row at [position] was swiped away. It is asked about, and put back if it stays. */
+    fun swiped(position: Int) {
+        val putBack = { if (position in rows.indices) notifyItemChanged(position) }
+        val remove = (rows.getOrNull(position) as? Row.Item)?.onRemove
+        if (remove == null) putBack() else remove(putBack)
+    }
 
     override fun getItemViewType(position: Int): Int = when (rows[position]) {
         is Row.Header -> 0
@@ -98,29 +113,16 @@ internal class RowAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                 holder.itemView.contentDescription =
                     listOfNotNull(row.title, row.badge, row.subtitle).joinToString(", ")
                 holder.itemView.setOnClickListener { row.onClick() }
-                // Long-press is how a row is removed, and nothing on screen says so.
-                // Naming it for TalkBack is the one place that gesture is announced, so
-                // the rows that do not have it must not claim it either: binding a
-                // listener at all sets isLongClickable, which used to leave headings and
-                // "Add a folder" advertising a press that did nothing.
-                val remover = row.onLongClick
-                if (remover == null) {
-                    holder.itemView.setOnLongClickListener(null)
-                    // Clearing the listener does not clear the flag it set
-                    holder.itemView.isLongClickable = false
-                    ViewCompat.replaceAccessibilityAction(
-                        holder.itemView, AccessibilityActionCompat.ACTION_LONG_CLICK,
-                        null, null
-                    )
-                } else {
-                    holder.itemView.setOnLongClickListener { remover(); true }
-                    // Relabels the gesture and nothing else: a null command keeps the
-                    // default behaviour, so this reads "double tap and hold to Remove"
-                    ViewCompat.replaceAccessibilityAction(
-                        holder.itemView, AccessibilityActionCompat.ACTION_LONG_CLICK,
-                        holder.itemView.context.getString(R.string.remove), null
-                    )
-                }
+                // A swipe is how a row is removed, and nothing on screen says so, nor can a
+                // screen reader make one. So TalkBack is offered Remove among the row's
+                // actions, as dismiss, the action a view that can be swiped away has, and
+                // rows that stay must not offer it.
+                val remove = row.onRemove
+                ViewCompat.replaceAccessibilityAction(
+                    holder.itemView, AccessibilityActionCompat.ACTION_DISMISS,
+                    remove?.let { holder.itemView.context.getString(R.string.remove) },
+                    remove?.let { AccessibilityViewCommand { _, _ -> it {}; true } }
+                )
             }
         }
     }

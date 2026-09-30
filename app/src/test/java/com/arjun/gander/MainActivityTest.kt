@@ -2,7 +2,11 @@ package com.arjun.gander
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.Bundle
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
@@ -14,9 +18,12 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import java.time.Duration
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,6 +57,15 @@ class MainActivityTest {
                 it.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         }
+    }
+
+    /**
+     * Lets any Undo bar run out. Material queues bars in one object for the whole process, and a
+     * bar left up at the end of a test would hold the next test's bar back until it had gone.
+     */
+    @After
+    fun tearDown() {
+        shadowOf(context.mainLooper).idleFor(Duration.ofSeconds(10))
     }
 
     /** Runs everything submitted to it on the calling thread. */
@@ -401,23 +417,221 @@ class MainActivityTest {
     // Removal
     // ---------------------------------------------------------------
 
-    /** Binds the first row whose title is [title] and answers its view. */
-    private fun ActivityController<MainActivity>.rowView(title: String): View {
+    /** The row titled [title] as the list has laid it out on screen. */
+    private fun ActivityController<MainActivity>.shownRow(title: String): View {
         val rv = list()
-        val adapter = rv.adapter!!
-        val position = (0 until adapter.itemCount).first { position ->
-            val holder = adapter.createViewHolder(rv, adapter.getItemViewType(position))
-            adapter.bindViewHolder(holder, position)
-            holder.itemView.findViewById<TextView>(R.id.title)?.text?.toString() == title
+        return (0 until rv.childCount).map { rv.getChildAt(it) }.first {
+            it.findViewById<TextView>(R.id.title)?.text?.toString() == title
         }
-        val holder = adapter.createViewHolder(rv, adapter.getItemViewType(position))
-        adapter.bindViewHolder(holder, position)
-        return holder.itemView
     }
 
-    private fun ActivityController<MainActivity>.longPressRow(title: String) {
-        rowView(title).performLongClick()
+    /**
+     * Drags the row titled [title] towards the end by [fraction] of its width and lets go, as a
+     * finger would, through the ItemTouchHelper the list really has. [stepMs] apart, the moves
+     * are fast enough to count as a fling at 16 and too slow for one at 150. Answers how far the
+     * row went while it was held.
+     *
+     * The list is drawn after every step, because the helper moves a row as it draws it, and
+     * nothing draws here unless asked.
+     */
+    private fun ActivityController<MainActivity>.swipeRow(
+        title: String,
+        fraction: Float = 0.8f,
+        stepMs: Long = 16,
+    ): Float {
+        val rv = list()
+        val row = shownRow(title)
+        val canvas = Canvas(Bitmap.createBitmap(rv.width, rv.height, Bitmap.Config.ARGB_8888))
+        val y = row.top + row.height / 2f
+        val from = row.left + row.width * 0.1f
+        val to = from + row.width * fraction
+        val down = SystemClock.uptimeMillis()
+        var time = down
+        var furthest = 0f
+        fun send(action: Int, x: Float) {
+            val event = MotionEvent.obtain(down, time, action, x, y, 0)
+            rv.dispatchTouchEvent(event)
+            event.recycle()
+            shadowOf(context.mainLooper).idleFor(Duration.ofMillis(stepMs))
+            rv.draw(canvas)
+            furthest = maxOf(furthest, abs(row.translationX))
+            time += stepMs
+        }
+        send(MotionEvent.ACTION_DOWN, from)
+        for (step in 1..10) send(MotionEvent.ACTION_MOVE, from + (to - from) * step / 10)
+        send(MotionEvent.ACTION_UP, to)
+        // The row flies off, or back, and a swipe is reported once it has gone
+        shadowOf(context.mainLooper).idleFor(Duration.ofSeconds(1))
+        rv.draw(canvas)
+        return furthest
+    }
+
+    private fun latestDialog(): AlertDialog? =
+        ShadowDialog.getLatestDialog() as? AlertDialog
+
+    private fun AlertDialog.title(): String =
+        findViewById<TextView>(androidx.appcompat.R.id.alertTitle)!!.text.toString()
+
+    private fun persistedUris(): List<String> =
+        context.contentResolver.persistedUriPermissions.map { it.uri.toString() }
+
+    private fun ActivityController<MainActivity>.undo(): View? =
+        get().findViewById(com.google.android.material.R.id.snackbar_action)
+
+    private fun answer(which: Int) {
+        latestDialog()!!.getButton(which).performClick()
         shadowOf(context.mainLooper).idle()
+    }
+
+    /** Long enough for the Undo bar to have come and gone. */
+    private fun waitOutTheUndoBar() {
+        shadowOf(context.mainLooper).idleFor(Duration.ofSeconds(6))
+    }
+
+    /** Issue #39: holding a recent file removed it on the spot, and was easy to do by accident. */
+    @Test
+    fun holdingARowRemovesNothing() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val controller = home()
+
+        controller.shownRow("Alder Court.pdf").performLongClick()
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(latestDialog()).isNull()
+        assertThat(controller.rowTitles()).contains("Alder Court.pdf")
+    }
+
+    /** Swiped past halfway, the row is asked about, and nothing has gone yet. */
+    @Test
+    fun swipingARecentAwayAsksFirst() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val controller = home()
+
+        assertThat(controller.swipeRow("Alder Court.pdf")).isGreaterThan(0f)
+
+        val dialog = latestDialog()
+        assertThat(dialog?.isShowing).isTrue()
+        assertThat(dialog!!.title()).isEqualTo(context.getString(R.string.remove_recent_title))
+        assertThat(persistedUris()).contains(FixtureProvider.uriFor("six-pages.pdf").toString())
+    }
+
+    /** Let go short of halfway, and slowly, the row springs back and nothing is asked. */
+    @Test
+    fun aShortSwipeSpringsBack() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val controller = home()
+
+        val moved = controller.swipeRow("Alder Court.pdf", fraction = 0.3f, stepMs = 150)
+
+        assertThat(moved).isGreaterThan(0f)
+        assertThat(latestDialog()).isNull()
+        assertThat(controller.shownRow("Alder Court.pdf").translationX).isEqualTo(0f)
+    }
+
+    /**
+     * Headings, hints and Add a folder stay put under a swipe. Removable rows offer Remove to a
+     * screen reader, which cannot swipe a row, and the rest offer nothing.
+     */
+    @Test
+    fun onlyRowsThatCanBeRemovedMove() {
+        grantedFolder()
+        val controller = home()
+
+        assertThat(controller.swipeRow(context.getString(R.string.add_folder))).isEqualTo(0f)
+        assertThat(latestDialog()).isNull()
+
+        val dismiss = AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.id
+        val folder = controller.shownRow("Documents").createAccessibilityNodeInfo()!!
+            .actionList.firstOrNull { it.id == dismiss }
+        assertThat(folder?.label.toString()).isEqualTo(context.getString(R.string.remove))
+        val add = controller.shownRow(context.getString(R.string.add_folder))
+            .createAccessibilityNodeInfo()!!.actionList.firstOrNull { it.id == dismiss }
+        assertThat(add).isNull()
+    }
+
+    /** Remove, from a screen reader's list of actions, asks as the swipe does. */
+    @Test
+    fun aScreenReaderCanRemoveARowToo() {
+        grantedFolder()
+        val controller = home()
+
+        controller.shownRow("Documents").performAccessibilityAction(
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS.id, null
+        )
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(latestDialog()!!.title()).isEqualTo(context.getString(R.string.remove_folder_title))
+    }
+
+    /**
+     * Removed, the row goes at once, but the file's grant stays until the Undo bar has gone, since
+     * Android cannot give one back.
+     */
+    @Test
+    fun aRemovedRecentKeepsItsGrantUntilTheUndoBarGoes() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val file = FixtureProvider.uriFor("six-pages.pdf").toString()
+        val controller = home()
+
+        controller.swipeRow("Alder Court.pdf")
+        answer(AlertDialog.BUTTON_POSITIVE)
+
+        assertThat(controller.rowTitles()).doesNotContain("Alder Court.pdf")
+        assertThat(controller.undo()?.isShown).isTrue()
+        assertThat(persistedUris()).contains(file)
+
+        waitOutTheUndoBar()
+
+        assertThat(persistedUris()).doesNotContain(file)
+        assertThat(Recents.all(context).map { it.name }).doesNotContain("Alder Court.pdf")
+    }
+
+    @Test
+    fun undoPutsTheRowBackWithItsGrant() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val file = FixtureProvider.uriFor("six-pages.pdf").toString()
+        val controller = home()
+        controller.swipeRow("Alder Court.pdf")
+        answer(AlertDialog.BUTTON_POSITIVE)
+
+        controller.undo()!!.performClick()
+        shadowOf(context.mainLooper).idle()
+        waitOutTheUndoBar()
+
+        assertThat(controller.rowTitles()).contains("Alder Court.pdf")
+        assertThat(persistedUris()).contains(file)
+    }
+
+    /** A bar nobody is looking at can no longer be answered, so the removal goes through. */
+    @Test
+    fun leavingTheScreenCarriesARemovalOut() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val file = FixtureProvider.uriFor("six-pages.pdf").toString()
+        val controller = home()
+        controller.swipeRow("Alder Court.pdf")
+        answer(AlertDialog.BUTTON_POSITIVE)
+
+        controller.pause().stop()
+
+        assertThat(persistedUris()).doesNotContain(file)
+    }
+
+    /** The file or folder stays where it is, and the grant with it, and so does the row. */
+    @Test
+    fun cancellingKeepsTheRowAndItsGrant() {
+        val tree = grantedFolder()
+        val controller = home()
+        controller.swipeRow("Documents")
+
+        answer(AlertDialog.BUTTON_NEGATIVE)
+        shadowOf(context.mainLooper).idleFor(Duration.ofSeconds(1))
+        val rv = controller.list()
+        rv.draw(Canvas(Bitmap.createBitmap(rv.width, rv.height, Bitmap.Config.ARGB_8888)))
+
+        assertThat(persistedUris()).contains(tree.toString())
+        assertThat(controller.rowTitles()).contains("Documents")
+        // Back in its place, not left off the side of the screen
+        assertThat(controller.shownRow("Documents").translationX).isEqualTo(0f)
     }
 
     /**
@@ -429,89 +643,13 @@ class MainActivityTest {
     fun removingAFolderGivesBackWriteAccessToo() {
         val tree = grantedFolder(write = true)
         val controller = home()
-        controller.longPressRow("Documents")
+        controller.swipeRow("Documents")
 
-        latestDialog()!!.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-        shadowOf(context.mainLooper).idle()
-
-        assertThat(persistedUris()).doesNotContain(tree.toString())
-    }
-
-    private fun latestDialog(): AlertDialog? =
-        ShadowDialog.getLatestDialog() as? AlertDialog
-
-    private fun persistedUris(): List<String> =
-        context.contentResolver.persistedUriPermissions.map { it.uri.toString() }
-
-    /**
-     * Releasing a folder grant is the one thing on this screen Android cannot undo,
-     * so it is the one thing that asks first. The grant itself is what the assertion
-     * is about: leaving the row drawn would prove nothing if the permission had gone.
-     */
-    @Test
-    fun cancellingTheRemoveDialogKeepsTheFolderGrant() {
-        val tree = grantedFolder()
-        val controller = home()
-        controller.longPressRow("Documents")
-
-        val dialog = latestDialog()
-        assertThat(dialog).isNotNull()
-        assertThat(dialog!!.isShowing).isTrue()
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
-        shadowOf(context.mainLooper).idle()
-
-        assertThat(persistedUris()).contains(tree.toString())
-        assertThat(controller.rowTitles()).contains("Documents")
-    }
-
-    @Test
-    fun confirmingTheRemoveDialogReleasesTheFolderGrant() {
-        val tree = grantedFolder()
-        val controller = home()
-        controller.longPressRow("Documents")
-
-        latestDialog()!!.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-        shadowOf(context.mainLooper).idle()
+        answer(AlertDialog.BUTTON_POSITIVE)
+        waitOutTheUndoBar()
 
         assertThat(persistedUris()).doesNotContain(tree.toString())
         assertThat(controller.rowTitles()).doesNotContain("Documents")
-    }
-
-    /**
-     * A recent costs one tap to open again and the list prunes itself at 25, so it
-     * goes on the press alone. The asymmetry with a folder is deliberate, and this
-     * pins it so nobody later tidies the two into agreeing.
-     */
-    @Test
-    fun removingARecentAsksNothing() {
-        granted("six-pages.pdf", "Alder Court.pdf")
-        val controller = home()
-        controller.longPressRow("Alder Court.pdf")
-
-        assertThat(ShadowDialog.getLatestDialog()).isNull()
-        assertThat(controller.rowTitles()).doesNotContain("Alder Court.pdf")
-    }
-
-    /**
-     * Long-press is the only way to remove a row and nothing on screen says so, which
-     * makes the TalkBack label the one place it is announced. A row that cannot be
-     * removed must not claim the gesture: binding a listener at all sets
-     * isLongClickable, which used to leave "Add a folder" offering a press that did
-     * nothing.
-     */
-    @Test
-    fun onlyRowsThatCanBeRemovedAnnounceTheGesture() {
-        grantedFolder()
-        val controller = home()
-
-        val folder = controller.rowView("Documents")
-        assertThat(folder.isLongClickable).isTrue()
-        val longClick = folder.createAccessibilityNodeInfo()!!.actionList
-            .first { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_LONG_CLICK.id }
-        assertThat(longClick.label.toString()).isEqualTo(context.getString(R.string.remove))
-
-        val add = controller.rowView(context.getString(R.string.add_folder))
-        assertThat(add.isLongClickable).isFalse()
     }
 
     /**
@@ -525,7 +663,7 @@ class MainActivityTest {
     fun theDestructiveButtonDoesNotLookLikeTheDismissiveOne() {
         grantedFolder()
         val controller = home()
-        controller.longPressRow("Documents")
+        controller.swipeRow("Documents")
         val dialog = latestDialog()!!
 
         val remove = dialog.getButton(AlertDialog.BUTTON_POSITIVE).currentTextColor

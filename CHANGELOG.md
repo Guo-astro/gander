@@ -15,6 +15,12 @@
   are black, as the pages are, so on an OLED screen a page no longer sits in a lighter frame.
   They were the dark theme's warm near-black. The bar over a video is black too.
 
+- A recent file or a folder on the home screen is removed by swiping it aside, over a bin. Gander
+  asks first, and then offers Undo. Holding a recent file down used to remove it on the spot, which
+  was easy to do by accident, and getting it back meant finding it in the system picker. Removing
+  one still leaves the file or folder itself where it is. TalkBack offers Remove among the row's
+  actions.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

@@ -25,12 +25,14 @@ import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -58,15 +60,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fab: ExtendedFloatingActionButton
 
     /**
-     * The last "Removed" toast, kept only so the next one can cancel it.
+     * A row taken off the screen whose removal waits for its Undo bar to go, issue #39.
      *
-     * The framework queues toasts rather than replacing them, and each one is shown for
-     * its full duration. Clearing a dozen recents in a couple of seconds therefore left
-     * a dozen badges to play out one after another, still appearing half a minute after
-     * the last thing was removed. Cancelling the one in flight collapses a burst to a
-     * single badge that goes away shortly after the reader stops.
+     * Nothing is given back until then, because a released grant has no inverse: Android
+     * takes a grant only from the picker, so an Undo made after it would have nothing to
+     * restore. The row is only hidden meanwhile. The removal goes through when the bar
+     * does, when another removal takes its place, or when this screen stops, since a bar
+     * that has gone can no longer be answered.
      */
-    private var removedToast: Toast? = null
+    private var pending: Pending? = null
+    private var undoBar: Snackbar? = null
+
+    /** The row's URI, which is what hides it, and what removing it does. */
+    private class Pending(val uri: String, val commit: () -> Unit)
 
     /**
      * Where the rows are built.
@@ -177,6 +183,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         list.adapter = adapter
+        ItemTouchHelper(SwipeToRemove(this, adapter)).attachToRecyclerView(list)
 
         // Built once here rather than on every render: the nine kinds Gander opens do not
         // change while it is running, and the block itself is shown or hidden, not rebuilt.
@@ -257,6 +264,13 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         window.decorView.isPressed = false
         window.decorView.jumpDrawablesToCurrentState()
+    }
+
+    /** A removal waiting on its Undo bar goes through, since nobody is here to answer it. */
+    override fun onStop() {
+        super.onStop()
+        finishRemoving()
+        undoBar?.dismiss()
     }
 
     private fun openInViewer(uri: Uri) {
@@ -443,6 +457,8 @@ class MainActivity : AppCompatActivity() {
             if (token == renderToken && !isDestroyed) progress.visibility = View.VISIBLE
         }
         main.postDelayed(announce, RENDER_PROGRESS_DELAY_MS)
+        // Read here, on the main thread, which is the only one that changes it
+        val hidden = pending?.uri
 
         loader.execute {
             // Checked here as well as after, because loader is a single thread: without
@@ -450,7 +466,7 @@ class MainActivity : AppCompatActivity() {
             // wait for the whole of the first, which on the slow provider this exists
             // for is the wait it was meant to remove.
             if (token != renderToken) return@execute
-            val screen = if (here == null) homeRows() else folderRows(here)
+            val screen = if (here == null) homeRows(hidden) else folderRows(here)
             main.post {
                 main.removeCallbacks(announce)
                 if (token != renderToken || isDestroyed) return@post
@@ -465,14 +481,85 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Shows the removal badge, replacing any still on screen rather than queueing behind it. */
-    private fun toastRemoved() {
-        removedToast?.cancel()
-        removedToast = Toast.makeText(this, R.string.removed, Toast.LENGTH_SHORT)
+    /**
+     * Asks before a row goes, and calls [kept] if the answer is no. Removing a recent file or a
+     * folder gives back Gander's access to it, and Android has no inverse for that, so once the
+     * Undo bar has gone the way back is the system picker. The row is swiped away over a bin,
+     * so the question says the file or folder itself stays where it is.
+     */
+    private fun askToRemove(title: Int, message: String, kept: () -> Unit, remove: () -> Unit) {
+        var removing = false
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton(R.string.remove) { _, _ ->
+                removing = true
+                remove()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            // Cancel, Back and a tap outside alike
+            .setOnDismissListener { if (!removing) kept() }
+            .create()
+        dialog.show()
+        // Tinted after show(): getButton returns null until the dialog is laid
+        // out. Both buttons are set rather than only the destructive one,
+        // because Gander's own primary is a burnt red: an error-coloured Remove
+        // beside an untouched Cancel measures dE 4.6 on the light palette, near
+        // enough to the 2.3 a person can notice that it marks nothing and only
+        // makes Cancel look dangerous too. Standing the dismissive button down
+        // to a neutral is what leaves the red meaning one thing.
+        listOf(
+            AlertDialog.BUTTON_POSITIVE to
+                com.google.android.material.R.attr.colorError,
+            AlertDialog.BUTTON_NEGATIVE to
+                com.google.android.material.R.attr.colorOnSurfaceVariant
+        ).forEach { (which, attr) ->
+            dialog.getButton(which).let {
+                it.setTextColor(MaterialColors.getColor(it, attr))
+            }
+        }
+    }
+
+    /**
+     * Hides the row for [uri] and offers Undo, doing [commit] only once the offer has gone.
+     * See [pending].
+     */
+    private fun removeLater(uri: String, commit: () -> Unit) {
+        // One at a time: the bar for this one takes the last one's place
+        finishRemoving()
+        val removal = Pending(uri, commit)
+        pending = removal
+        render()
+        undoBar = Snackbar.make(list, R.string.removed, Snackbar.LENGTH_LONG)
+            // Above the Open a file button rather than over it. The button is up while the bar
+            // is, since a row being removed still counts in homeRows' first run test.
+            .setAnchorView(fab)
+            .setAction(R.string.undo) {
+                if (pending === removal) {
+                    pending = null
+                    render()
+                }
+            }
+            .addCallback(object : Snackbar.Callback() {
+                override fun onDismissed(bar: Snackbar, event: Int) {
+                    if (event != DISMISS_EVENT_ACTION && pending === removal) {
+                        finishRemoving()
+                        render()
+                    }
+                }
+            })
             .also { it.show() }
     }
 
-    private fun homeRows(): Screen {
+    /** Carries out the removal waiting on an Undo bar, if one is. */
+    private fun finishRemoving() {
+        val removal = pending ?: return
+        pending = null
+        removal.commit()
+    }
+
+    /** The home screen, without the row for [hidden], whose removal waits on its Undo bar. */
+    private fun homeRows(hidden: String?): Screen {
         val recents = Recents.all(this)
         // Labelled first, then sorted. sortedBy runs its selector on every comparison,
         // so naming the tree inside it cost a provider query per comparison rather than
@@ -485,15 +572,18 @@ class MainActivity : AppCompatActivity() {
         // Nothing opened and nothing granted is a first run, and a first run gets the
         // welcome block in place of the list rather than two empty headings above three
         // paragraphs about what this is. Once either has happened the reader knows, and
-        // the ordinary list comes back for good.
+        // the ordinary list comes back for good. A row waiting on its Undo bar still
+        // counts, so undoing the last one never has to bring the list back.
         if (recents.isEmpty() && roots.isEmpty()) return Screen(emptyList(), welcome = true)
+        val shownRecents = recents.filter { it.uri != hidden }
+        val shownRoots = roots.filter { (perm, _) -> perm.uri.toString() != hidden }
 
         val rows = mutableListOf<Row>()
         rows += Row.Header(getString(R.string.recent_files))
-        if (recents.isEmpty()) {
+        if (shownRecents.isEmpty()) {
             rows += Row.Hint(getString(R.string.no_recents_hint))
         } else {
-            recents.forEach { r ->
+            shownRecents.forEach { r ->
                 val (badge, color) = badgeFor(r.name, null)
                 val ext = r.name.substringAfterLast('.', "").lowercase()
                 val uri = Uri.parse(r.uri)
@@ -501,11 +591,17 @@ class MainActivity : AppCompatActivity() {
                     badge, color, r.name,
                     DateUtils.getRelativeTimeSpanString(r.time).toString(),
                     onClick = { openInViewer(uri) },
-                    onLongClick = {
-                        Recents.remove(this, r.uri)
-                        Thumbs.evict(this, r.uri)
-                        toastRemoved()
-                        render()
+                    onRemove = { kept ->
+                        askToRemove(
+                            R.string.remove_recent_title,
+                            getString(R.string.remove_recent_message, r.name),
+                            kept
+                        ) {
+                            removeLater(r.uri) {
+                                Recents.remove(this, r.uri)
+                                Thumbs.evict(this, r.uri)
+                            }
+                        }
                     },
                     thumbUri = uri.takeIf { Thumbs.supported(FileKind.detect(ext, null), ext) },
                     thumbExt = ext
@@ -513,8 +609,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         rows += Row.Header(getString(R.string.folders))
-        if (roots.isEmpty()) rows += Row.Hint(getString(R.string.no_folders_hint))
-        roots.forEach { (perm, label) ->
+        if (shownRoots.isEmpty()) rows += Row.Hint(getString(R.string.no_folders_hint))
+        shownRoots.forEach { (perm, label) ->
             rows += Row.Item(
                 "DIR", DIR_COLOR, label, null,
                 onClick = {
@@ -523,15 +619,13 @@ class MainActivity : AppCompatActivity() {
                     )
                     render()
                 },
-                // The only confirmation in the app, because this is the only thing on the
-                // screen that cannot be undone. Android has no inverse for a released
-                // permission: takePersistableUriPermission needs a live grant from an intent
-                // result, so once this has run the way back is the system picker.
-                onLongClick = {
-                    val dialog = MaterialAlertDialogBuilder(this)
-                        .setTitle(R.string.remove_folder_title)
-                        .setMessage(getString(R.string.remove_folder_message, label))
-                        .setPositiveButton(R.string.remove) { _, _ ->
+                onRemove = { kept ->
+                    askToRemove(
+                        R.string.remove_folder_title,
+                        getString(R.string.remove_folder_message, label),
+                        kept
+                    ) {
+                        removeLater(perm.uri.toString()) {
                             // Write as well as read: a build that could rename files took both
                             // for a folder, and giving back only the read half left the write
                             // half behind, out of sight, since the list shows read grants only.
@@ -543,27 +637,6 @@ class MainActivity : AppCompatActivity() {
                                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                                 )
                             }
-                            toastRemoved()
-                            render()
-                        }
-                        .setNegativeButton(android.R.string.cancel, null)
-                        .create()
-                    dialog.show()
-                    // Tinted after show(): getButton returns null until the dialog is laid
-                    // out. Both buttons are set rather than only the destructive one,
-                    // because Gander's own primary is a burnt red: an error-coloured Remove
-                    // beside an untouched Cancel measures dE 4.6 on the light palette, near
-                    // enough to the 2.3 a person can notice that it marks nothing and only
-                    // makes Cancel look dangerous too. Standing the dismissive button down
-                    // to a neutral is what leaves the red meaning one thing.
-                    listOf(
-                        AlertDialog.BUTTON_POSITIVE to
-                            com.google.android.material.R.attr.colorError,
-                        AlertDialog.BUTTON_NEGATIVE to
-                            com.google.android.material.R.attr.colorOnSurfaceVariant
-                    ).forEach { (which, attr) ->
-                        dialog.getButton(which).let {
-                            it.setTextColor(MaterialColors.getColor(it, attr))
                         }
                     }
                 }
