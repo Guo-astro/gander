@@ -488,6 +488,21 @@ def xlsx() -> None:
         csv.writer(fh).writerows(SHEET_ROWS)
     written(OUT / "budget.csv")
 
+    # Issue #37. A CSV as most apps save one: UTF-8 with no byte order mark. Letters
+    # of two, three and four bytes, the last a flag, which is two characters of four.
+    with open(OUT / "utf8.csv", "w", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerows([
+            ("Word", "Language"), ("Флаг", "Russian"), ("Straße", "German"),
+            ("東京", "Japanese"), ("\U0001F1EA\U0001F1FA", "Emoji"),
+        ])
+    written(OUT / "utf8.csv")
+
+    # And one that is not UTF-8 at all, as older Excel saves a CSV on Windows, which
+    # the fix for #37 must leave reading as it did.
+    with open(OUT / "latin1.csv", "w", newline="", encoding="latin-1") as fh:
+        csv.writer(fh).writerows([("Word", "Language"), ("Café", "French"), ("Grüße", "German")])
+    written(OUT / "latin1.csv")
+
 
 def pptx() -> None:
     from pptx import Presentation

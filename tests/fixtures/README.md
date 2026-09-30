@@ -46,6 +46,8 @@ should stay obviously so.
 | `report.docx` | docx rendering, and `fixSymbolChars`: contains a Wingdings bullet at U+F0B7. |
 | `budget.xlsx` | Three sheets, so the sheet tabs have something to switch between. |
 | `budget.csv` | The same rows as the first sheet. Routes to the spreadsheet viewer, not the text one. |
+| `utf8.csv` | Issue #37. UTF-8 with no byte order mark, which SheetJS reads as Latin-1 when handed bytes. Letters of two, three and four bytes. |
+| `latin1.csv` | The other side of #37: a CSV that is not UTF-8, which must still read as Latin-1. |
 | `deck.pptx` | Three slides, for the PPTXjs completion poll. |
 | `report.docm`, `report.dotx` | Word's relatives: `report.docx` with its main part declared as a macro-enabled document's and as a template's, which is all that tells them apart. There are no macros in it. |
 | `budget.xltx` | `budget.xlsx` declared as an Excel template. |

@@ -1,6 +1,28 @@
+/*
+ * Issue #37. Given bytes, SheetJS reads a text file as Latin-1 unless it starts with a UTF-8
+ * byte order mark, and a CSV saved as UTF-8 seldom has one, so Флаг came out as Ð¤Ð»Ð°Ð³. A file
+ * that is valid UTF-8 goes in already decoded. Anything else goes in as bytes, as it always did:
+ * every binary workbook, a UTF-16 file, which SheetJS knows by its mark, and a Latin-1 one.
+ *
+ * Strict, and both halves of that matter. Decoded leniently, a Latin-1 file reaches SheetJS with
+ * its accents turned to U+FFFD, and an .xlsx reaches it as text, which it never finished reading.
+ * SheetJS's own codepage: 65001 was no better: it read "Café,Zürich" as "Caf鬚𲩣h".
+ */
+function readWorkbook(bytes) {
+  var text = null;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (e) {
+    // Not UTF-8
+  }
+  return text === null
+    ? XLSX.read(bytes, { type: "array", cellDates: true })
+    : XLSX.read(text, { type: "string", cellDates: true });
+}
+
 vwFetchDoc("buffer")
   .then(function (buf) {
-    var wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
+    var wb = readWorkbook(new Uint8Array(buf));
     if (!wb.SheetNames.length) throw new Error("The workbook has no sheets");
     var tabs = document.getElementById("tabs");
     var sheetDiv = document.getElementById("sheet");

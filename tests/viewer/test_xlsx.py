@@ -53,6 +53,24 @@ def test_a_csv_opens_as_a_single_sheet(viewer, page):
         len(page.query_selector_all("#tabs button")) <= 1
 
 
+def test_a_utf8_csv_with_no_byte_order_mark_reads_as_utf8(viewer, page):
+    """Issue #37: handed bytes, SheetJS read this as Latin-1, and Флаг came out as Ð¤Ð»Ð°Ð³."""
+    viewer("xlsx.html", "utf8.csv")
+    wait_for_sheet(page)
+    text = page.text_content("#sheet")
+    for word in ("Флаг", "Straße", "東京", "\U0001F1EA\U0001F1FA"):
+        assert word in text
+
+
+def test_a_latin1_csv_still_reads_as_latin1(viewer, page):
+    """Not UTF-8, so it goes to SheetJS as bytes, as every CSV did before #37."""
+    viewer("xlsx.html", "latin1.csv")
+    wait_for_sheet(page)
+    text = page.text_content("#sheet")
+    assert "Café" in text
+    assert "Grüße" in text
+
+
 def test_a_template_opens_as_a_workbook_does(viewer, page, main_part):
     """
     budget.xlsx with its main part declared as a template's, which is all that

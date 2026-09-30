@@ -7,6 +7,10 @@
   from GitHub over with its recents and folder grants. A copy from Google Play still has Rate in
   that place, and other copies used to have nothing there.
 
+- A CSV saved as UTF-8 opens with its letters as they were typed (thanks @mitry, who reported
+  this in #37). Most apps save one without a byte order mark, and Gander read those as Latin-1,
+  so any letter outside plain English came out garbled: Флаг as Ð¤Ð»Ð°Ð³, and café as cafÃ©.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each
