@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <!-- Hidden unless Google Play installed this copy, the only install a rating can come
-         from. MainActivity.installedFromPlay decides. -->
+    <!-- Rate on a copy Google Play installed, the only install a rating can come from.
+         Any other copy gets Switch to Google Play here instead: a copy from GitHub is
+         signed with the same key as Play's, so its listing offers Update and moves it
+         over in place. Both open the listing; MainActivity.installedFromPlay picks the
+         title. -->
     <item
-        android:id="@+id/action_rate"
-        android:title="@string/rate_app"
-        android:visible="false"
+        android:id="@+id/action_play"
+        android:title="@string/switch_to_play"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_share_app"

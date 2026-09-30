@@ -559,4 +559,52 @@ class MainActivityTest {
         val text = dialog.findViewById<TextView>(R.id.aboutPermissions).text.toString()
         assertThat(text).isEqualTo(context.getString(R.string.about_permissions_none))
     }
+
+    // ---------------------------------------------------------------
+    // Google Play
+    // ---------------------------------------------------------------
+
+    private fun ActivityController<MainActivity>.playItem(): android.view.MenuItem =
+        get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+            .menu.findItem(R.id.action_play)
+
+    /**
+     * A copy installed from an APK is offered the switch to Play, whose listing updates it
+     * in place, and is never asked to rate, since Play takes ratings only from its own copies.
+     */
+    @Test
+    fun aCopyFromGitHubIsOfferedTheSwitchToPlay() {
+        shadowOf(context.packageManager).setInstallSourceInfo(
+            context.packageName, "com.android.chrome", "com.google.android.packageinstaller"
+        )
+        val item = home().playItem()
+
+        assertThat(item.isVisible).isTrue()
+        assertThat(item.title.toString()).isEqualTo(context.getString(R.string.switch_to_play))
+    }
+
+    /** Google Play's own copy keeps Rate in the same place. */
+    @Test
+    fun playsOwnCopyIsAskedToRate() {
+        shadowOf(context.packageManager).setInstallSourceInfo(
+            context.packageName, "com.android.vending", "com.android.vending"
+        )
+        val item = home().playItem()
+
+        assertThat(item.isVisible).isTrue()
+        assertThat(item.title.toString()).isEqualTo(context.getString(R.string.rate_app))
+    }
+
+    /** The switch opens Gander's listing in the Play Store app, where Update does the move. */
+    @Test
+    fun theSwitchOpensGandersListingInThePlayStore() {
+        val controller = home()
+        controller.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+            .menu.performIdentifierAction(R.id.action_play, 0)
+
+        val started = shadowOf(controller.get()).nextStartedActivity
+        assertThat(started.action).isEqualTo(Intent.ACTION_VIEW)
+        assertThat(started.data.toString()).isEqualTo("market://details?id=${context.packageName}")
+        assertThat(started.`package`).isEqualTo("com.android.vending")
+    }
 }

@@ -144,11 +144,13 @@ class MainActivity : AppCompatActivity() {
         // survives all of it.
         toolbar.inflateMenu(R.menu.main_menu)
         // Set once, like the inflate: the installer cannot change while this process
-        // lives, because any reinstall or update kills the process first.
-        toolbar.menu.findItem(R.id.action_rate).isVisible = installedFromPlay()
+        // lives, because any reinstall or update kills the process first. The item reads
+        // Switch to Google Play unless Play installed this copy, so only Play's own copy
+        // is asked to rate.
+        if (installedFromPlay()) toolbar.menu.findItem(R.id.action_play).setTitle(R.string.rate_app)
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
-                R.id.action_rate -> { openPlayListing(); true }
+                R.id.action_play -> { openPlayListing(); true }
                 R.id.action_share_app -> { shareGander(); true }
                 R.id.action_about -> { showAbout(); true }
                 else -> false
@@ -371,9 +373,9 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Whether Google Play is this install's installer of record, the only case where Rate
-     * can go anywhere: Play takes ratings from nobody else, so on a copy from GitHub or
-     * F-Droid it would open a listing that cannot be rated. Asking about our own package
-     * needs no permission and no <queries> entry.
+     * can go anywhere: Play takes ratings from nobody else, so a copy from GitHub or
+     * F-Droid is offered Switch to Google Play in that place instead. Asking about our own
+     * package needs no permission and no <queries> entry.
      */
     private fun installedFromPlay(): Boolean = runCatching {
         val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

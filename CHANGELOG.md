@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The home screen's menu now starts with Switch to Google Play on any copy Google Play did not
+  install, such as one from GitHub. It opens Gander's Play listing, where Update moves a copy
+  from GitHub over with its recents and folder grants. A copy from Google Play still has Rate in
+  that place, and other copies used to have nothing there.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

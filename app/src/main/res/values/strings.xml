@@ -106,8 +106,10 @@
     <string name="back">Back</string>
     <string name="about_gander">About Gander</string>
     <!-- The two home menu items above About Gander. That one already names the app, so
-         these stay a bare verb each. Rate only appears where Google Play installed it. -->
+         these stay short and start with a verb. Rate appears where Google Play installed
+         the copy, and Switch to Google Play takes its place anywhere else. -->
     <string name="rate_app">Rate</string>
+    <string name="switch_to_play">Switch to Google Play</string>
     <string name="share_app">Share</string>
     <!-- What Share hands over. The link is the site rather than the Play listing, so it
          works for whoever receives it, however they install. -->
