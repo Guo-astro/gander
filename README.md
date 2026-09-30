@@ -112,6 +112,14 @@ files 92 and Word documents 80. Any phone still receiving WebView updates is wel
 past all three; if yours is not, Gander says so when you open the file rather than
 failing quietly.
 
+**From Google Play**, which keeps it updated:
+[Gander on Google Play](https://play.google.com/store/apps/details?id=com.arjun.gander).
+Already installed it from here? Open the listing and tap Update. Play moves your
+install over, recents and folder grants included, since both copies are signed with
+the same key.
+
+**From GitHub**, for phones without Google Play, or if you'd rather not use it:
+
 1. Download the latest APK from [Releases](../../releases/latest):
    `Gander-x.y.apk` runs on every architecture, since the app ships no native libraries.
 2. Copy it to your phone, tap it, and allow "install unknown apps" when asked.
