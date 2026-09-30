@@ -3,6 +3,7 @@ package com.arjun.gander
 import android.content.Context
 import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.view.View
@@ -34,7 +35,11 @@ import com.google.android.material.shape.MaterialShapeDrawable
  * page still followed the phone, so that reader had a black page under a paper toolbar, with a
  * paper strip behind the clock and, from Android 15, another behind the gesture bar, and a paper
  * search bar, menu and dialogs to open over it. Each of them gets the colours a phone set to dark
- * gives it, so on a phone set to dark nothing here changes anything.
+ * gives it, but for the ones that frame the page: the title bar, the search bar and the strips
+ * behind the phone's bars are black, as the page is. In the night theme's warm near-black they
+ * left a black page inside a lighter frame on an OLED screen, issue #41. So on a phone set to dark
+ * those are all that change. The menu and the dialogs keep the night theme's surfaces, since they
+ * stand over the page, and on black they would have no edge.
  *
  * Painted in place rather than by recreating the activity in the night theme. Recreating reloads
  * the document: it comes back at its page, but an encrypted PDF asks for its password again, and
@@ -76,11 +81,11 @@ internal class NightChrome(private val activity: AppCompatActivity) {
     private val phoneIsDark = (activity.resources.configuration.uiMode and
         Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
-    // MaterialToolbar turns its background colour into a shape tinted for its elevation, and
-    // the night one is made the same way from the night theme, so it matches a dark phone's
+    // MaterialToolbar turns its background colour into a shape tinted for its elevation. The
+    // night one is a shape too, black and untinted, since a tint would lift it off the page.
     private val toolbarAsPhone: Drawable? = toolbar.background
     private val toolbarAtNight: Drawable by lazy {
-        MaterialShapeDrawable.createWithElevationOverlay(nightContext, toolbar.elevation)
+        MaterialShapeDrawable().apply { fillColor = ColorStateList.valueOf(Color.BLACK) }
     }
 
     var on = false
@@ -94,6 +99,8 @@ internal class NightChrome(private val activity: AppCompatActivity) {
         if (night == on) return
         on = night
         val p = if (night) atNight else asPhone
+        // What the page is framed in: black at night, like the page
+        val frame = if (night) Color.BLACK else asPhone.surface
 
         toolbar.background = if (night) toolbarAtNight else toolbarAsPhone
         toolbar.setTitleTextColor(p.text)
@@ -115,16 +122,16 @@ internal class NightChrome(private val activity: AppCompatActivity) {
         // Behind the status and navigation bars. From Android 15 the app draws under both and
         // the root's padding keeps its content clear, so what shows there is the root's own
         // background; before that the window colours the status bar itself.
-        root.background = if (night) p.surface.toDrawable() else rootAsPhone
+        root.background = if (night) frame.toDrawable() else rootAsPhone
         val window = activity.window
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars =
             p.lightStatusBar
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             @Suppress("DEPRECATION")
-            window.statusBarColor = p.surface
+            window.statusBarColor = frame
         }
 
-        searchBar.setBackgroundColor(p.surface)
+        searchBar.setBackgroundColor(frame)
         searchInput.setTextColor(p.text)
         searchInput.setHintTextColor(p.hint)
         ViewCompat.setBackgroundTintList(searchInput, p.underline)

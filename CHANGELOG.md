@@ -11,6 +11,10 @@
   this in #37). Most apps save one without a byte order mark, and Gander read those as Latin-1,
   so any letter outside plain English came out garbled: Флаг as Ð¤Ð»Ð°Ð³, and café as cafÃ©.
 
+- In a PDF's night mode the title bar, the search bar and the strips behind the phone's own bars
+  are black, as the pages are, so on an OLED screen a page no longer sits in a lighter frame.
+  They were the dark theme's warm near-black. The bar over a video is black too.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

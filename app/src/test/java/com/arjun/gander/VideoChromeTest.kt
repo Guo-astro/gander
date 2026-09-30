@@ -16,7 +16,6 @@ import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.view.ContextThemeWrapper
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -190,14 +189,13 @@ class VideoChromeTest {
 
     private fun View.surface(): Int? = (background as? MaterialShapeDrawable)?.fillColor?.defaultColor
 
-    /** A film is dark whatever the phone is set to, and the bar over it is too, with pale icons. */
+    /** A film is dark whatever the phone is set to, and the bar over it is black, with pale icons. */
     @Test
     fun onAPhoneSetToLightTheBarOverAVideoTakesTheNightColours() {
-        val nightSurface = ContextCompat.getColor(night, R.color.gander_surface)
         val nightText = textColour(ContextThemeWrapper(night, R.style.Theme_Gander))
         val viewer = video().get()
 
-        assertThat(viewer.top.surface()).isEqualTo(nightSurface)
+        assertThat(viewer.top.surface()).isEqualTo(Color.BLACK)
         assertThat(viewer.toolbar.titleColour()).isEqualTo(nightText)
         assertThat(WindowCompat.getInsetsController(viewer.window, viewer.window.decorView)
             .isAppearanceLightStatusBars).isFalse()

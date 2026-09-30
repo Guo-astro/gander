@@ -3,6 +3,7 @@ package com.arjun.gander
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.InsetDrawable
 import android.os.Looper
@@ -130,11 +131,12 @@ class NightChromeTest {
         Settings.setNight(context, true)
         val parts = open("six-pages.pdf").parts()
 
-        assertThat(parts.toolbar).isEqualTo(night.color(R.color.gander_surface))
+        // The frame is black, as the page is: issue #41
+        assertThat(parts.toolbar).isEqualTo(Color.BLACK)
         assertThat(parts.title).isEqualTo(nightText)
-        assertThat(parts.behindTheBars).isEqualTo(night.color(R.color.gander_surface))
+        assertThat(parts.behindTheBars).isEqualTo(Color.BLACK)
         assertThat(parts.darkStatusIcons).isFalse()
-        assertThat(parts.searchBar).isEqualTo(night.color(R.color.gander_surface))
+        assertThat(parts.searchBar).isEqualTo(Color.BLACK)
         assertThat(parts.searchText).isEqualTo(nightText)
         assertThat(parts.searchCount).isEqualTo(night.color(R.color.gander_on_surface_variant))
         // The menu's roles come from the five named night colours, so this also holds them
@@ -179,14 +181,22 @@ class NightChromeTest {
         assertThat(viewer.parts()).isEqualTo(asPhone)
     }
 
+    /** The night theme's warm near-black left a black page inside a lighter frame, issue #41. */
     @Test
     @Config(qualifiers = "night")
-    fun onAPhoneSetToDarkNightModeChangesNothingAroundThePage() {
+    fun onAPhoneSetToDarkNightModeTurnsOnlyTheFrameBlack() {
         val viewer = open("six-pages.pdf")
         val asPhone = viewer.parts()
+        val chrome = NightChrome(viewer)
 
-        NightChrome(viewer).show(true)
+        chrome.show(true)
+        val atNight = viewer.parts()
 
+        assertThat(asPhone.toolbar).isNotEqualTo(Color.BLACK)
+        assertThat(atNight).isEqualTo(
+            asPhone.copy(toolbar = Color.BLACK, behindTheBars = Color.BLACK, searchBar = Color.BLACK)
+        )
+        chrome.show(false)
         assertThat(viewer.parts()).isEqualTo(asPhone)
     }
 

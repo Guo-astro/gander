@@ -33,8 +33,8 @@ import com.google.android.material.appbar.MaterialToolbar
  * or box opened from it is in use.
  *
  * A film is dark whatever the phone is set to, so the parts over it take the colours a night-mode
- * PDF gives them, the ones a phone set to dark has: a paper bar over a picture is the one bright
- * thing in the room.
+ * PDF gives them, a black bar with the words and icons a phone set to dark has: a paper bar over a
+ * picture is the one bright thing in the room.
  *
  * Under a screen reader nothing goes. A view that has faded out cannot be reached by swiping, and
  * the title bar holds Back and the menu; the page readout stays up there for the same reason.
