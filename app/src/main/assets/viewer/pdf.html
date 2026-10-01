@@ -72,20 +72,43 @@
   #pages > .pg { flex: none; }
 
   /*
-   * Night mode, issue #19. Two colours here; the picture on the page is turned over
-   * by recolour() in the module, against the filter at the top of the body.
+   * Night mode, issue #19. Two colours and a line here; the picture on the page is
+   * turned over by recolour() in the module, against the filter at the top of the body.
    *
    * The paper is worth setting even though the canvas that covers it is always opaque:
    * a page that has not been drawn yet is this box and nothing else, so without it
    * every page ahead of the reader is a white rectangle until it is drawn, which is the
    * one thing somebody reading in the dark turned this on to avoid.
    *
-   * The surround goes to the ground app.css uses in dark mode, so the page is the
-   * darkest thing on screen and its edges still show. The shadow below stops doing
-   * anything at these two colours, and is left alone rather than fought with.
+   * The surround is black too, like the bars around it (#41). It used to be the ground
+   * app.css uses in dark mode, so that the page was the darkest thing on screen and its
+   * edges showed, but with the bars black that left it the one warm thing in view, and
+   * on an OLED screen the only lit pixels outside the page. Black pages on a black
+   * ground run together, so the edges are drawn instead: a line along the top of every
+   * page, which puts one line at each break, and along the foot of the last, so a
+   * document shorter than the screen still shows where it ends.
+   *
+   * The line is a divider, so it takes the lightness of the night theme's divider role,
+   * gander_outline_variant (#4D4636, L* 30.0), with the hue taken out: everything around
+   * it is black, and a warm line would bring back what #41 took away. #474747 is L* 30.2.
+   * About a dp thick, by the --vw-zoom the cards use, since a CSS pixel here is under
+   * half a dp. A box-shadow rather than a border, which would change the box --pg-gap
+   * and PAGE_PITCH are counted against, and it takes the place of the drop shadow,
+   * which does nothing on black.
    */
-  html.vw-night body { background: #17130A; }
-  html.vw-night .pg { background: #000; }
+  html.vw-night {
+    --pg-edge: calc(1px * var(--vw-zoom));
+    --pg-edge-colour: #474747;
+  }
+  html.vw-night body { background: #000; }
+  html.vw-night .pg {
+    background: #000;
+    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour);
+  }
+  html.vw-night .pg:last-child {
+    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour),
+                0 var(--pg-edge) 0 var(--pg-edge-colour);
+  }
   /*
    * The cards go over too, and they have to be named here rather than left to
    * app.css. Those tokens turn over with the *system* scheme, and night mode exists

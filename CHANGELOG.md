@@ -11,9 +11,10 @@
   this in #37). Most apps save one without a byte order mark, and Gander read those as Latin-1,
   so any letter outside plain English came out garbled: Флаг as Ð¤Ð»Ð°Ð³, and café as cafÃ©.
 
-- In a PDF's night mode the title bar, the search bar and the strips behind the phone's own bars
-  are black, as the pages are, so on an OLED screen a page no longer sits in a lighter frame.
-  They were the dark theme's warm near-black. The bar over a video is black too.
+- In a PDF's night mode the title bar, the search bar, the strips behind the phone's own bars and
+  the space between pages are black, as the pages are, so on an OLED screen a page no longer sits
+  in a lighter frame. They were the dark theme's warm near-black. A faint grey line now marks
+  where one page ends and the next begins. The bar over a video is black too.
 
 - A recent file or a folder on the home screen is removed by swiping it aside, over a bin. Gander
   asks first, and then offers Undo. Holding a recent file down used to remove it on the spot, which

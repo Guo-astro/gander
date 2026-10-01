@@ -16,6 +16,10 @@ inversion flips it: the cheap version of this feature would bring the heading
 below back orange.
 """
 
+import io
+
+from PIL import Image
+
 from helpers import (
     body_ground, page_colours, pan, paper_ground, region_colours,
     region_fingerprint, scroll_to_page, set_page_scale,
@@ -314,8 +318,50 @@ def test_the_grounds_move_with_the_toggle_and_not_with_the_scheme(viewer, page):
     assert paper_ground(page) == "rgb(255, 255, 255)"
 
     night(viewer, page, on=True)
-    assert body_ground(page) == "rgb(23, 19, 10)"
+    assert body_ground(page) == "rgb(0, 0, 0)"
     assert paper_ground(page) == "rgb(0, 0, 0)"
+
+
+BLACK = (0, 0, 0)
+# #474747 in pdf.html: the night theme's divider lightness, L* 30, with no hue
+EDGE_LINE = (71, 71, 71)
+
+
+def page_edges(page):
+    """Each page's top and bottom on screen, in CSS pixels."""
+    return page.evaluate(
+        "() => [...document.querySelectorAll('#pages .pg')].map(p => {"
+        "  const r = p.getBoundingClientRect(); return [r.top, r.bottom]; })"
+    )
+
+
+def screen_column(page, y0, y1, x=490):
+    """What the reader sees down one column of the screen from row y0 to row y1."""
+    shot = page.screenshot(clip={"x": x, "y": y0, "width": 1, "height": y1 - y0})
+    picture = Image.open(io.BytesIO(shot)).convert("RGB")
+    return [picture.getpixel((0, i)) for i in range(picture.height)]
+
+
+def test_on_the_black_ground_a_line_still_marks_each_page_edge(viewer, page):
+    """
+    The ground goes black with the bars (#41), and a black page on a black ground
+    shows no edge at all, so a faint line runs along the top of every page and the
+    foot of the last. Read off the screen rather than the stylesheet: at the first
+    page's top, at the first break, and at the end of the document, the row against
+    the page has to be the line and the rows beyond it black ground, not warm.
+    """
+    night(viewer, page)
+    for top, _ in page_edges(page)[:2]:
+        rows = screen_column(page, round(top) - 6, round(top))
+        assert rows[-1] == EDGE_LINE, f"no line along a page's top edge; saw {rows}"
+        assert rows[0] == BLACK, f"the ground around a page is not black; saw {rows}"
+
+    last = len(page_edges(page)) - 1
+    scroll_to_page(page, last)
+    bottom = round(page_edges(page)[last][1])
+    rows = screen_column(page, bottom, bottom + 6)
+    assert rows[0] == EDGE_LINE, f"no line along the last page's foot; saw {rows}"
+    assert rows[-1] == BLACK, f"the ground below the last page is not black; saw {rows}"
 
 
 # ---------------------------------------------------------------------------
