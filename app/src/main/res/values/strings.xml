@@ -106,6 +106,9 @@
          a PDF, where nothing else knows how far in you are -->
     <string name="scroll_position">%1$d%%</string>
     <string name="scroll_position_spoken">%1$d percent through the document</string>
+    <!-- The one kind of notification Gander posts, named in the phone's settings for the app:
+         play and pause on the lock screen while a track plays on with the screen off -->
+    <string name="audio_controls_channel">Audio controls</string>
     <string name="open_with_hint">Tip: in your file manager, tap any file and choose Open with &gt; Gander.</string>
     <string name="back">Back</string>
     <string name="about_gander">About Gander</string>

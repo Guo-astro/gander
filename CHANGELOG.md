@@ -22,6 +22,11 @@
   one still leaves the file or folder itself where it is. TalkBack offers Remove among the row's
   actions.
 
+- A track keeps playing when the screen goes off, whether the power button turned it off or it
+  timed out, and the lock screen shows play and pause for it (thanks @Nthanhnhan265, who asked in
+  #38). It used to stop the moment the screen went dark. Leaving Gander still stops it, and a call
+  or unplugged headphones pause it. A video still stops with the screen. No permission is added.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

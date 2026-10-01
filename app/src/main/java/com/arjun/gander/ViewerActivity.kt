@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.text.InputType
@@ -46,6 +47,7 @@ import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -128,6 +130,11 @@ class ViewerActivity : AppCompatActivity() {
      */
     private var pageSearches = false
     private var player: ExoPlayer? = null
+
+    /** Play and pause on the lock screen, for a track. A video has none: see [onStop]. */
+    @androidx.annotation.VisibleForTesting
+    internal var lockScreen: LockScreenControls? = null
+        private set
 
     /** The list of what is in a zip, when this is one. */
     private var archiveBrowser: ArchiveBrowser? = null
@@ -1358,7 +1365,8 @@ class ViewerActivity : AppCompatActivity() {
         val cover: ImageView?
         if (audio) {
             // Nothing is being looked at, so the screen may sleep, and the transport is
-            // the only thing on the display, so it stays put.
+            // the only thing on the display, so it stays put. The track plays on when the
+            // screen sleeps: see onStop.
             playerView.keepScreenOn = false
             playerView.controllerShowTimeoutMs = 0
             // Warm near-black rather than pure black. A track is a screen somebody sits
@@ -1391,9 +1399,16 @@ class ViewerActivity : AppCompatActivity() {
             }
         }
 
-        val exo = ExoPlayer.Builder(this).build()
+        val exo = ExoPlayer.Builder(this)
+            // Asks for the speaker as a player is expected to, so a call or another app's
+            // sound pauses this one, and pauses when headphones come out rather than carrying
+            // on out loud. Both matter most with the screen off, with nobody watching.
+            .setAudioAttributes(AudioAttributes.DEFAULT, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
         player = exo
         playerView.player = exo
+        if (audio) lockScreen = LockScreenControls(this, exo, name)
         exo.addListener(object : Player.Listener {
             /**
              * Cover art, once the extractor has read the tags. Taken from the player
@@ -1417,6 +1432,7 @@ class ViewerActivity : AppCompatActivity() {
                 val bmp = runCatching { sampledArt(bytes, view.width) }.getOrNull() ?: return
                 artDecoded = bytes
                 view.setImageBitmap(bmp)
+                lockScreen?.art = bmp
             }
 
             /** Which way round the picture is, which decides whether full screen is offered. */
@@ -1425,6 +1441,8 @@ class ViewerActivity : AppCompatActivity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                lockScreen?.release()
+                lockScreen = null
                 exo.release()
                 player = null
                 videoChrome?.land()
@@ -1846,8 +1864,29 @@ class ViewerActivity : AppCompatActivity() {
         videoChrome?.focusChanged(hasFocus)
     }
 
+    override fun onStart() {
+        super.onStart()
+        lockScreen?.inFront()
+    }
+
+    /**
+     * Pauses whatever is playing, unless this is a track and the screen has gone off with it
+     * playing, which is not leaving it. Issue #38.
+     *
+     * Playing on after leaving would need a foreground service, and so a permission. Playing on
+     * with the screen off needs none: the viewer is still the thing in front, only asleep, and
+     * Android's audio service keeps the phone awake while a track plays. A video stops all the
+     * same, since there is nothing left of it to watch.
+     */
     override fun onStop() {
-        player?.pause()
+        val screenOn = getSystemService(PowerManager::class.java)?.isInteractive ?: true
+        val controls = lockScreen
+        if (controls != null && player?.playWhenReady == true && !screenOn) {
+            controls.playingOn()
+        } else {
+            player?.pause()
+            controls?.leftPaused()
+        }
         savePosition()
         super.onStop()
     }
@@ -1870,6 +1909,8 @@ class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        lockScreen?.release()
+        lockScreen = null
         player?.release()
         player = null
         webView?.destroy()
