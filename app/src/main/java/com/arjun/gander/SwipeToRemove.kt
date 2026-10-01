@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.withClip
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.color.MaterialColors
@@ -79,10 +80,7 @@ internal class SwipeToRemove(context: Context, private val adapter: RowAdapter) 
             bin.alpha = alpha
             // Only over what the row has uncovered, so the bin never shows through a gap it has
             // not reached
-            val saved = c.save()
-            c.clipRect(left, row.top, right, row.bottom)
-            bin.draw(c)
-            c.restoreToCount(saved)
+            c.withClip(left, row.top, right, row.bottom) { bin.draw(this) }
         }
         super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
     }
