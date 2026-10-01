@@ -127,6 +127,11 @@ android {
                     rootProject.file("scripts/fetch-viewer-libs.sh"),
                     rootProject.file("tests/fixtures/range-cases.json"),
                 ).withPropertyName("filesReadOffDisk")
+                // Every test class shares one JVM, and Gradle gives it 512 MB unless told
+                // otherwise. ZipReaderTest builds a 200,001-entry zip, and run near the end
+                // of the suite it found that heap nearly full: out of memory in two of three
+                // full runs on 2026-10-01, where on its own it takes half a second.
+                test.maxHeapSize = "1g"
             }
         }
     }
