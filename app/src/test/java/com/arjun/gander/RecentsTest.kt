@@ -151,7 +151,7 @@ class RecentsTest {
 
     /**
      * The list only ever shows files it can still open. A grant is released
-     * when the reader long-presses a folder, and it can also be dropped by
+     * when the reader removes a folder, and it can also be dropped by
      * Android when the provider's app is uninstalled or its data cleared.
      */
     @Test

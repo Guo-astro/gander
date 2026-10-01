@@ -104,7 +104,7 @@ and performance, device or other IDs): **not declared.** None of it is touched.
 | --- | --- | --- |
 | Recents: file name, content URI, timestamp, max 25 | `SharedPreferences` (`Recents.kt`) | Filtered at read time against the URIs still holding a persisted read grant |
 | Reading positions: page number and timestamp per PDF, max 100 | `noBackupFilesDir/positions` (`Positions.kt`) | Keyed by a SHA-256 of the file's length and first 64 KiB, so no file name or URI is stored. First and last pages are not kept. `BackupAgent` always excludes `no_backup`, from cloud backup and device-to-device transfer alike |
-| Folder grants | Held by the system, not by the app (`MainActivity.kt`) | Released on long-press |
+| Folder grants | Held by the system, not by the app (`MainActivity.kt`) | Released when the folder is removed from Gander |
 | Thumbnails, about 192 px | `cacheDir/thumbs/*.png` (`Thumbs.kt`) | From photos, a video's first frame, or a PDF's first page |
 | Shared-text temp file | `cacheDir/shared-text.txt` (`ViewerActivity.kt`) | Overwritten on the next text share |
 | A WebView DOM-storage flag | WebView data dir | Set by the vendored PPTXjs (`isPPTXjsReLoaded`). No document content |
