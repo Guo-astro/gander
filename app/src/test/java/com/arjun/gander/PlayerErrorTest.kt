@@ -60,14 +60,17 @@ class PlayerErrorTest {
         get() = shown.filterIsInstance<PlayerView>().single().player as ExoPlayer
 
     /**
-     * Runs the viewer's thread on in steps of its clock until [done], giving the player's own
-     * threads a moment of real time at each.
+     * Runs the viewer's thread until [done], giving the player's own threads a moment of real
+     * time at each turn. With [moving], the clock moves on 10 ms a turn, which the player needs
+     * to get ready, since it schedules its work by that clock. Without, it stands still, so that
+     * however slow the machine, waiting for an error never adds time toward a retry.
      */
-    private fun until(done: () -> Boolean) {
+    private fun until(moving: Boolean = true, done: () -> Boolean) {
+        val looper = shadowOf(Looper.getMainLooper())
         val deadline = System.currentTimeMillis() + 10_000
         while (!done()) {
             check(System.currentTimeMillis() < deadline) { "Never happened" }
-            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(10))
+            if (moving) looper.idleFor(Duration.ofMillis(10)) else looper.idle()
             Thread.sleep(1)
         }
     }
@@ -103,7 +106,7 @@ class PlayerErrorTest {
     fun aTrackThatFailsAsItOpensGetsThePageSayingSo() {
         val viewer = play()
         viewer.player.fail()
-        until { viewer.shown.any { it is WebView } }
+        until(moving = false) { viewer.shown.any { it is WebView } }
         assertThat(viewer.shown.filterIsInstance<PlayerView>()).isEmpty()
     }
 
@@ -116,7 +119,7 @@ class PlayerErrorTest {
         player.play()
         val errors = player.errors()
         player.fail()
-        until { errors.isNotEmpty() }
+        until(moving = false) { errors.isNotEmpty() }
 
         assertThat(viewer.player).isSameInstanceAs(player)
         assertThat(viewer.shown.none { it is WebView }).isTrue()
@@ -136,7 +139,7 @@ class PlayerErrorTest {
         until { errors.isNotEmpty() && player.playbackState == Player.STATE_READY }
 
         player.fail()
-        until { viewer.shown.any { it is WebView } }
+        until(moving = false) { viewer.shown.any { it is WebView } }
         assertThat(viewer.shown.filterIsInstance<PlayerView>()).isEmpty()
     }
 }
