@@ -16,6 +16,11 @@
  * first, a path drawn on a grid of its own moved onto the first's. Each still gets the
  * shape's fill and line, the only ones PPTXjs gives any path. One thing does change: where
  * two of them overlap, wound in opposite directions, the overlap is no longer filled.
+ *
+ * PPTXjs also draws a path's straight segments only when it has more than one. A lone one
+ * it reads field by field as though they were the list, and nothing is drawn: no error, and
+ * no line. A rule under a heading is such a path, so a deck can lose one from every slide.
+ * Its segment is written twice, which draws the same line.
  */
 var DRAWINGML = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
@@ -25,32 +30,50 @@ JSZip.prototype.load = function () {
   if (!zip.file("docProps/app.xml")) zip.file("docProps/app.xml", "<Properties/>");
   zip.file(/^ppt\/(slides|slideLayouts|slideMasters)\/[^/]+\.xml$/).forEach(function (part) {
     var xml = part.asText();
-    var merged = onePathPerShape(xml);
-    if (merged !== xml) zip.file(part.name, merged);
+    var drawable = pathsPptxjsDraws(xml);
+    if (drawable !== xml) zip.file(part.name, drawable);
   });
   return zip;
 };
 
-function onePathPerShape(xml) {
-  // A path closed, or written empty, with another straight after it
-  if (!/(<\/a:path>|\/>)\s*<a:path\b/.test(xml)) return xml;
+function pathsPptxjsDraws(xml) {
+  // A path closed, or written empty, with another straight after it, or a lone segment
+  if (!/(<\/a:path>|\/>)\s*<a:path\b/.test(xml) && !hasLoneSegment(xml)) return xml;
   var doc = new DOMParser().parseFromString(xml, "application/xml");
   if (doc.getElementsByTagName("parsererror").length) return xml;
   var lists = doc.getElementsByTagNameNS(DRAWINGML, "pathLst");
   var changed = false;
   for (var i = 0; i < lists.length; i++) {
-    var paths = [];
-    for (var el = lists[i].firstElementChild; el; el = el.nextElementSibling) {
-      if (el.localName === "path") paths.push(el);
-    }
+    var paths = childrenNamed(lists[i], "path");
     for (var j = 1; j < paths.length; j++) {
       onToGridOf(paths[0], paths[j]);
       while (paths[j].firstChild) paths[0].appendChild(paths[j].firstChild);
       lists[i].removeChild(paths[j]);
       changed = true;
     }
+    var segments = paths.length ? childrenNamed(paths[0], "lnTo") : [];
+    if (segments.length === 1) {
+      paths[0].insertBefore(segments[0].cloneNode(true), segments[0].nextSibling);
+      changed = true;
+    }
   }
   return changed ? new XMLSerializer().serializeToString(doc) : xml;
+}
+
+function hasLoneSegment(xml) {
+  var paths = xml.match(/<a:path\b[^>]*>[\s\S]*?<\/a:path>/g) || [];
+  for (var i = 0; i < paths.length; i++) {
+    if ((paths[i].match(/<a:lnTo\b/g) || []).length === 1) return true;
+  }
+  return false;
+}
+
+function childrenNamed(parent, name) {
+  var found = [];
+  for (var el = parent.firstElementChild; el; el = el.nextElementSibling) {
+    if (el.localName === name) found.push(el);
+  }
+  return found;
 }
 
 /* A path's w and h are the size of the grid its points are on. */

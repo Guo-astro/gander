@@ -130,3 +130,13 @@ def test_a_path_on_a_grid_of_its_own_is_drawn_to_its_shape(viewer, page):
                for pt in re.findall(r"[ML]\s*(-?[\d.]+,-?[\d.]+)", paths[0])]
     frame, diagonal_end = corners[2], corners[-1]
     assert diagonal_end == frame, paths[0]
+
+
+def test_a_path_of_one_straight_segment_is_drawn(viewer, page):
+    """A rule under a heading, a path PPTXjs drew as nothing, with no error to say so."""
+    viewer("pptx.html", "freeforms.pptx")
+    wait_for_deck(page, 1)
+    paths = drawn_paths(page, "Rule")
+    points = [tuple(round(float(v)) for v in pt.split(","))
+              for pt in re.findall(r"[ML]\s*(-?[\d.]+,-?[\d.]+)", paths[0])]
+    assert (0, 0) in points and (480, 0) in points, paths[0]
