@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The buttons of the notification behind the lock screen's controls (LockScreenControls.kt),
+     pointed at Gander's own icons. Media3 ships each of these as a vector plus five PNG sizes
+     that Android 8 and up never draws, about 9 KB in all, and its code names all seven though
+     only play and pause are ever shown. The shapes are Media3's, so nothing looks different.
+     PlayerNotificationManager documents these names as the ones an app may replace. Its code
+     reads them by name, which lint does not see, so lint calls them unused. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources">
+    <drawable name="exo_notification_play" tools:override="true">@drawable/ic_notification_play</drawable>
+    <drawable name="exo_notification_pause" tools:override="true">@drawable/ic_notification_pause</drawable>
+    <!-- Never shown: Gander turns these actions off, and stop is off by default -->
+    <drawable name="exo_notification_previous" tools:override="true">@drawable/ic_notification_play</drawable>
+    <drawable name="exo_notification_next" tools:override="true">@drawable/ic_notification_play</drawable>
+    <drawable name="exo_notification_rewind" tools:override="true">@drawable/ic_notification_play</drawable>
+    <drawable name="exo_notification_fastforward" tools:override="true">@drawable/ic_notification_play</drawable>
+    <drawable name="exo_notification_stop" tools:override="true">@drawable/ic_notification_pause</drawable>
+</resources>
