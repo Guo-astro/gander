@@ -1,6 +1,7 @@
 package com.arjun.gander
 
 import android.annotation.SuppressLint
+import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -1871,17 +1872,22 @@ class ViewerActivity : AppCompatActivity() {
 
     /**
      * Pauses whatever is playing, unless this is a track and the screen has gone off with it
-     * playing, which is not leaving it. Issue #38.
+     * playing, or the lock screen has come back over it, neither of which is leaving it. Issue #38.
      *
      * Playing on after leaving would need a foreground service, and so a permission. Playing on
      * with the screen off needs none: the viewer is still the thing in front, only asleep, and
      * Android's audio service keeps the phone awake while a track plays. A video stops all the
      * same, since there is nothing left of it to watch.
+     *
+     * The lock screen counts because of calls. A call wakes the screen over the lock screen, and
+     * when it ends the lock screen comes back with the screen still on, which stops the viewer.
+     * Taken as leaving, that paused the track for good and took its controls away.
      */
     override fun onStop() {
         val screenOn = getSystemService(PowerManager::class.java)?.isInteractive ?: true
+        val locked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked ?: false
         val controls = lockScreen
-        if (controls != null && player?.playWhenReady == true && !screenOn) {
+        if (controls != null && player?.playWhenReady == true && (!screenOn || locked)) {
             controls.playingOn()
         } else {
             player?.pause()

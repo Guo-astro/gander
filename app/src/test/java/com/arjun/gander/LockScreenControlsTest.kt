@@ -1,5 +1,6 @@
 package com.arjun.gander
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
@@ -65,6 +66,9 @@ class LockScreenControlsTest {
     private fun screen(on: Boolean) =
         shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(on)
 
+    private fun locked(on: Boolean) =
+        shadowOf(context.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(on)
+
     private fun posted(): List<Notification> =
         shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications
 
@@ -80,6 +84,19 @@ class LockScreenControlsTest {
         screen(on = false)
         viewer.stopped()
         assertThat(viewer.player.playWhenReady).isTrue()
+    }
+
+    /**
+     * A call wakes the screen, and when it ends the lock screen comes back with the screen still
+     * on, which stops the viewer. The track plays on, with its controls, once the call is over.
+     */
+    @Test
+    fun theLockScreenComingBackWithTheScreenOnIsNotLeaving() {
+        val viewer = play(track)
+        locked(on = true)
+        viewer.stopped()
+        assertThat(viewer.player.playWhenReady).isTrue()
+        assertThat(posted()).hasSize(1)
     }
 
     @Test
