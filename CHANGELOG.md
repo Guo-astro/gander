@@ -44,6 +44,10 @@
   PowerPoint's connectors, and any drawing of a single straight stroke, so a deck could lose the
   rule under every heading.
 
+- Words on slides stay whole when a line wraps. Gander broke a line of a slide's text wherever it
+  ran out of room, so a word could end one line and finish on the next, as "Language" and "s".
+  Lines now break between words, as they do in PowerPoint.
+
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.
 

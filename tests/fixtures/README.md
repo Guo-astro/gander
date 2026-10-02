@@ -53,6 +53,7 @@ should stay obviously so.
 | `deck-no-app-xml.pptx` | `deck.pptx` without `docProps/app.xml`, which Google Slides does not write and PPTXjs read without looking. |
 | `freeforms.pptx` | Custom geometry as Google Slides and WPS write it: a gate in three paths, a frame and its diagonal on grids of different sizes, and a rule of one straight segment. |
 | `lines.pptx` | Lines that lie flat or stand upright, so their shapes have no height or no width: two straight connectors, and a rule in custom geometry as Google Slides writes one. |
+| `wrapping.pptx` | A line too long for its narrow box, which must wrap between words, and a run of eight spaces, which must keep its width. PPTXjs writes every space as a no-break space. |
 | `report.docm`, `report.dotx` | Word's relatives: `report.docx` with its main part declared as a macro-enabled document's and as a template's, which is all that tells them apart. There are no macros in it. |
 | `budget.xltx` | `budget.xlsx` declared as an Excel template. |
 | `deck.ppsx`, `deck.pptm`, `deck.potx` | `deck.pptx` declared as a slide show, a macro-enabled presentation and a template. |

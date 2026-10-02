@@ -170,3 +170,64 @@ def test_a_line_that_lies_flat_or_stands_upright_is_drawn(viewer, page, name, rg
     viewer("pptx.html", "lines.pptx")
     wait_for_deck(page, 1)
     assert painted(page, name, rgb) > 200
+
+
+# ---------------------------------------------------------------------------
+# Text: see spacesThatBreak in pptx.js
+# ---------------------------------------------------------------------------
+
+def text_lines(page, name):
+    """The lines the text box called [name] is drawn on, as text, by where each character sits."""
+    return page.evaluate(
+        """(n) => {
+             const lines = [];
+             let top = null;
+             const shape = document.querySelector(`#result div[_name="${n}"]`);
+             for (const block of shape.querySelectorAll('.text-block')) {
+               const walk = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+               for (let node; (node = walk.nextNode()); ) {
+                 for (let i = 0; i < node.data.length; i++) {
+                   const r = document.createRange();
+                   r.setStart(node, i); r.setEnd(node, i + 1);
+                   const box = r.getClientRects()[0];
+                   if (!box) continue;
+                   if (top === null || box.top - top > box.height / 2) { lines.push(''); top = box.top; }
+                   lines[lines.length - 1] += node.data[i];
+                 }
+               }
+             }
+             return lines;
+           }""",
+        name,
+    )
+
+
+def test_a_line_too_long_for_its_box_breaks_between_words(viewer, page):
+    """
+    PPTXjs writes every space as a no-break space, so a line had nowhere to break and
+    was cut wherever it ran out of room: "Language" on one line and "s" on the next.
+    """
+    viewer("pptx.html", "wrapping.pptx")
+    wait_for_deck(page, 1)
+    lines = text_lines(page, "Wrapped")
+    assert len(lines) > 2, lines
+    words = "Every word of this line stays whole when it wraps inside a narrow box".split()
+    assert [w for line in lines for w in line.split()] == words, lines
+
+
+def test_a_run_of_spaces_keeps_its_width(viewer, page):
+    """The spaces PPTXjs wrote as no-break spaces kept their width, and ordinary ones must too."""
+    viewer("pptx.html", "wrapping.pptx")
+    wait_for_deck(page, 1)
+    gap, space = page.evaluate(
+        """() => {
+             const block = document.querySelector('#result div[_name="Spaced"] .text-block');
+             const node = document.createTreeWalker(block, NodeFilter.SHOW_TEXT).nextNode();
+             const r = document.createRange();
+             const at = (i) => { r.setStart(node, i); r.setEnd(node, i + 1); return r.getBoundingClientRect(); };
+             const left = node.data.indexOf('left'), right = node.data.indexOf('right');
+             return [at(right).left - at(left + 3).right, at(left + 4).width];
+           }"""
+    )
+    assert space > 0
+    assert gap > 6 * space, (gap, space)

@@ -705,6 +705,32 @@ def straight_lines() -> None:
     written(OUT / "lines.pptx")
 
 
+def wrapping() -> None:
+    """
+    A line too long for its box, which has to wrap between words, and a run of
+    spaces, which has to keep its width. PPTXjs writes every space as a no-break
+    space, so the long line broke wherever it ran out of room, mid-word.
+    """
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for name, top, width, height, text in (
+        ("Wrapped", 0.5, 3, 4, "Every word of this line stays whole when it wraps inside a narrow box"),
+        ("Spaced", 5.5, 6, 1, "left        right"),
+    ):
+        box = slide.shapes.add_textbox(Inches(1), Inches(top), Inches(width), Inches(height))
+        box.name = name
+        box.text_frame.word_wrap = True
+        box.text_frame.text = text
+        box.text_frame.paragraphs[0].runs[0].font.size = Pt(28)
+    fix_core_properties(prs)
+    prs.save(str(OUT / "wrapping.pptx"))
+    normalize_zip(OUT / "wrapping.pptx")
+    written(OUT / "wrapping.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -1960,7 +1986,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 without_app_properties, freeforms, straight_lines, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, wrapping, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

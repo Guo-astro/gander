@@ -67,6 +67,14 @@
    * each is enough for it to be drawn, and pptxjs.css already lets the stroke spill past it.
    */
   #result svg.drawing { min-width: 1px; min-height: 1px; }
+
+  /*
+   * PPTXjs writes the spaces in a deck's text as no-break spaces, and pptx.js puts them
+   * back as the slides go in, so that a line too long for its box breaks between words.
+   * pre-wrap is what keeps a run of several spaces as wide as PPTXjs drew it, where the
+   * ordinary white-space would fold it into one.
+   */
+  #result .text-block { white-space: pre-wrap; }
   #result .slide { margin: 14px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
 </style>
 <script src="lib/pptx/jquery.min.js"></script>

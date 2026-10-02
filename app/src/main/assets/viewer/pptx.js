@@ -105,6 +105,38 @@ function scaleAttr(el, name, by) {
   if (v !== null && /^-?\d+$/.test(v)) el.setAttribute(name, String(Math.round(Number(v) * by)));
 }
 
+/*
+ * PPTXjs writes every space in a run of text as &nbsp; (genSpanElement), so a line of a
+ * paragraph has nowhere to break, and the paragraph's overflow-wrap: break-word breaks it
+ * wherever it runs out of room instead: "Language" at the end of one line and "s" at the
+ * start of the next. Across 105 decks in desktop Chrome, that cut 763 words in 29 of the
+ * 86 PPTXjs opens. Every word still cut after this is wider than its whole box, or sits in
+ * a box PPTXjs draws with no width. The spaces go back to spaces here, and pptx.html gives the runs white-space: pre-wrap,
+ * which keeps a run of them as wide as before and breaks lines at them, as PowerPoint
+ * does. A no-break space a deck really has becomes an ordinary one too: those decks had
+ * 15 in 9,031 runs of text.
+ *
+ * PPTXjs puts every slide in at once, in a single task, so an observer, which runs when
+ * that task ends, finds them all and changes them before they are first drawn. The poll
+ * below would leave the cut words on screen for up to half a second.
+ */
+function spacesThatBreak(root) {
+  var blocks = root.querySelectorAll(".text-block");
+  for (var i = 0; i < blocks.length; i++) {
+    var walker = document.createTreeWalker(blocks[i], NodeFilter.SHOW_TEXT);
+    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.data.indexOf("\u00a0") !== -1) node.data = node.data.replace(/\u00a0/g, " ");
+    }
+  }
+}
+
+new MutationObserver(function (records, observer) {
+  var result = document.getElementById("result");
+  if (!result.querySelector(".slide")) return;
+  observer.disconnect();
+  spacesThatBreak(result);
+}).observe(document.getElementById("result"), { childList: true });
+
 try {
   $("#result").pptxToHtml({
     pptxFileUrl: "/doc/file.pptx",
