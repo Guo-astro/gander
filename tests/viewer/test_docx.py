@@ -2,7 +2,7 @@
 
 import pytest
 
-from helpers import status_text, wait_until_done
+from helpers import status_text, status_visible, wait_until_done
 
 
 def wait_for_document(page, timeout=25000):
@@ -118,3 +118,70 @@ def test_a_locked_engine_is_not_told_to_update_what_it_cannot(viewer, page):
     said = status_text(page)
     assert "Word documents cannot be shown" in said
     assert "Updating Android System WebView" not in said
+
+
+# ---------------------------------------------------------------------------
+# Runs set as subscript or superscript, which docx-preview draws twice
+# ---------------------------------------------------------------------------
+
+def wait_for_the_tab_pass(page):
+    """
+    docx-preview lines each tab up against its paragraph's stops half a second
+    after the document is up. The last tab is the last it reaches, so the pass is
+    over once that one is spaced, or once the card is up because the pass threw.
+    """
+    wait_for_document(page)
+    page.wait_for_function(
+        "() => { const t = document.querySelectorAll('.docx-tab-stop');"
+        "return (t.length && t[t.length - 1].style.wordSpacing) ||"
+        " document.querySelector('.vw-error'); }",
+        timeout=15000,
+    )
+
+
+def test_a_tab_in_a_subscript_run_leaves_the_document_up(viewer, page):
+    """
+    The run's first drawing queued its tab for the pass in no paragraph, and the
+    pass threw on it, "Cannot read properties of null (reading
+    'getBoundingClientRect')", which put the card up over a document that had drawn.
+    """
+    thrown = []
+    page.on("pageerror", lambda e: thrown.append(str(e)))
+    viewer("docx.html", "raised-runs.docx")
+    wait_for_the_tab_pass(page)
+    assert thrown == []
+    assert not status_visible(page), status_text(page)
+
+
+def test_every_tab_after_it_is_lined_up(viewer, page):
+    viewer("docx.html", "raised-runs.docx")
+    wait_for_the_tab_pass(page)
+    spacing = page.evaluate(
+        "() => [...document.querySelectorAll('.docx-tab-stop')].map(t => t.style.wordSpacing)"
+    )
+    assert len(spacing) == 7
+    assert all(spacing), f"tabs left where they fell: {spacing}"
+
+
+def test_a_footnote_raised_by_its_run_is_numbered_once(viewer, page):
+    viewer("docx.html", "raised-runs.docx")
+    wait_for_the_tab_pass(page)
+    marks = page.evaluate(
+        "() => [...document.querySelectorAll('#container p sup')]"
+        ".filter(s => !s.querySelector('sup')).map(s => s.textContent)"
+    )
+    notes = page.evaluate(
+        "() => [...document.querySelectorAll('#container ol li')].map(l => l.textContent)"
+    )
+    assert marks == ["1"]
+    assert notes == ["Sampling began on the first dry day."]
+
+
+def test_the_runs_are_still_lowered_and_raised(viewer, page):
+    """Drawn once, but into the sub and sup the library would have kept."""
+    viewer("docx.html", "raised-runs.docx")
+    wait_for_the_tab_pass(page)
+    assert page.evaluate("() => !!document.querySelector('#container sub .docx-tab-stop')")
+    assert page.evaluate("() => document.querySelector('#container sub').textContent") \
+        .startswith("3")
+    assert page.evaluate("() => document.querySelector('#container sup sup').textContent") == "1"

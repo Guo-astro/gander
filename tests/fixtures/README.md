@@ -44,6 +44,7 @@ should stay obviously so.
 | `encrypted.pdf` | The password flow. Standard security handler, user password `gander`. |
 | `not-a-pdf.pdf` | `vwFailure`: named `.pdf`, is plain text. |
 | `report.docx` | docx rendering, and `fixSymbolChars`: contains a Wingdings bullet at U+F0B7. |
+| `raised-runs.docx` | Runs set as subscript and superscript, which docx-preview draws twice and `drawRunsOnce` in `docx.js` draws once: a tab in a subscript run, tabs against stops after it, and a footnote whose marker is raised by its own run. |
 | `budget.xlsx` | Three sheets, so the sheet tabs have something to switch between. |
 | `budget.csv` | The same rows as the first sheet. Routes to the spreadsheet viewer, not the text one. |
 | `utf8.csv` | Issue #37. UTF-8 with no byte order mark, which SheetJS reads as Latin-1 when handed bytes. Letters of two, three and four bytes. |

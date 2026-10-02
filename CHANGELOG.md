@@ -31,6 +31,11 @@
   used to be replaced by a page saying Gander doesn't recognize its format, though Gander had just
   been playing it. A file that fails as it opens still gets that page.
 
+- A Word document with a tab in subscript or superscript text no longer shows "Something went
+  wrong while rendering" over the page, and every tab in it lines up. Footnotes whose markers are
+  set in superscript are numbered in order and listed once under the page, where Gander used to
+  skip numbers and list each of them twice.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

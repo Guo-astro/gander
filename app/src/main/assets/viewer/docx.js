@@ -16,6 +16,42 @@ document.createElement = function (name, options) {
   return el;
 };
 
+/*
+ * docx-preview draws a run set as subscript or superscript twice and keeps the second
+ * drawing: renderRun, in 0.4.0 and still in 0.4.1 and on its main branch. Whatever the
+ * first drawing did besides make elements stays done. A tab in it joins the tabs that are
+ * lined up against their paragraph's stops half a second after the document is up, though
+ * it sits in no paragraph, and that pass throws on it. That put "Cannot read properties of
+ * null (reading 'getBoundingClientRect')" over a lab report that had drawn whole, and left
+ * every tab after it unaligned. A footnote marker in such a run is counted twice the same
+ * way, so the first note is numbered 2 and listed twice under the page.
+ *
+ * The renderer makes every element through the h function in its options, calling it as
+ * its own method, and its first call is for the stylesheet, before any run is drawn. That
+ * is the one way to the renderer from outside, so it is where this renderer is given a
+ * renderRun that draws such a run once, as though it were level, and then moves what it
+ * drew into the sub or sup the run asked for, the element the library would have kept.
+ */
+function makeElement(spec) {
+  if (this && this.renderRun && !this.vwRunsOnce) drawRunsOnce(this);
+  return docx.defaultOptions.h(spec);
+}
+
+function drawRunsOnce(renderer) {
+  var draw = renderer.renderRun;
+  renderer.vwRunsOnce = true;
+  renderer.renderRun = function (run) {
+    if (!run.verticalAlign) return draw.call(this, run);
+    var span = draw.call(this, Object.assign({}, run, { verticalAlign: null }));
+    if (span) {
+      var raised = this.h({ tagName: run.verticalAlign });
+      while (span.firstChild) raised.appendChild(span.firstChild);
+      span.appendChild(raised);
+    }
+    return span;
+  };
+}
+
 /* Word bullet lists use Symbol/Wingdings private-use characters (U+F000 range)
    that Android has no glyphs for. Swap them for Unicode equivalents. */
 function fixSymbolChars(root) {
@@ -101,7 +137,8 @@ if (!vwWebViewTooOld("Word documents")) {
         breakPages: true,
         renderHeadersFooters: true,
         ignoreLastRenderedPageBreak: true,
-        experimental: true
+        experimental: true,
+        h: makeElement
       });
     })
     .then(function () {

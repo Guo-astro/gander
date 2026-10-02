@@ -454,6 +454,78 @@ def docx() -> None:
     written(OUT / "report.docx")
 
 
+def raised_runs() -> None:
+    """
+    Runs set as subscript and superscript, which docx-preview draws twice: a tab
+    inside a subscript run, then tabs lined up against stops after it, then a
+    footnote whose marker is raised by its run rather than by a style.
+    """
+    from docx import Document
+    from docx.enum.text import WD_TAB_ALIGNMENT
+    from docx.shared import Inches
+
+    doc = Document()
+    doc.add_heading("Willowmere water survey", level=1)
+    p = doc.add_paragraph("Nitrate in the north well, as NO")
+    lowered = p.add_run("3\t")
+    lowered.font.subscript = True
+    p.add_run("at 4.2 mg per litre.")
+    for row in (("Well", "Depth", "Reading"), ("North", "12 m", "4.2"), ("South", "9 m", "3.8")):
+        line = doc.add_paragraph("\t".join(row))
+        line.paragraph_format.tab_stops.add_tab_stop(Inches(3), WD_TAB_ALIGNMENT.CENTER)
+        line.paragraph_format.tab_stops.add_tab_stop(Inches(6), WD_TAB_ALIGNMENT.RIGHT)
+    p = doc.add_paragraph("Sampled in the spring")
+    raised = p.add_run("MARKER")
+    raised.font.superscript = True
+    p.add_run(", after the thaw.")
+    fix_core_properties(doc)
+    target = OUT / "raised-runs.docx"
+    doc.save(str(target))
+    with_footnote(target, "MARKER", "Sampling began on the first dry day.")
+    normalize_zip(target)
+    written(target)
+
+
+def with_footnote(path: Path, marker: str, text: str) -> None:
+    """Turns the run reading [marker] into a reference to a footnote reading [text].
+
+    python-docx writes no footnotes, so the part, its relationship and its type
+    are added to the package by hand, as Word lays them out.
+    """
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    with zipfile.ZipFile(path) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    assert "word/footnotes.xml" not in items, "the template has footnotes of its own"
+    body = items["word/document.xml"].decode()
+    assert body.count(f"<w:t>{marker}</w:t>") == 1
+    items["word/document.xml"] = body.replace(
+        f"<w:t>{marker}</w:t>", '<w:footnoteReference w:id="1"/>'
+    ).encode()
+    items["word/footnotes.xml"] = (
+        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:footnotes {w}>'
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+        '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r>'
+        '<w:continuationSeparator/></w:r></w:p></w:footnote>'
+        f'<w:footnote w:id="1"><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:footnote>'
+        "</w:footnotes>"
+    ).encode()
+    rels = items["word/_rels/document.xml.rels"].decode()
+    items["word/_rels/document.xml.rels"] = rels.replace(
+        "</Relationships>",
+        '<Relationship Id="rIdFootnotes" Target="footnotes.xml" Type="http://schemas.'
+        'openxmlformats.org/officeDocument/2006/relationships/footnotes"/></Relationships>',
+    ).encode()
+    types = items["[Content_Types].xml"].decode()
+    items["[Content_Types].xml"] = types.replace(
+        "</Types>",
+        '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.'
+        'openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>',
+    ).encode()
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
+
+
 SHEET_ROWS = [
     ("Item", "Quarter", "Amount"),
     ("Surveying", "Q3", 4200),
@@ -1765,7 +1837,8 @@ def models() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, xlsx, pptx, relatives, texts, images, audio,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
+                 relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
