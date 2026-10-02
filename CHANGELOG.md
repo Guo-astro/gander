@@ -40,9 +40,9 @@
   outlines, such as a logic gate and its wires, which Google Slides and WPS Office both save that
   way. Either used to show "Something went wrong while rendering" in place of every slide.
 
-- A line drawn on a slide as one straight stroke shows, such as the rule under a heading. Gander
-  left out any drawing made of a single straight segment, so a deck could lose such a line from
-  every slide.
+- Straight lines on slides show. Gander left out any line that was level or upright, such as
+  PowerPoint's connectors, and any drawing of a single straight stroke, so a deck could lose the
+  rule under every heading.
 
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.

@@ -58,6 +58,15 @@
     justify-content: center;
   }
   #result > .slides { flex: none; height: auto !important; }
+
+  /*
+   * PPTXjs draws each shape in an SVG the size of the shape, and a straight line that lies
+   * flat or stands upright is a shape with no height or no width. An SVG with either at zero
+   * is not drawn at all, whatever its overflow, so every such line went missing: PowerPoint's
+   * own connectors, and the rule under a heading as Google Slides writes one. A pixel of
+   * each is enough for it to be drawn, and pptxjs.css already lets the stroke spill past it.
+   */
+  #result svg.drawing { min-width: 1px; min-height: 1px; }
   #result .slide { margin: 14px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
 </style>
 <script src="lib/pptx/jquery.min.js"></script>

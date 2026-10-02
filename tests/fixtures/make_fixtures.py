@@ -671,6 +671,40 @@ def freeforms() -> None:
     written(OUT / "freeforms.pptx")
 
 
+def straight_lines() -> None:
+    """
+    Lines that lie flat or stand upright, so that their shapes have no height or
+    no width: two of PowerPoint's straight connectors, and a rule in custom
+    geometry, one segment in a shape of no height, as Google Slides writes one.
+    """
+    from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_CONNECTOR
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for name, ends, rgb in (("Level", (1, 1, 5, 1), "C02020"), ("Upright", (7, 1, 7, 5), "2060C0")):
+        line = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, *(Inches(v) for v in ends))
+        line.name = name
+        line.line.color.rgb = RGBColor.from_string(rgb)
+        line.line.width = Pt(3)
+    slide.shapes._spTree.append(parse_xml(
+        f'<p:sp {nsdecls("p", "a")}><p:nvSpPr><p:cNvPr id="20" name="Rule"/><p:cNvSpPr/>'
+        '<p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="914400" y="5486400"/>'
+        '<a:ext cx="3657600" cy="0"/></a:xfrm><a:custGeom><a:rect b="b" l="l" r="r" t="t"/>'
+        f'<a:pathLst>{freeform_path(1000, 1000, "M 0 0 L 1000 0")}</a:pathLst></a:custGeom>'
+        '<a:noFill/><a:ln w="38100"><a:solidFill><a:srgbClr val="208040"/></a:solidFill></a:ln>'
+        "</p:spPr></p:sp>"
+    ))
+    fix_core_properties(prs)
+    prs.save(str(OUT / "lines.pptx"))
+    normalize_zip(OUT / "lines.pptx")
+    written(OUT / "lines.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -1926,7 +1960,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 without_app_properties, freeforms, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

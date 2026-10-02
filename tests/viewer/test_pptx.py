@@ -1,9 +1,11 @@
 """pptx.html: PPTXjs, which reports nothing and is polled instead."""
 
+import io
 import re
 import zipfile
 
 import pytest
+from PIL import Image
 
 from helpers import status_text, wait_until_done
 
@@ -140,3 +142,31 @@ def test_a_path_of_one_straight_segment_is_drawn(viewer, page):
     points = [tuple(round(float(v)) for v in pt.split(","))
               for pt in re.findall(r"[ML]\s*(-?[\d.]+,-?[\d.]+)", paths[0])]
     assert (0, 0) in points and (480, 0) in points, paths[0]
+
+
+def painted(page, name, rgb):
+    """How many pixels in and just around the shape called [name] are near [rgb]."""
+    slide = page.query_selector("#result .slide")
+    shot = Image.open(io.BytesIO(slide.screenshot())).convert("RGB")
+    x, y, w, h = page.evaluate(
+        "(n) => { const s = [...document.querySelectorAll('#result svg')]"
+        ".find(e => e.getAttribute('_name') === n);"
+        "const r = s.getBoundingClientRect(), o = s.closest('.slide').getBoundingClientRect();"
+        "return [r.x - o.x, r.y - o.y, r.width, r.height]; }",
+        name,
+    )
+    near = shot.crop((round(x) - 6, round(y) - 6, round(x + w) + 6, round(y + h) + 6))
+    want = tuple(int(rgb[i:i + 2], 16) for i in (0, 2, 4))
+    px = near.load()
+    return sum(
+        1 for i in range(near.width) for j in range(near.height)
+        if all(abs(a - b) < 48 for a, b in zip(px[i, j], want))
+    )
+
+
+@pytest.mark.parametrize("name, rgb", [("Level", "C02020"), ("Upright", "2060C0"), ("Rule", "208040")])
+def test_a_line_that_lies_flat_or_stands_upright_is_drawn(viewer, page, name, rgb):
+    """Each is a shape of no height or no width, whose SVG was not drawn at all."""
+    viewer("pptx.html", "lines.pptx")
+    wait_for_deck(page, 1)
+    assert painted(page, name, rgb) > 200
