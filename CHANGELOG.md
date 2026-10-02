@@ -40,6 +40,9 @@
   outlines, such as a logic gate and its wires, which Google Slides and WPS Office both save that
   way. Either used to show "Something went wrong while rendering" in place of every slide.
 
+- Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
+  used to get the page saying Gander doesn't recognize their format.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

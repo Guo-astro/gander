@@ -63,6 +63,7 @@ should stay obviously so.
 | `captions.srt`, `captions.vtt` | The same two captions as SubRip and as WebVTT, which the text viewer shows as written. |
 | `playlist.m3u` | A playlist of tracks that are not there. Android labels it audio, and Gander shows it as text. |
 | `release.nfo` | The notes that come with a download, as text. |
+| `pump.v` | A Verilog source, which goes to the text viewer by its extension. |
 | `legacy.doc` | A Word 97 file written by hand: a compound file with its text in UTF-16, a bold run and a two-by-two table. LibreOffice opens it. |
 | `letter.odt` | The same document as OpenDocument: a heading style, a bold span, a bulleted list, a shaded table, a footnote, a picture, a page break and an A4 page with a header. |
 | `memo.rtf` | The same document as Rich Text, the way Word writes one: a code page, `\u` escapes for the Hindi, a Wingdings bullet, a footnote, a `\pngblip` picture and a page break. |

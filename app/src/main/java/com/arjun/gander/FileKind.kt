@@ -58,7 +58,10 @@ enum class FileKind(val page: String) {
             // Subtitles, a playlist and the notes that come with a download, all text under
             // another name. The playlist is text even when it is labelled audio: see
             // playlistMimes.
-            "srt", "vtt", "m3u", "nfo"
+            "srt", "vtt", "m3u", "nfo",
+            // Hardware description: Verilog and SystemVerilog sources and headers, and VHDL.
+            // A .vhd is also a virtual disk's name, which is not a file opened on a phone.
+            "v", "vh", "sv", "svh", "vhd", "vhdl"
         )
 
         private const val MIME_DOCX =

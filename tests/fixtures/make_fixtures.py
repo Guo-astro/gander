@@ -819,6 +819,17 @@ Text after the injected markup, so the sanitiser can be seen to have kept it.
     (OUT / "release.nfo").write_text(nfo, encoding="utf-8")
     written(OUT / "release.nfo")
 
+    verilog = (
+        "// Willowmere pump controller, made up for a test: the pump runs\n"
+        "// while the tank reads low.\n"
+        "module pump(input wire clk, input wire tank_low, output reg running);\n"
+        "  always @(posedge clk)\n"
+        "    running <= tank_low;\n"
+        "endmodule\n"
+    )
+    (OUT / "pump.v").write_text(verilog, encoding="utf-8")
+    written(OUT / "pump.v")
+
 
 
 # ---------------------------------------------------------------------------

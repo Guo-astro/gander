@@ -84,6 +84,10 @@ class FileKindTest {
             // Text under other names: subtitles, a playlist, a download's notes
             "srt" to TEXT, "vtt" to TEXT, "m3u" to TEXT, "nfo" to TEXT,
 
+            // Hardware description languages: Verilog, SystemVerilog, VHDL
+            "v" to TEXT, "vh" to TEXT, "sv" to TEXT, "svh" to TEXT,
+            "vhd" to TEXT, "vhdl" to TEXT,
+
             // Listed rather than drawn, issue #30
             "zip" to ARCHIVE,
 
@@ -111,8 +115,8 @@ class FileKindTest {
 
     /** A count, so a silently deleted table row is noticed. */
     @Test
-    fun theTableCoversNinetySixExtensions() {
-        assertThat(EXPECTED).hasSize(96)
+    fun theTableCoversOneHundredAndTwoExtensions() {
+        assertThat(EXPECTED).hasSize(102)
     }
 
     @Test

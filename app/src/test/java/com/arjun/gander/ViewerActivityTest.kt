@@ -159,6 +159,7 @@ class ViewerActivityTest {
             "captions.vtt" to "text.html",
             "playlist.m3u" to "text.html",
             "release.nfo" to "text.html",
+            "pump.v" to "text.html",
         ).forEach { (fixture, page) ->
             assertThat("$fixture -> ${open(fixture).pageName()}").isEqualTo("$fixture -> $page")
         }
