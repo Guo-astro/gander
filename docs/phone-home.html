@@ -761,7 +761,8 @@
     some manufacturers' phones, not device-to-device transfer</strong>, the copy made
     when you set up a new phone from your old one. That transfer reads a separate
     file, <code>android:dataExtractionRules</code>, and when the file is absent it
-    copies everything outside the cache and no-backup directories. Declaring it is
+    copies everything outside the cache, code-cache and no-backup directories.
+    Declaring it is
     not the default, so an app that set <code>allowBackup="false"</code> years ago,
     considered the matter closed and has since raised its target is now covering
     half of what it thinks it covers. Android's lint, which now calls
