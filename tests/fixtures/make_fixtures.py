@@ -594,6 +594,83 @@ def pptx() -> None:
     written(OUT / "deck.pptx")
 
 
+def without_app_properties() -> None:
+    """deck.pptx with no docProps/app.xml, which Google Slides does not write."""
+    target = OUT / "deck-no-app-xml.pptx"
+    with zipfile.ZipFile(OUT / "deck.pptx") as z:
+        items = [(i.filename, z.read(i.filename)) for i in z.infolist()]
+    with zipfile.ZipFile(target, "w") as z:
+        for name, data in items:
+            if name == "docProps/app.xml":
+                continue
+            if name in ("[Content_Types].xml", "_rels/.rels"):
+                data, n = re.subn(rb"<(Override|Relationship)\b[^>]*docProps/app\.xml[^>]*/>", b"", data)
+                assert n == 1, f"{name} does not name docProps/app.xml once"
+            z.writestr(name, data)
+    normalize_zip(target)
+    written(target)
+
+
+# Custom geometry as Google Slides and WPS write it: each path on a grid of its own
+# size, a shape's paths in one list, and a straight line as one segment.
+FREEFORMS = {
+    # A gate's outline and two wires, three paths on one grid
+    "Gate": (1828800, 1371600, [
+        (1000, 1000, "M 200 0 L 600 0 L 1000 500 L 600 1000 L 200 1000 Z"),
+        (1000, 1000, "M 0 250 L 200 250"),
+        (1000, 1000, "M 0 750 L 200 750"),
+    ]),
+    # A frame and its diagonal, the diagonal drawn on a grid half the size
+    "Grid": (1828800, 914400, [
+        (1000, 1000, "M 0 0 L 1000 0 L 1000 1000 L 0 1000 Z"),
+        (500, 500, "M 0 0 L 500 500"),
+    ]),
+    # A rule under a heading: one path of one straight segment
+    "Rule": (4572000, 12700, [
+        (1000, 10, "M 0 0 L 1000 0"),
+    ]),
+}
+
+
+def freeform_path(w: int, h: int, commands: str) -> str:
+    out, tokens = [], commands.split()
+    while tokens:
+        op = tokens.pop(0)
+        if op == "Z":
+            out.append("<a:close/>")
+            continue
+        x, y = tokens.pop(0), tokens.pop(0)
+        tag = {"M": "moveTo", "L": "lnTo"}[op]
+        out.append(f'<a:{tag}><a:pt x="{x}" y="{y}"/></a:{tag}>')
+    return f'<a:path w="{w}" h="{h}">{"".join(out)}</a:path>'
+
+
+def freeforms() -> None:
+    from pptx import Presentation
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "Willowmere gate"
+    top = 1600200
+    for n, (name, (cx, cy, paths)) in enumerate(FREEFORMS.items(), start=10):
+        geometry = "".join(freeform_path(*p) for p in paths)
+        slide.shapes._spTree.append(parse_xml(
+            f'<p:sp {nsdecls("p", "a")}><p:nvSpPr><p:cNvPr id="{n}" name="{name}"/>'
+            f'<p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="{top}"/>'
+            f'<a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:custGeom><a:rect b="b" l="l" r="r" t="t"/>'
+            f"<a:pathLst>{geometry}</a:pathLst></a:custGeom><a:noFill/>"
+            '<a:ln w="28575"><a:solidFill><a:srgbClr val="1F4E9A"/></a:solidFill></a:ln>'
+            "</p:spPr></p:sp>"
+        ))
+        top += cy + 457200
+    fix_core_properties(prs)
+    prs.save(str(OUT / "freeforms.pptx"))
+    normalize_zip(OUT / "freeforms.pptx")
+    written(OUT / "freeforms.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -1838,7 +1915,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 relatives, texts, images, audio,
+                 without_app_properties, freeforms, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

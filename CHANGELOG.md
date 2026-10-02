@@ -36,6 +36,10 @@
   set in superscript are numbered in order and listed once under the page, where Gander used to
   skip numbers and list each of them twice.
 
+- Presentations saved from Google Slides open. So do slides with a drawing made of several
+  outlines, such as a logic gate and its wires, which Google Slides and WPS Office both save that
+  way. Either used to show "Something went wrong while rendering" in place of every slide.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

@@ -1,8 +1,11 @@
 """pptx.html: PPTXjs, which reports nothing and is polled instead."""
 
+import re
+import zipfile
+
 import pytest
 
-from helpers import wait_until_done
+from helpers import status_text, wait_until_done
 
 
 def test_a_deck_renders_every_slide(viewer, page):
@@ -68,3 +71,62 @@ def test_a_slide_show_a_macro_enabled_deck_and_a_template_render_as_a_pptx_does(
     assert "Willowmere Kickoff" in said
     assert "What we found" in said
     assert "What happens next" in said
+
+
+# ---------------------------------------------------------------------------
+# Decks PPTXjs could not open: see the foot of pptx.js
+# ---------------------------------------------------------------------------
+
+def wait_for_deck(page, slides):
+    page.wait_for_function(
+        f"() => document.querySelectorAll('#result .slide').length >= {slides}"
+        " || document.querySelector('.vw-error')",
+        timeout=40000,
+    )
+    assert page.query_selector(".vw-error") is None, status_text(page)
+    wait_until_done(page)
+
+
+def drawn_paths(page, name):
+    """The path data PPTXjs wrote for the shape called [name]."""
+    return page.evaluate(
+        "(n) => [...document.querySelectorAll('#result svg')]"
+        ".filter(s => s.getAttribute('_name') === n)"
+        ".flatMap(s => [...s.querySelectorAll('path')].map(p => p.getAttribute('d')))",
+        name,
+    )
+
+
+def test_a_deck_with_no_app_properties_renders(viewer, page, fixture_path):
+    """Google Slides writes no docProps/app.xml, and PPTXjs read it without looking."""
+    with zipfile.ZipFile(fixture_path("deck-no-app-xml.pptx")) as z:
+        assert "docProps/app.xml" not in z.namelist()
+    viewer("pptx.html", "deck-no-app-xml.pptx")
+    wait_for_deck(page, 3)
+    said = page.text_content("#result").replace(" ", " ")
+    assert "Willowmere Kickoff" in said
+    assert "What happens next" in said
+
+
+def test_a_shape_drawn_in_several_paths_draws_all_of_them(viewer, page):
+    """A gate's outline and its two wires, which PPTXjs read as one path and threw on."""
+    viewer("pptx.html", "freeforms.pptx")
+    wait_for_deck(page, 1)
+    paths = drawn_paths(page, "Gate")
+    assert len(paths) == 1
+    assert paths[0].count("M") == 3, paths[0]
+    assert paths[0].count("L") == 6, paths[0]
+
+
+def test_a_path_on_a_grid_of_its_own_is_drawn_to_its_shape(viewer, page):
+    """
+    The frame's grid is 1000 square and the diagonal's 500, so the diagonal's far
+    end, at 500 on its own grid, is the frame's far corner.
+    """
+    viewer("pptx.html", "freeforms.pptx")
+    wait_for_deck(page, 1)
+    paths = drawn_paths(page, "Grid")
+    corners = [tuple(round(float(v)) for v in pt.split(","))
+               for pt in re.findall(r"[ML]\s*(-?[\d.]+,-?[\d.]+)", paths[0])]
+    frame, diagonal_end = corners[2], corners[-1]
+    assert diagonal_end == frame, paths[0]
