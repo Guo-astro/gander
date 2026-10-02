@@ -13,7 +13,7 @@ PDF, Word (`.docx`), Excel, PowerPoint (`.pptx`), photos, videos, audio, Markdow
 and `.zip` archives in one app, with **zero permissions, no ads, no tracking and no internet
 access at all**.
 
-[Join the mailing list](https://groups.google.com/g/gander-testers) for announcements, or grab the APK from [Releases](../../releases/latest).
+[Join the mailing list](https://groups.google.com/g/gander-testers) for announcements, follow [@ArjunManiyani](https://x.com/ArjunManiyani) on X, or grab the APK from [Releases](../../releases/latest).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mokshablr/gander)](../../releases/latest)
