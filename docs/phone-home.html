@@ -654,14 +654,14 @@
     enforced where people assume. It is enforced at the moment a socket is created,
     underneath anything you can write in Java.</p>
 
-    <p>The mechanism changed once, and the answer did not. Before Android 10 an app
-    holding the permission was put into a supplementary group, <code>AID_INET</code>,
-    and an out-of-tree kernel patch called paranoid networking refused an internet
-    socket to any UID outside it. From Android 10 that patch is gone, removed in the
-    4.19 kernel, and an eBPF filter on cgroup socket creation does the same job: only
-    UIDs carrying <code>android.permission.INTERNET</code> may open an INET or INET6
-    socket. Gander runs on Android 8 and up, so both are live somewhere in its
-    range.</p>
+    <p>The mechanism changed once, and the answer did not. An app holding the
+    permission is put into a supplementary group, <code>AID_INET</code>, and for years
+    an out-of-tree kernel patch called paranoid networking refused an internet socket
+    to any app outside it. From Android 10, on 4.14 and newer kernels, an eBPF filter
+    on cgroup socket creation does that job instead: an app without
+    <code>android.permission.INTERNET</code> cannot open an INET or INET6 socket, not
+    even the kind <code>ping</code> uses. Gander runs on Android 8 and up, so both are
+    live somewhere in its range.</p>
 
     <p>It is not a check inside the Java API that can be reflected around, and not a
     policy an app can ask to have relaxed at runtime. OkHttp, Retrofit,
@@ -682,9 +682,9 @@
     they meet exactly the same refusal as everything in section 01, and Android's own
     WebView documentation is blunt about it: an app that wants to load web content
     has to request the <code>INTERNET</code> permission like anything else. Without
-    it, a WebView cannot load a remote URL. On Android 8 and up the renderer is a
-    separate sandboxed process, but it runs in the app's context and has no network
-    of its own, so that changes nothing.</p>
+    it, a WebView cannot load a remote URL. On most phones from Android 8, and on all
+    of them from Android 11, the renderer is a separate sandboxed process, but it has
+    no network of its own, so that changes nothing.</p>
 
     <p>Gander closes it a second time anyway, because a document is untrusted input
     and PDFs can carry links, embedded JavaScript and references to remote resources.
@@ -743,8 +743,9 @@
     <p>Gander shipped with that attribute on through version 1.9. What went into the
     backup was the recents list: the names of files you had opened, the system
     references to them, and when. Not to me. To the user's own Drive, and since Android
-    9, on a phone with a lock screen set, encrypted with a key derived from it that
-    Google does not hold. Even so, "nothing leaves the device" was not true while it
+    9, on a phone with a lock screen set, end-to-end encrypted with a key that only
+    that phone's PIN, pattern or password can recover, so Google cannot read it.
+    Even so, "nothing leaves the device" was not true while it
     was on, and that is the one claim this app is built around.</p>
 
     <p>It has been off since 1.10, in commit <code>2c3076d</code>. The fix cost nothing,
@@ -755,16 +756,17 @@
     exchange for nothing at all.</p>
 
     <p>There is a second half to that attribute which almost nothing tells you about,
-    and it is the most useful thing on this page. <strong>From Android 12,
-    <code>android:allowBackup</code> is deprecated and governs cloud backup
-    only.</strong> Device-to-device transfer, the copy made when you set up a new
-    phone from your old one, moved to a separate file:
-    <code>android:dataExtractionRules</code>. When that file is absent, the transfer
-    is fully enabled for everything outside the cache and no-backup directories.
-    Declaring it is not the default, so an app that set <code>allowBackup="false"</code>
-    years ago and considered the matter closed is now covering half of what it thinks
-    it covers. Android's lint says so against the exact manifest line, which is how
-    this one surfaced.</p>
+    and it is the most useful thing on this page. <strong>For an app that targets
+    Android 12 or higher, <code>allowBackup="false"</code> stops cloud backup but, on
+    some manufacturers' phones, not device-to-device transfer</strong>, the copy made
+    when you set up a new phone from your old one. That transfer reads a separate
+    file, <code>android:dataExtractionRules</code>, and when the file is absent it
+    copies everything outside the cache and no-backup directories. Declaring it is
+    not the default, so an app that set <code>allowBackup="false"</code> years ago,
+    considered the matter closed and has since raised its target is now covering
+    half of what it thinks it covers. Android's lint, which now calls
+    <code>allowBackup</code> deprecated, says so against the exact manifest line,
+    which is how this one surfaced.</p>
 
     <p>I would rather explain why that is not a phone-home route than let it sound
     like one. A device transfer is started by you, runs between two phones you own,
@@ -790,9 +792,7 @@
         <b>DNS</b>
         An app reaches the system resolver over a local socket, not an internet one, so the
         check in section 01 does not apply to the app itself, and a hostname is a
-        place you can hide data. It is a documented covert channel: see <i>An
-        Autonomic and Permissionless Android Covert Channel</i> by Block, Narain and
-        Noubir. Whether a current resolver refuses a UID with no
+        place you can hide data. Whether a current resolver refuses a UID with no
         <code>INTERNET</code> permission, I could not establish; see the end of this
         page. What is certain either way is that the channel needs deliberate code,
         because you have to build the hostname and resolve it, and there is no such
@@ -806,8 +806,7 @@
       <li>
         <b>Another app's ContentProvider fetching on your behalf</b>
         Real in principle, and it needs a provider on the device willing to do it. Gander
-        queries providers only through the Storage Access Framework and
-        DocumentsContract, for files you granted it.
+        only asks a provider about a file you opened or a folder you added.
       </li>
     </ul>
   </section>
@@ -833,9 +832,10 @@
         <code>aapt dump permissions app.apk</code> on a downloaded APK.</li>
         <li>Check whether Auto Backup is on. It is
         <code>android:allowBackup</code> in the manifest, it defaults to true, and
-        almost nothing written for users mentions it. <strong>If you ship an app:
-        that attribute stopped covering device transfers at Android 12</strong>, so
-        check for an <code>android:dataExtractionRules</code> file next to it.</li>
+        almost nothing written for users mentions it. <strong>If you ship an app that
+        targets Android 12 or higher: on some phones that attribute no longer covers
+        device transfers</strong>, so check for an <code>android:dataExtractionRules</code>
+        file next to it.</li>
 
         <li><strong>If you ship a WebView:</strong> look at what your
         <code>shouldOverrideUrlLoading</code> does with a URL it does not recognise.
