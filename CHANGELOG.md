@@ -48,6 +48,10 @@
   ran out of room, so a word could end one line and finish on the next, as "Language" and "s".
   Lines now break between words, as they do in PowerPoint.
 
+- Slide text that isn't bold is no longer drawn hairline-thin. In text boxes and in a slide's main
+  content area, Gander drew such text in the thinnest weight the phone's font has, much fainter
+  than in the deck.
+
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.
 

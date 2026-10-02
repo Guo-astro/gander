@@ -130,11 +130,32 @@ function spacesThatBreak(root) {
   }
 }
 
+/*
+ * PPTXjs gives every paragraph of a body, an object or a plain shape font-weight: 100,
+ * beside the font-size: 0 that closes the gaps between its runs, and a run that is not
+ * bold inherits it. A deck has no such weight: its text is bold or it is not. On the Mac,
+ * Arial and Calibri have no face that light, so the text drew regular there. Android
+ * draws them and other sans-serif faces in Roboto, which has one, so the text came out in
+ * Roboto Thin, with a third of the ink. The weight goes back to normal in the rules PPTXjs
+ * wrote it in, which leaves a bold run's own weight alone. PPTXjs appends those rules after
+ * the last slide, in the same task, so the observer below finds them too.
+ */
+function regularWeight(root) {
+  var styles = root.querySelectorAll("style");
+  for (var i = 0; i < styles.length; i++) {
+    var rules = styles[i].sheet ? styles[i].sheet.cssRules : [];
+    for (var j = 0; j < rules.length; j++) {
+      if (rules[j].style && rules[j].style.fontWeight === "100") rules[j].style.fontWeight = "normal";
+    }
+  }
+}
+
 new MutationObserver(function (records, observer) {
   var result = document.getElementById("result");
   if (!result.querySelector(".slide")) return;
   observer.disconnect();
   spacesThatBreak(result);
+  regularWeight(result);
 }).observe(document.getElementById("result"), { childList: true });
 
 try {

@@ -231,3 +231,23 @@ def test_a_run_of_spaces_keeps_its_width(viewer, page):
     )
     assert space > 0
     assert gap > 6 * space, (gap, space)
+
+
+# ---------------------------------------------------------------------------
+# Weight: see regularWeight in pptx.js
+# ---------------------------------------------------------------------------
+
+def test_slide_text_that_is_not_bold_has_normal_weight(viewer, page):
+    """
+    PPTXjs gave every paragraph of a body or a shape font-weight 100, and its plain runs
+    took it, which Android draws in Roboto Thin. A bold run must stay bold.
+    """
+    viewer("pptx.html", "weights.pptx")
+    wait_for_deck(page, 1)
+    weights = page.evaluate(
+        """() => Object.fromEntries([...document.querySelectorAll('#result .text-block')]
+             .map((run) => [run.textContent.trim(), getComputedStyle(run).fontWeight]))"""
+    )
+    assert weights["Plain body text"] == "400", weights
+    assert weights["plain"] == "400", weights
+    assert weights["bold"] == "700", weights

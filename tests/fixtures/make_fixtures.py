@@ -731,6 +731,34 @@ def wrapping() -> None:
     written(OUT / "wrapping.pptx")
 
 
+def weights() -> None:
+    """
+    Plain text in a content placeholder, and a plain run beside a bold one in a text
+    box. PPTXjs gives the paragraphs of both font-weight: 100, which the plain runs
+    inherited and Android drew in Roboto Thin.
+    """
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Weights"
+    slide.placeholders[1].text_frame.text = "Plain body text"
+    box = slide.shapes.add_textbox(Inches(1), Inches(6), Inches(8), Inches(1))
+    box.name = "Mixed"
+    paragraph = box.text_frame.paragraphs[0]
+    for text, bold in (("plain ", False), ("bold", True)):
+        run = paragraph.add_run()
+        run.text = text
+        run.font.size = Pt(28)
+        if bold:
+            run.font.bold = True
+    fix_core_properties(prs)
+    prs.save(str(OUT / "weights.pptx"))
+    normalize_zip(OUT / "weights.pptx")
+    written(OUT / "weights.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -1986,7 +2014,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 without_app_properties, freeforms, straight_lines, wrapping, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, wrapping, weights, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
