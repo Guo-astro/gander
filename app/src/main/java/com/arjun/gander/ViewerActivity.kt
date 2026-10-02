@@ -15,6 +15,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.text.InputType
@@ -121,6 +122,17 @@ class ViewerActivity : AppCompatActivity() {
 
         /** Cover art target while the view has not been measured yet. */
         private const val ART_FALLBACK_PX = 512
+
+        /**
+         * How long a video or a track has to have been ready to play before an error is put
+         * down to something giving out underneath it rather than to the file. See onPlayerError
+         * in [showPlayer].
+         *
+         * Long enough that a file damaged partway, which fails again as soon as it is tried
+         * again from just before the damage, is not tried for ever.
+         */
+        @androidx.annotation.VisibleForTesting
+        internal const val PLAYER_RETRY_AFTER_MS = 5000L
     }
 
     private var webView: ScrollProbeWebView? = null
@@ -1441,7 +1453,35 @@ class ViewerActivity : AppCompatActivity() {
                 videoChrome?.sized(videoSize)
             }
 
+            /**
+             * Since when the player has been ready to play, by elapsedRealtime, counted afresh
+             * each time it is prepared. Null while it has not been. See onPlayerError.
+             */
+            private var readySince: Long? = null
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY && readySince == null) {
+                    readySince = SystemClock.elapsedRealtime()
+                }
+            }
+
+            /**
+             * A file that fails as it opens is one Gander cannot play, and gets the page that
+             * says so. One that fails after it has been ready to play for a while is one it
+             * can, and something gave out underneath it instead: on an emulator, Android's
+             * decoder did as a call ended over a track (issue #38). That gets another go: a
+             * player prepared again after an error carries on from where it stopped, playing
+             * if it was playing.
+             *
+             * Failing again soon after means the file is damaged there, and gets the page.
+             */
             override fun onPlayerError(error: PlaybackException) {
+                val since = readySince
+                readySince = null
+                if (since != null && SystemClock.elapsedRealtime() - since >= PLAYER_RETRY_AFTER_MS) {
+                    exo.prepare()
+                    return
+                }
                 lockScreen?.release()
                 lockScreen = null
                 exo.release()

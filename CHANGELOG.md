@@ -27,6 +27,10 @@
   #38). It used to stop the moment the screen went dark. Leaving Gander still stops it, and a call
   or unplugged headphones pause it. A video still stops with the screen. No permission is added.
 
+- A track or a video that runs into an error partway through goes on from where it stopped. It
+  used to be replaced by a page saying Gander doesn't recognize its format, though Gander had just
+  been playing it. A file that fails as it opens still gets that page.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each
