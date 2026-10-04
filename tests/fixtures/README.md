@@ -57,6 +57,7 @@ should stay obviously so.
 | `weights.pptx` | Plain text in a content placeholder, and a plain run beside a bold one in a text box. PPTXjs gives both paragraphs font-weight 100, which the plain runs inherited and Android drew in Roboto Thin. |
 | `inherited-bold.pptx` | Text bold or italic only because the design says so: the master's title style, one layout's content, another layout's body, and a layout that takes its title's bold back off. A run's own `b="0"` and a second-level paragraph must stay regular. PPTXjs read bold and italic only from the run. |
 | `line-breaks.pptx` | A paragraph that two line breaks make three lines, in a box wide enough that none of them wraps. PPTXjs dropped the first line break of a paragraph that had more than one, so its first two lines ran together. |
+| `unwrapped.pptx` | Text boxes set not to wrap (`wrap="none"`), each far too narrow for its line: one aligned left, one centred and one aligned right, beside one that wraps as usual. A title that takes the setting from its layout, and a text box the layout draws behind the slide. PPTXjs never read the setting and wrapped every one of them at its width. |
 | `report.docm`, `report.dotx` | Word's relatives: `report.docx` with its main part declared as a macro-enabled document's and as a template's, which is all that tells them apart. There are no macros in it. |
 | `budget.xltx` | `budget.xlsx` declared as an Excel template. |
 | `deck.ppsx`, `deck.pptm`, `deck.potx` | `deck.pptx` declared as a slide show, a macro-enabled presentation and a template. |

@@ -287,3 +287,43 @@ def test_every_line_break_in_a_paragraph_breaks_it(viewer, page):
     viewer("pptx.html", "line-breaks.pptx")
     wait_for_deck(page, 1)
     assert text_lines(page, "Broken") == ["The first line", "the second", "and the third"]
+
+
+# ---------------------------------------------------------------------------
+# No wrap: see linesLeftWhole in pptx.js
+# ---------------------------------------------------------------------------
+
+def text_span(page, name):
+    """The left and right of the text box called [name], and of the text drawn in it."""
+    return page.evaluate(
+        """(n) => {
+             const shape = document.querySelector(`#result div[_name="${n}"]`);
+             const box = shape.getBoundingClientRect();
+             const runs = [...shape.querySelectorAll('.text-block')].flatMap((b) => [...b.getClientRects()]);
+             return [[box.left, box.right],
+                     [Math.min(...runs.map((r) => r.left)), Math.max(...runs.map((r) => r.right))]];
+           }""",
+        name,
+    )
+
+
+def test_a_box_set_not_to_wrap_keeps_its_lines_whole(viewer, page):
+    """
+    PPTXjs never read wrap="none" and wrapped such a box at its width like any other. Its
+    line runs on past the box instead: to the right of text aligned left, to the left of
+    text aligned right, and both ways from centred text. A title takes the setting from its
+    layout, and a box the layout draws behind the slide says for itself.
+    """
+    viewer("pptx.html", "unwrapped.pptx")
+    wait_for_deck(page, 1)
+    for name in ("Left", "Centred", "Right", "Inheriting", "Behind"):
+        assert len(text_lines(page, name)) == 1, (name, text_lines(page, name))
+    assert len(text_lines(page, "Wrapping")) > 1
+
+    (box, text) = text_span(page, "Left")
+    assert text[0] >= box[0] - 1 and text[1] > box[1] + 20, (box, text)
+    (box, text) = text_span(page, "Right")
+    assert text[1] <= box[1] + 1 and text[0] < box[0] - 20, (box, text)
+    (box, text) = text_span(page, "Centred")
+    assert text[0] < box[0] - 20 and text[1] > box[1] + 20, (box, text)
+    assert abs((text[0] + text[1]) - (box[0] + box[1])) / 2 < 2, (box, text)

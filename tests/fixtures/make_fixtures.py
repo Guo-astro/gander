@@ -837,6 +837,66 @@ def line_breaks() -> None:
     written(OUT / "line-breaks.pptx")
 
 
+def unwrapped() -> None:
+    """
+    Text boxes set not to wrap (wrap="none"), each far too narrow for its line: one
+    aligned left, one centred and one aligned right, beside one that wraps as usual. A
+    title that takes the setting from its layout, and a text box the layout draws behind
+    the slide. PPTXjs never read the setting and wrapped every one of them at its width.
+    """
+    from lxml import etree
+    from pptx import Presentation
+    from pptx.enum.text import PP_ALIGN
+    from pptx.oxml.ns import qn
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    layout = prs.slide_layouts[5]
+    layout.placeholders.get(idx=0)._element.find(qn("p:txBody")).find(qn("a:bodyPr")).set("wrap", "none")
+    behind = etree.SubElement(layout.shapes._spTree, qn("p:sp"))
+    behind.append(etree.fromstring(
+        '<p:nvSpPr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+        '<p:cNvPr id="100" name="Behind"/><p:cNvSpPr txBox="1"/><p:nvPr userDrawn="1"/></p:nvSpPr>'
+    ))
+    behind.append(etree.fromstring(
+        '<p:spPr xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        f'<a:xfrm><a:off x="{Inches(0.5)}" y="{Inches(6.5)}"/><a:ext cx="{Inches(1)}" cy="{Inches(0.5)}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+    ))
+    behind.append(etree.fromstring(
+        '<p:txBody xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        '<a:bodyPr wrap="none"/><a:lstStyle/>'
+        '<a:p><a:r><a:rPr lang="en-US" sz="2000"/><a:t>Drawn behind the slide and left whole</a:t></a:r></a:p>'
+        '</p:txBody>'
+    ))
+
+    slide = prs.slides.add_slide(layout)
+    title = slide.shapes.title
+    title.left, title.top, title.width, title.height = Inches(4), Inches(0.3), Inches(2), Inches(1)
+    title.name = "Inheriting"
+    title.text = "A title its layout leaves whole"
+    for name, left, top, align, wrap, text in (
+        ("Left", 0.5, 2, PP_ALIGN.LEFT, False, "Aligned left and left whole"),
+        ("Centred", 4.5, 3, PP_ALIGN.CENTER, False, "Centred and left whole"),
+        ("Right", 8.5, 4, PP_ALIGN.RIGHT, False, "Aligned right and left whole"),
+        ("Wrapping", 0.5, 5, PP_ALIGN.LEFT, True, "This one wraps as before"),
+    ):
+        box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(1), Inches(0.5))
+        box.name = name
+        box.text_frame.word_wrap = wrap
+        paragraph = box.text_frame.paragraphs[0]
+        paragraph.alignment = align
+        run = paragraph.add_run()
+        run.text = text
+        run.font.size = Pt(20)
+    fix_core_properties(prs)
+    prs.save(str(OUT / "unwrapped.pptx"))
+    normalize_zip(OUT / "unwrapped.pptx")
+    written(OUT / "unwrapped.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2092,7 +2152,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

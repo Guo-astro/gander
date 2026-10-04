@@ -40,6 +40,11 @@ JSZip.prototype.load = function () {
     var styled = styleTheDesignGives(zip, part.name, xml, designs);
     if (styled !== xml) zip.file(part.name, styled);
   });
+  zip.file(/^ppt\/(slides|slideLayouts|slideMasters)\/[^/]+\.xml$/).forEach(function (part) {
+    var xml = part.asText();
+    var marked = linesLeftWhole(zip, part.name, xml, designs);
+    if (marked !== xml) zip.file(part.name, marked);
+  });
   return zip;
 };
 
@@ -159,12 +164,10 @@ function styleTheDesignGives(zip, name, xml, designs) {
     var body = childrenNamed(shapes[i], "txBody")[0];
     if (!body) continue;
     var lists = [childrenNamed(body, "lstStyle")[0]];
-    var ph = placeholderOf(shapes[i]);
-    if (ph) {
-      var inLayout = layout && placeholderIn(layout.doc, ph.type, ph.idx);
-      var type = masterType(inLayout ? placeholderOf(inLayout).type : ph.type);
-      var inMaster = master && placeholderIn(master.doc, type, null);
-      lists.push(listStyleOf(inLayout), listStyleOf(inMaster), master && masterStyle(master.doc, type));
+    var behind = placeholdersBehind(shapes[i], layout, master);
+    if (behind) {
+      lists.push(inTextBody(behind.layout, "lstStyle"), inTextBody(behind.master, "lstStyle"),
+        master && masterStyle(master.doc, behind.type));
     }
     var paragraphs = childrenNamed(body, "p");
     for (var j = 0; j < paragraphs.length; j++) {
@@ -199,7 +202,7 @@ function inherit(doc, run, lists, level, attr) {
   return true;
 }
 
-/* A layout or a master, read once a deck, and whether it sets bold or italic anywhere. */
+/* A layout or a master, read once a deck, and whether it sets bold or italic, or no wrap, anywhere. */
 function designPart(zip, name, designs) {
   if (!name) return null;
   if (!(name in designs)) {
@@ -207,7 +210,7 @@ function designPart(zip, name, designs) {
     var xml = file && file.asText();
     var doc = xml && new DOMParser().parseFromString(xml, "application/xml");
     designs[name] = doc && !doc.getElementsByTagName("parsererror").length
-      ? { name: name, doc: doc, sets: SETS_BOLD_OR_ITALIC.test(xml) }
+      ? { name: name, doc: doc, sets: SETS_BOLD_OR_ITALIC.test(xml), unwraps: SETS_NO_WRAP.test(xml) }
       : null;
   }
   return designs[name];
@@ -231,6 +234,15 @@ function relatedPart(zip, name, type) {
 function placeholderOf(sp) {
   var ph = sp.getElementsByTagNameNS(PRESENTATIONML, "ph")[0];
   return ph ? { type: ph.getAttribute("type") || "obj", idx: ph.getAttribute("idx") } : null;
+}
+
+/* The layout's placeholder and the master's that a slide's placeholder takes its design from, and the master's kind of it. */
+function placeholdersBehind(sp, layout, master) {
+  var ph = placeholderOf(sp);
+  if (!ph) return null;
+  var inLayout = layout && placeholderIn(layout.doc, ph.type, ph.idx);
+  var type = masterType(inLayout ? placeholderOf(inLayout).type : ph.type);
+  return { layout: inLayout, master: master && placeholderIn(master.doc, type, null), type: type };
 }
 
 /* The placeholder of the same idx, as PowerPoint pairs a slide's with its layout's, or else the first of the same type. */
@@ -257,9 +269,54 @@ function masterStyle(doc, type) {
   return styles ? childrenNamed(styles, name)[0] : null;
 }
 
-function listStyleOf(sp) {
+/* A shape's list style or body properties, as the text body has them. */
+function inTextBody(sp, name) {
   var body = sp && childrenNamed(sp, "txBody")[0];
-  return body ? childrenNamed(body, "lstStyle")[0] : null;
+  return body ? childrenNamed(body, name)[0] : null;
+}
+
+/*
+ * A text box can be set not to wrap (wrap="none" on its body). Its lines then run on past
+ * its sides, to the right of text aligned left, to the left of text aligned right, and both
+ * ways from the middle of centred text, and break only where the deck breaks them. PPTXjs
+ * never reads the setting and wraps them at the box's width like any other. Such a box is
+ * usually sized to its text, so it wrapped where a font drew a line a little wider than
+ * the deck's, and the line's last word went down a line. Across 86 decks in desktop
+ * Chrome, 14 boxes in 3 decks wrapped, and the text of 210 more, centred and wider than
+ * its box, ran out to the right alone.
+ *
+ * PPTXjs copies a shape's id into the page, as _id, and does nothing else with it. So the
+ * setting goes there: such a shape's id becomes "nowrap-" and its own, and pptx.html keeps
+ * the lines of those boxes whole. A slide's placeholder that says neither way takes the
+ * setting from its layout's placeholder, or else its master's, as PowerPoint does. A
+ * shape in a layout or a master, which PPTXjs draws behind each slide, says for itself.
+ */
+var SETS_NO_WRAP = /<a:bodyPr\b[^>]*\swrap="none"/;
+
+function linesLeftWhole(zip, name, xml, designs) {
+  var layout = /^ppt\/slides\//.test(name) ? designPart(zip, relatedPart(zip, name, "slideLayout"), designs) : null;
+  var master = layout && designPart(zip, relatedPart(zip, layout.name, "slideMaster"), designs);
+  if (!SETS_NO_WRAP.test(xml) && !(layout && layout.unwraps) && !(master && master.unwraps)) return xml;
+  var doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) return xml;
+  var changed = false;
+  var shapes = doc.getElementsByTagNameNS(PRESENTATIONML, "sp");
+  for (var i = 0; i < shapes.length; i++) {
+    var behind = placeholdersBehind(shapes[i], layout, master);
+    var chain = [shapes[i]].concat(behind ? [behind.layout, behind.master] : []);
+    var wrap = null;
+    for (var j = 0; j < chain.length && wrap === null; j++) {
+      var bodyPr = inTextBody(chain[j], "bodyPr");
+      if (bodyPr && bodyPr.hasAttribute("wrap")) wrap = bodyPr.getAttribute("wrap");
+    }
+    var nv = childrenNamed(shapes[i], "nvSpPr")[0];
+    var props = nv && childrenNamed(nv, "cNvPr")[0];
+    if (wrap === "none" && props) {
+      props.setAttribute("id", "nowrap-" + props.getAttribute("id"));
+      changed = true;
+    }
+  }
+  return changed ? new XMLSerializer().serializeToString(doc) : xml;
 }
 
 /*

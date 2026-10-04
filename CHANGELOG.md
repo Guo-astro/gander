@@ -60,6 +60,10 @@
   first, so a title set on three lines could draw on two, its first two lines run together, and a
   blank line between two sentences could go missing.
 
+- Slide text that a deck sets not to wrap stays on one line, as it does in PowerPoint. Gander
+  wrapped it at the edge of its box, so where the phone's font drew a line a little wider than the
+  deck's own font, the last word could drop to a line of its own.
+
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.
 

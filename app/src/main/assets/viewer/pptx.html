@@ -76,6 +76,16 @@
    */
   #result .text-block { white-space: pre-wrap; }
   #result .slide { margin: 14px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+
+  /*
+   * A text box the deck sets not to wrap, which pptx.js marks in its id. The text of each
+   * of its paragraphs is made at least as wide as its longest line, so a line too long for
+   * the box runs on past it instead of wrapping, and the paragraph, a flex row, places the
+   * text as it places any other: from the left, from the right, or about the middle, so
+   * that centred text runs out both ways. The runs keep pre-wrap: pre would count a space
+   * at the end of a line, and move centred text that fits its box.
+   */
+  #result div.block[_id^="nowrap-"] .slide-prgrph > div:last-child { min-width: max-content; }
 </style>
 <script src="lib/pptx/jquery.min.js"></script>
 <script src="lib/pptx/jszip2.min.js"></script>
