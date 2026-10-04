@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1 (2026-10-04)
 
 - The home screen's menu now starts with Switch to Google Play on any copy Google Play did not
   install, such as one from GitHub. It opens Gander's Play listing, where Update moves a copy
