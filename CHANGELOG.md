@@ -52,6 +52,10 @@
   content area, Gander drew such text in the thinnest weight the phone's font has, much fainter
   than in the deck.
 
+- Text that a deck's design makes bold or italic, such as the titles in many templates, is drawn
+  bold or italic. Gander drew it regular unless the text itself was set bold or italic, so some
+  decks lost the bold from the titles on most of their slides.
+
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.
 

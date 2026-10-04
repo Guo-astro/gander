@@ -251,3 +251,28 @@ def test_slide_text_that_is_not_bold_has_normal_weight(viewer, page):
     assert weights["Plain body text"] == "400", weights
     assert weights["plain"] == "400", weights
     assert weights["bold"] == "700", weights
+
+
+# ---------------------------------------------------------------------------
+# Bold and italic: see styleTheDesignGives in pptx.js
+# ---------------------------------------------------------------------------
+
+def test_text_is_bold_or_italic_where_its_design_says(viewer, page):
+    """
+    PPTXjs read bold and italic only from the run itself, so a title its master or layout
+    makes bold drew regular. What the run says still wins, and the nearer design over the
+    farther one, at the paragraph's own level.
+    """
+    viewer("pptx.html", "inherited-bold.pptx")
+    wait_for_deck(page, 2)
+    styles = page.evaluate(
+        """() => Object.fromEntries([...document.querySelectorAll('#result .text-block')]
+             .map((run) => [run.textContent.trim(),
+                            getComputedStyle(run).fontWeight + ' ' + getComputedStyle(run).fontStyle]))"""
+    )
+    assert styles["Bold from the master"] == "700 normal", styles
+    assert styles["but not this"] == "400 normal", styles
+    assert styles["Bold from the layout"] == "700 normal", styles
+    assert styles["Plain at the second level"] == "400 normal", styles
+    assert styles["Regular by its layout"] == "400 normal", styles
+    assert styles["Italic from the layout"] == "400 italic", styles

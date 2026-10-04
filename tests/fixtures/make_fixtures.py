@@ -759,6 +759,62 @@ def weights() -> None:
     written(OUT / "weights.pptx")
 
 
+def inherited_bold() -> None:
+    """
+    Text that is bold or italic only because the deck's design says so. The master's
+    title style is bold, one layout's content is bold, another layout takes the bold back
+    off its title and makes its body italic. PPTXjs made a run bold or italic only when
+    the run itself said so. A run's own b="0" must still win, and a second-level paragraph
+    must not take the first level's bold.
+    """
+    from lxml import etree
+    from pptx import Presentation
+    from pptx.oxml.ns import qn
+
+    def defaults(style):
+        level = style.find(qn("a:lvl1pPr"))
+        if level is None:
+            level = etree.SubElement(style, qn("a:lvl1pPr"))
+        found = level.find(qn("a:defRPr"))
+        return found if found is not None else etree.SubElement(level, qn("a:defRPr"))
+
+    def list_style(placeholder):
+        body = placeholder._element.find(qn("p:txBody"))
+        found = body.find(qn("a:lstStyle"))
+        if found is None:
+            found = etree.Element(qn("a:lstStyle"))
+            body.find(qn("a:bodyPr")).addnext(found)
+        return found
+
+    prs = Presentation()
+    defaults(prs.slide_master.element.find(qn("p:txStyles")).find(qn("p:titleStyle"))).set("b", "1")
+    content, section = prs.slide_layouts[1], prs.slide_layouts[2]
+    defaults(list_style(content.placeholders.get(idx=1))).set("b", "1")
+    defaults(list_style(section.placeholders.get(idx=0))).set("b", "0")
+    defaults(list_style(section.placeholders.get(idx=1))).set("i", "1")
+
+    slide = prs.slides.add_slide(content)
+    title = slide.shapes.title.text_frame.paragraphs[0]
+    for text, bold in (("Bold from the master ", None), ("but not this", False)):
+        run = title.add_run()
+        run.text = text
+        if bold is not None:
+            run.font.bold = bold
+    body = slide.placeholders[1].text_frame
+    body.text = "Bold from the layout"
+    second = body.add_paragraph()
+    second.text = "Plain at the second level"
+    second.level = 1
+
+    slide = prs.slides.add_slide(section)
+    slide.shapes.title.text = "Regular by its layout"
+    slide.placeholders[1].text_frame.text = "Italic from the layout"
+    fix_core_properties(prs)
+    prs.save(str(OUT / "inherited-bold.pptx"))
+    normalize_zip(OUT / "inherited-bold.pptx")
+    written(OUT / "inherited-bold.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2014,7 +2070,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 without_app_properties, freeforms, straight_lines, wrapping, weights, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
