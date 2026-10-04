@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A file another app opens in Gander, such as an attachment in WhatsApp, gets a card of its own in
+  your recent apps, so you can switch between the chat and the file (thanks @BenjaminSk-04, who
+  asked in #46). It used to open inside the other app's card. Back still closes the file and
+  returns to that app. A file opened from Gander's own screens stays in Gander's card, as before.
+
 ## 2.1 (2026-10-04)
 
 - The home screen's menu now starts with Switch to Google Play on any copy Google Play did not

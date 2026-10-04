@@ -66,9 +66,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Each file another app opens gets a card of its own in the recent apps screen, rather
+             than opening inside that app's card (#46). The card goes when the file is closed,
+             and none survives a reboot, because the sender's read grant doesn't either. -->
         <activity
             android:name=".ViewerActivity"
             android:exported="true"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:persistableMode="persistNever"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -166,11 +172,12 @@
         <!-- The viewer again, under the name Gander's own screens open it by. Not exported, so
              only Gander can start it, which is how the viewer tells a file Gander chose from
              one another app handed it: see ViewerActivity.INTERNAL_VIEWER for why that
-             matters. Declared after the activity it names, which an alias has to be. -->
-        <activity-alias
+             matters. A subclass rather than an alias, so a file opened inside Gander stays in
+             Gander's card in the recent apps screen. -->
+        <activity
             android:name=".InternalViewer"
             android:exported="false"
-            android:targetActivity=".ViewerActivity" />
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
         <!-- Serves a file inside a zip to the viewers, read straight out of the archive, issue
              #30. Not exported: Share hands one file's URI on with a one-off read grant, the

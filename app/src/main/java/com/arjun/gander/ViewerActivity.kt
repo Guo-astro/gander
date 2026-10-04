@@ -74,7 +74,7 @@ import java.io.InputStream
 import java.util.concurrent.Executors
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-class ViewerActivity : AppCompatActivity() {
+open class ViewerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PATH = "path"
@@ -88,8 +88,8 @@ class ViewerActivity : AppCompatActivity() {
         /**
          * This activity again, under the name Gander's own screens open it by.
          *
-         * An alias, so that it can be declared not exported and nothing outside Gander can
-         * start it, which lets the activity tell a file Gander chose from one another app
+         * A subclass, InternalViewer, so that it can be declared not exported and nothing outside
+         * Gander can start it, which lets the activity tell a file Gander chose from one another app
          * handed it. The exported name is the door for other apps, and through it only a
          * content URI from someone else's provider comes in, the grant that came with it
          * being the whole of what Gander may read. Gander's own URIs and paths are refused
