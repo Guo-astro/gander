@@ -26,6 +26,15 @@ class ReleaseHygieneTest {
         val VERSION_CODE: Int =
             Regex("""versionCode\s*=\s*(\d+)""").find(BUILD_FILE)!!.groupValues[1].toInt()
 
+        /**
+         * From 1.17 on, Play's build of a release takes the even code one above GitHub's, since
+         * Play offers an update only over a lower code. Its notes are pasted into Play Console and
+         * F-Droid builds GitHub's codes, so no changelog file is read for it.
+         */
+        const val PLAY_CODES_FROM = 20
+
+        fun isPlays(code: Int) = code >= PLAY_CODES_FROM && code % 2 == 0
+
         val LISTING = File(REPO, "fastlane/metadata/android")
         val ENGLISH = File(LISTING, "en-US")
 
@@ -97,7 +106,7 @@ class ReleaseHygieneTest {
         assertThat(notes.readText().trim()).isNotEmpty()
     }
 
-    /** And every code before it, so the listing has no gaps. */
+    /** And every code before it but Play's, so the listing has no gaps. */
     @Test
     fun everyVersionCodeUpToTheCurrentOneHasOne() {
         val dir = File(REPO, "fastlane/metadata/android/en-US/changelogs")
@@ -105,8 +114,15 @@ class ReleaseHygieneTest {
             .orEmpty()
             .mapNotNull { it.nameWithoutExtension.toIntOrNull() }
             .toSet()
-        val missing = (1..VERSION_CODE).filterNot { it in present }
+        val missing = (1..VERSION_CODE).filterNot { it in present || isPlays(it) }
         assertThat(missing).isEmpty()
+    }
+
+    /** A release that adds 1 rather than 2 lands on the code Play's build of the last one already has. */
+    @Test
+    fun theVersionCodeLeavesTheOneAboveItForPlay() {
+        assertThat("versionCode $VERSION_CODE is Play's: ${isPlays(VERSION_CODE)}")
+            .isEqualTo("versionCode $VERSION_CODE is Play's: false")
     }
 
     /**
