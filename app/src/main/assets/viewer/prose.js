@@ -48,6 +48,7 @@ vwFetchDoc("buffer")
   })
   .then(function (prose) {
     vwProseFit(prose);
+    vwPrintSizes(prose.wrap.querySelectorAll(".vw-paper > section"));
     vwStatusDone();
   })
   .catch(function (e) {

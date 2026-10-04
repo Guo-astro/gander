@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Print a PDF or a Word file from the viewer's menu, through Android's own print screen (thanks
+  @naz30ee-lab, who asked in #45). A PDF prints exactly as it is, and a Word, .odt or .rtf file
+  prints the way Gander shows it. Android can't print a PDF that has a password, so Gander says
+  so instead.
+
 - A file another app opens in Gander, such as an attachment in WhatsApp, gets a card of its own in
   your recent apps, so you can switch between the chat and the file (thanks @BenjaminSk-04, who
   asked in #46). It used to open inside the other app's card. Back still closes the file and

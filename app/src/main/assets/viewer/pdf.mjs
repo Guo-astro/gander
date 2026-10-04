@@ -1939,6 +1939,14 @@ function report() {
  */
 var lastPageSent = 0;
 
+/* Whether the document asked for a password. Android's printing can't open such a file,
+   so the app says so rather than send it there. */
+var locked = false;
+
+function reportLocked() {
+  if (searchPort && locked) searchPort.postMessage("locked");
+}
+
 function reportPage() {
   /* Not before PAGE_PITCH is set, which is when the boxes take the document's own shape
      and a reopened document is moved to its page. Before that the answer is page 1 of a
@@ -2087,6 +2095,7 @@ window.addEventListener("message", function (e) {
      report went nowhere and no other would follow until the reader scrolled. The same
      reason openSearchChannel replays a query typed before there was anywhere to send it. */
   reportPage();
+  reportLocked();
 });
 
 /* One letter of command, then the rest is payload. A query is arbitrary text and
@@ -2166,6 +2175,8 @@ function onCommand(msg) {
  * error card saying the same thing.
  */
 function vwAskPassword(updatePassword, reason) {
+  locked = true;
+  reportLocked();
   var el = document.getElementById("vw-status");
   if (!el) {
     el = document.createElement("div");

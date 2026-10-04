@@ -102,6 +102,24 @@ class PortMessageTest {
     }
 
     // ---------------------------------------------------------------
+    // Inbound: a PDF that asked for a password
+    // ---------------------------------------------------------------
+
+    @Test
+    fun aLockedMessageIsRead() {
+        assertThat(parsePortMessage("locked")).isEqualTo(PortMessage.Locked)
+    }
+
+    /** One exact word, so nothing a page sends by accident reads as it. */
+    @Test
+    fun onlyTheExactWordIsLocked() {
+        assertThat(parsePortMessage("Locked")).isNull()
+        assertThat(parsePortMessage("locked ")).isNull()
+        assertThat(parsePortMessage(" locked")).isNull()
+        assertThat(parsePortMessage("locked 1 0")).isNull()
+    }
+
+    // ---------------------------------------------------------------
     // Inbound: the search counter
     // ---------------------------------------------------------------
 

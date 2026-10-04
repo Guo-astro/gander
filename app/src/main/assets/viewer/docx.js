@@ -148,6 +148,7 @@ if (!vwWebViewTooOld("Word documents")) {
          one thing that moves the height vwFitHeight is about to read. */
       fitPageWidth();
       vwFitHeight();
+      vwPrintSizes(document.querySelectorAll(".docx-wrapper > section.docx"));
       vwStatusDone();
     })
     .catch(function (e) { vwError("Could not render this Word document", String(e)); });

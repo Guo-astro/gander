@@ -140,6 +140,30 @@ function vwFitHeight() {
 }
 
 /*
+ * Gives each sheet its own paper size for print, which Chromium then fits to the paper
+ * chosen. Without it an A4 page printed on Letter runs on to a second, nearly empty sheet.
+ * A named page per size, since a document can turn some of its pages sideways.
+ */
+function vwPrintSizes(sheets) {
+  var rules = "";
+  var names = {};
+  for (var i = 0; i < sheets.length; i++) {
+    var style = sheets[i].style;
+    if (!style.width || !style.minHeight) continue;
+    var size = style.width + " " + style.minHeight;
+    if (!names[size]) {
+      names[size] = "vw-sheet-" + i;
+      rules += "@page " + names[size] + " { size: " + size + "; } ";
+    }
+    style.page = names[size];
+  }
+  if (!rules) return;
+  var css = document.createElement("style");
+  css.textContent = "@media print { " + rules + "}";
+  document.head.appendChild(css);
+}
+
+/*
  * Takes the address off every link in a rendered document that is not a web or mail
  * address, a phone number or a jump within the page.
  *

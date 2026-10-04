@@ -137,3 +137,23 @@
 @media (prefers-color-scheme: dark) {
   .vw-paper > section { box-shadow: 0 1px 8px rgba(0, 0, 0, 0.6); }
 }
+
+/* Print, as in docx.html: a sheet per page at its real size, with the document's own margins. */
+@media print {
+  @page { margin: 0; }
+  .vw-paper {
+    display: block;
+    min-height: 0;
+    padding: 0;
+  }
+  .vw-paper > section {
+    zoom: 1;
+    margin: 0 auto;
+    box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .vw-paper > section + section { break-before: page; }
+}

@@ -33,6 +33,12 @@
         android:id="@+id/action_save_copy"
         android:title="@string/save_copy"
         app:showAsAction="never" />
+    <!-- A PDF and the paper documents, on a phone that can print: see printRoute -->
+    <item
+        android:id="@+id/action_print"
+        android:title="@string/print"
+        android:visible="false"
+        app:showAsAction="never" />
     <!-- A zip's list only, and only where some of its names had no code page of their own and
          one had to be guessed: everywhere else choosing one would change nothing. -->
     <item

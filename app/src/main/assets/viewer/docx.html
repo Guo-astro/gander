@@ -79,6 +79,31 @@
   @media (prefers-color-scheme: dark) {
     .docx-wrapper > section.docx { box-shadow: 0 1px 8px rgba(0,0,0,0.6) !important; }
   }
+
+  /* Print: each page starts a sheet of its own, at its real size, without the ground,
+     gaps and shadow around it. Its padding is the document's margins, so the sheet adds
+     none. vwPrintSizes in app.js gives each sheet its size. */
+  @media print {
+    @page { margin: 0; }
+    .docx-wrapper {
+      display: block !important;
+      background: none !important;
+      padding: 0 !important;
+      min-height: 0;
+    }
+    .docx-wrapper > section.docx {
+      zoom: 1;
+      margin: 0 auto !important;
+      box-shadow: none !important;
+      /* Or a table's shading and highlighted words print blank */
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      /* The document's margins on every sheet a long page runs on to, not just its first */
+      -webkit-box-decoration-break: clone;
+      box-decoration-break: clone;
+    }
+    .docx-wrapper > section.docx + section.docx { break-before: page; }
+  }
 </style>
 <script src="lib/jszip3.min.js"></script>
 <script src="lib/docx-preview.min.js"></script>

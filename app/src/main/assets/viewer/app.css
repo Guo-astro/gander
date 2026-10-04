@@ -216,3 +216,9 @@ body {
 ::highlight(vw-find-active) {
   background-color: rgba(255, 145, 0, 0.62);
 }
+
+/* Print: no ground behind the paper, and no marks left by a search. */
+@media print {
+  body { background: none; }
+  ::highlight(vw-find), ::highlight(vw-find-active) { background-color: transparent; }
+}

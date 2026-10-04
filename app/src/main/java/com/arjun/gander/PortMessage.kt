@@ -57,6 +57,9 @@ internal sealed interface PortMessage {
      * while the index is still being built.
      */
     data class SearchCount(val at: Int, val total: Int, val done: Boolean) : PortMessage
+
+    /** The PDF asked for a password, which Android's printing has no way to give it. */
+    data object Locked : PortMessage
 }
 
 /**
@@ -68,6 +71,7 @@ internal sealed interface PortMessage {
  * silently.
  */
 internal fun parsePortMessage(data: String?): PortMessage? {
+    if (data == "locked") return PortMessage.Locked
     val said = data?.split(" ") ?: return null
     if (said.size != 3) return null
 

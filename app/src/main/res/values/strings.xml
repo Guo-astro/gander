@@ -150,6 +150,9 @@
     <string name="save_copy">Save a copy</string>
     <string name="save_copy_done">Copy saved</string>
     <string name="save_copy_failed">The copy could not be saved</string>
+    <string name="print">Print</string>
+    <string name="print_locked">This PDF has a password, so Android can\'t print it</string>
+    <string name="print_failed">This file can\'t be printed</string>
     <string name="url_author" translatable="false">https://arjun.maniyani.com/</string>
     <string name="url_source" translatable="false">https://github.com/mokshablr/gander</string>
     <string name="url_site" translatable="false">https://arjun.maniyani.com/gander/</string>

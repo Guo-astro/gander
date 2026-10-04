@@ -5,6 +5,7 @@ import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -16,6 +17,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.print.PrintManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.text.InputType
@@ -165,6 +167,11 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** The file the destination picker is currently open for. */
     private var copySource: Uri? = null
+
+    /** Whether the PDF on show asked for a password. See [PortMessage.Locked]. Read by tests. */
+    @androidx.annotation.VisibleForTesting
+    internal var printLocked = false
+        private set
 
     /** Where a video or a track picks up when the viewer is rebuilt around it, as a change of theme does. */
     private var playerStartAt = 0L
@@ -358,7 +365,7 @@ open class ViewerActivity : AppCompatActivity() {
         if (loadedNight) nightChrome.show(true)
     }
 
-    /** Night mode, share and "show in file manager" toolbar actions. */
+    /** Night mode, share, print and "show in file manager" toolbar actions. */
     private fun setUpActions(
         toolbar: MaterialToolbar,
         kind: FileKind,
@@ -388,6 +395,8 @@ open class ViewerActivity : AppCompatActivity() {
             }
             true
         }
+
+        setUpPrint(toolbar, kind, uri, name)
 
         val folder = containingFolder(uri)
         toolbar.menu.findItem(R.id.action_open_folder).apply {
@@ -432,6 +441,39 @@ open class ViewerActivity : AppCompatActivity() {
             searchPort?.postMessage(WebMessageCompat(PortCommand.nightMode(on)))
             true
         }
+    }
+
+    /** Print, through Android's own print screen. Issue #45. */
+    private fun setUpPrint(toolbar: MaterialToolbar, kind: FileKind, uri: Uri, name: String) {
+        val item = toolbar.menu.findItem(R.id.action_print)
+        val route = printRoute(kind)
+        // The card saying the WebView is too old has no document on it to print
+        val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
+        if (route == null || blocked || !packageManager.hasSystemFeature(PackageManager.FEATURE_PRINTING)) {
+            item.isVisible = false
+            return
+        }
+        item.isVisible = true
+        item.setOnMenuItemClickListener {
+            print(route, uri, name)
+            true
+        }
+    }
+
+    private fun print(route: PrintRoute, uri: Uri, name: String) {
+        if (route == PrintRoute.FILE && printLocked) {
+            Toast.makeText(this, R.string.print_locked, Toast.LENGTH_LONG).show()
+            return
+        }
+        val job = printJobName(name)
+        val adapter = when (route) {
+            PrintRoute.FILE -> PdfPrintAdapter(contentResolver, uri, job)
+            PrintRoute.PAGE -> webView?.createPrintDocumentAdapter(job)
+        }
+        val started = adapter != null && runCatching {
+            checkNotNull(getSystemService(PrintManager::class.java)).print(job, adapter, null)
+        }.isSuccess
+        if (!started) Toast.makeText(this, R.string.print_failed, Toast.LENGTH_SHORT).show()
     }
 
     private fun shareFile(uri: Uri, ext: String, mime: String?) {
@@ -1230,6 +1272,7 @@ open class ViewerActivity : AppCompatActivity() {
                         }
                         is PortMessage.SearchCount ->
                             onSearchCount?.invoke(said.at, said.total, said.done)
+                        PortMessage.Locked -> if (kind == FileKind.PDF) printLocked = true
                         // Anything else came from the document rather than from
                         // the renderer, and is dropped without a word.
                         null -> Unit
@@ -1743,6 +1786,8 @@ open class ViewerActivity : AppCompatActivity() {
         val goneMenu = findViewById<MaterialToolbar>(R.id.toolbar).menu
         goneMenu.findItem(R.id.action_search)?.isVisible = false
         goneMenu.findItem(R.id.action_night_mode)?.isVisible = false
+        // And Print, which has no document to print until Reload brings it back
+        goneMenu.findItem(R.id.action_print)?.isVisible = false
         closeSearchChannel()
 
         // The card is the app's rather than the document's, so the parts around it go back to
