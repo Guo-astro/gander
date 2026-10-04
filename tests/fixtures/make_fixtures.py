@@ -815,6 +815,28 @@ def inherited_bold() -> None:
     written(OUT / "inherited-bold.pptx")
 
 
+def line_breaks() -> None:
+    """
+    A paragraph that two line breaks make three lines, in a box wide enough that none of
+    them wraps. PPTXjs dropped the first line break of a paragraph that had more than one,
+    so its first two lines ran together.
+    """
+    from pptx import Presentation
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(2))
+    box.name = "Broken"
+    box.text_frame.text = "The first line\vthe second\vand the third"
+    for run in box.text_frame.paragraphs[0].runs:
+        run.font.size = Pt(28)
+    fix_core_properties(prs)
+    prs.save(str(OUT / "line-breaks.pptx"))
+    normalize_zip(OUT / "line-breaks.pptx")
+    written(OUT / "line-breaks.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2070,7 +2092,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
-                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

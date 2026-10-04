@@ -31,7 +31,7 @@ JSZip.prototype.load = function () {
   if (!zip.file("docProps/app.xml")) zip.file("docProps/app.xml", "<Properties/>");
   zip.file(/^ppt\/(slides|slideLayouts|slideMasters)\/[^/]+\.xml$/).forEach(function (part) {
     var xml = part.asText();
-    var drawable = pathsPptxjsDraws(xml);
+    var drawable = breaksPptxjsKeeps(pathsPptxjsDraws(xml));
     if (drawable !== xml) zip.file(part.name, drawable);
   });
   var designs = {};
@@ -110,6 +110,29 @@ function gridRatio(first, path, side) {
 function scaleAttr(el, name, by) {
   var v = el.getAttribute(name);
   if (v !== null && /^-?\d+$/.test(v)) el.setAttribute(name, String(Math.round(Number(v) * by)));
+}
+
+/*
+ * A paragraph with more than one line break in its text loses the first of them: PPTXjs
+ * shifts it off the list before it draws the rest (genTextBody). So a title set on three
+ * lines drew its first two as one, and two breaks in a row, which leave a blank line,
+ * drew as one break. Across 86 decks, 22 paragraphs in 9 decks have more than one. Each
+ * is given another in front of its first, for PPTXjs to drop instead.
+ */
+function breaksPptxjsKeeps(xml) {
+  if ((xml.match(/<a:br\b/g) || []).length < 2) return xml;
+  var doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) return xml;
+  var paragraphs = doc.getElementsByTagNameNS(DRAWINGML, "p");
+  var changed = false;
+  for (var i = 0; i < paragraphs.length; i++) {
+    var breaks = childrenNamed(paragraphs[i], "br");
+    if (breaks.length > 1 && childrenNamed(paragraphs[i], "r").length) {
+      paragraphs[i].insertBefore(breaks[0].cloneNode(true), breaks[0]);
+      changed = true;
+    }
+  }
+  return changed ? new XMLSerializer().serializeToString(doc) : xml;
 }
 
 /*

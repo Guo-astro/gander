@@ -276,3 +276,14 @@ def test_text_is_bold_or_italic_where_its_design_says(viewer, page):
     assert styles["Plain at the second level"] == "400 normal", styles
     assert styles["Regular by its layout"] == "400 normal", styles
     assert styles["Italic from the layout"] == "400 italic", styles
+
+
+# ---------------------------------------------------------------------------
+# Line breaks: see breaksPptxjsKeeps in pptx.js
+# ---------------------------------------------------------------------------
+
+def test_every_line_break_in_a_paragraph_breaks_it(viewer, page):
+    """PPTXjs dropped the first line break of a paragraph that had more than one."""
+    viewer("pptx.html", "line-breaks.pptx")
+    wait_for_deck(page, 1)
+    assert text_lines(page, "Broken") == ["The first line", "the second", "and the third"]

@@ -56,6 +56,10 @@
   bold or italic. Gander drew it regular unless the text itself was set bold or italic, so some
   decks lost the bold from the titles on most of their slides.
 
+- Every line break in a slide's text shows. Where a paragraph had two or more, Gander dropped the
+  first, so a title set on three lines could draw on two, its first two lines run together, and a
+  blank line between two sentences could go missing.
+
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.
 
