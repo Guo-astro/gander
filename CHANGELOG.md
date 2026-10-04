@@ -67,6 +67,11 @@
 - Verilog, SystemVerilog and VHDL files (.v, .vh, .sv, .svh, .vhd and .vhdl) open as text. They
   used to get the page saying Gander doesn't recognize their format.
 
+- A large spreadsheet shows its first rows straight away and draws the rest as you scroll to
+  them. Gander used to lay out every cell of a sheet before showing any, so a sheet of tens of
+  thousands of rows took seconds to appear, and longer on a slower phone. Search still finds a
+  match in rows not drawn yet, and takes you to it.
+
 ## 2.0 (2026-09-26)
 
 - The sheets of paper in Gander's icon have a thin grey edge, so the three stand apart from each

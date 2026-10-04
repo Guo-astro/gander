@@ -176,6 +176,37 @@ def highlight_count(page, name="vw-find"):
     )
 
 
+def big_sheet(made, rows, names=None):
+    """
+    A CSV of [rows] rows under a heading, large enough that xlsx.js draws it a piece at a time.
+    Row n begins with n, so a test can find it by its first cell, and its second cell reads
+    "Name n" unless [names] gives that row another.
+    """
+    names = names or {}
+    lines = ["Row,Name,Value,Note,Code"]
+    for n in range(1, rows + 1):
+        lines.append(f"{n},{names.get(n, f'Name {n}')},{n * 7},Note {n % 13},C{n % 5}")
+    return made("big.csv", "\n".join(lines) + "\n")
+
+
+ROW_DRAWN = (
+    "(n) => [...document.querySelectorAll('#sheet tr')]"
+    ".some(tr => tr.cells.length && tr.cells[0].textContent === String(n))"
+)
+
+
+def bring_row(page, n, rows, timeout=20000):
+    """
+    Scrolls to where row [n] of a sheet of [rows] rows sits, and waits for it to be drawn. The
+    page is as long as the whole sheet before most of it is drawn, so its height places the row.
+    """
+    page.evaluate(
+        "([n, rows]) => window.scrollTo(0, document.documentElement.scrollHeight * n / (rows + 1))",
+        [n, rows],
+    )
+    page.wait_for_function(ROW_DRAWN, arg=n, timeout=timeout)
+
+
 # ---------------------------------------------------------------------------
 # Tiles: the sharp patch drawn over the part of a page the reader is looking at
 # ---------------------------------------------------------------------------

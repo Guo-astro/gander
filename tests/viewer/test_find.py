@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from helpers import highlight_count
+from helpers import big_sheet, bring_row, highlight_count
 
 VW_TEXT_PAGE = 5 * 1024 * 1024
 
@@ -151,6 +151,49 @@ def test_a_sheet_chosen_by_hand_keeps_the_count_and_draws_its_matches(viewer, pa
     page.wait_for_timeout(600)
     assert p.last_count() == "1 2 1"
     assert highlight_count(page, "vw-find") + highlight_count(page, "vw-find-active") == 1
+
+
+def test_a_match_in_rows_a_large_sheet_has_not_drawn_yet_is_counted_and_shown(
+        viewer, page, port, made):
+    """A large sheet draws its rows as the reader nears them. Row 19,990 is far from the top."""
+    sheet = big_sheet(made, 20000, {19990: "the needle"})
+    p = opened(viewer, page, port, "xlsx.html", sheet, "#sheet")
+    assert "needle" not in page.text_content("#sheet")
+    p.query("needle")
+    assert p.wait_for_count(1, 1, done=True)
+    page.wait_for_function(
+        "() => document.querySelector('#sheet').textContent.indexOf('the needle') >= 0",
+        timeout=10000,
+    )
+    assert highlight_count(page, "vw-find-active") == 1
+    assert page.evaluate("""() => {
+      const td = [...document.querySelectorAll('#sheet td')].find(t => t.textContent === 'the needle');
+      const box = td.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= innerHeight;
+    }""")
+
+
+def test_matches_in_every_piece_of_a_large_sheet_on_the_page_are_highlighted(
+        viewer, page, port, made):
+    """Rows 10 and 700 are in different pieces, both of them on the page."""
+    sheet = big_sheet(made, 20000, {10: "a marker", 700: "a marker"})
+    p = opened(viewer, page, port, "xlsx.html", sheet, "#sheet")
+    bring_row(page, 700, 20000)
+    p.query("marker")
+    assert p.wait_for_count(1, 2, done=True)
+    page.wait_for_timeout(300)
+    assert highlight_count(page, "vw-find-active") == 1
+    assert highlight_count(page, "vw-find") == 1
+
+
+def test_the_title_sheetjs_writes_around_a_sheet_is_not_searched(viewer, page, port):
+    """
+    sheet_to_html writes a whole HTML document unless told otherwise, title and all. The title
+    went into the page with the table, never shown, and a search for it counted one match.
+    """
+    p = opened(viewer, page, port, "xlsx.html", "budget.xlsx", "#sheet")
+    p.query("SheetJS Table Export")
+    assert p.wait_for_count(0, 0, done=True)
 
 
 def test_the_rest_of_a_long_text_file_is_searched_once_it_is_shown(viewer, page, port, made):

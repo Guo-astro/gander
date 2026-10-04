@@ -48,6 +48,8 @@ var vwFind = (function () {
    *   root(i)  an element holding part i's text, which need not be on the page
    *   show(i)  puts part i on the page, and answers the element that holds it there
    *   shown()  which part is on the page now
+   * and, for a page with several parts on it at once, as a large sheet has its pieces,
+   *   drawn(i) whether part i is on the page, which then counts for highlighting, not shown()
    */
   function parts() {
     if (window.vwFindParts) return window.vwFindParts;
@@ -225,17 +227,18 @@ var vwFind = (function () {
     port.postMessage(at + " " + total + " " + (loading() ? 0 : 1));
   }
 
-  /* Highlights over the part on the page, the current match on its own. */
+  /* Highlights over the parts on the page, the current match on its own. */
   function paint() {
     if (!window.CSS || !CSS.highlights) return;
-    var shown = parts().shown();
-    var flat = flattened(shown);
+    var p = parts();
+    var shown = p.shown();
     var hits = [];
     var current = null;
     var from = Math.max(0, active - MAX_PAINTED / 2);
     for (var i = from; i < matches.length && hits.length < MAX_PAINTED; i++) {
-      if (matches[i].part !== shown) continue;
-      var r = rangeFor(flat, matches[i]);
+      var part = matches[i].part;
+      if (p.drawn ? !p.drawn(part) : part !== shown) continue;
+      var r = rangeFor(flattened(part), matches[i]);
       if (!r) continue;
       if (i === active) current = r; else hits.push(r);
     }
@@ -299,10 +302,15 @@ var vwFind = (function () {
    * The document changed under a search: a sheet was chosen, the rest of a text file was asked
    * for, a deck is still putting its slides in. Searched again, staying on the match that was
    * current where it is still there, and on the same number otherwise.
+   *
+   * Only a part whose own text a change reached is read again: [records] are the observer's,
+   * and without them every part is. A large sheet puts its pieces on the page as the reader
+   * scrolls, and the parts a chosen sheet takes off it go on holding the text they had, so
+   * reading every part again for each would read the whole sheet as often as a piece is drawn.
    */
-  function changed() {
+  function changed(records) {
     if (moving) return;
-    cache = [];
+    forget(records);
     if (!query || rerunTimer) return;
     rerunTimer = setTimeout(function () {
       rerunTimer = 0;
@@ -318,6 +326,19 @@ var vwFind = (function () {
       paint();
       report();
     }, 250);
+  }
+
+  /* Drops what was read of each part a change in [records] reached, or of every part */
+  function forget(records) {
+    if (!records) { cache = []; return; }
+    for (var i = 0; i < cache.length; i++) {
+      var hit = cache[i];
+      if (!hit) continue;
+      for (var r = 0; r < records.length; r++) {
+        var target = records[r].target;
+        if (hit.root === target || hit.root.contains(target)) { cache[i] = null; break; }
+      }
+    }
   }
 
   function onCommand(msg) {

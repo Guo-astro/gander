@@ -48,7 +48,12 @@
     white-space: pre;
     min-width: 40px;
   }
-  #sheet tr:first-child td { background: #F2EDE4; font-weight: 600; }
+  /* The sheet's first row, which only the first of a large sheet's pieces has: see xlsx.js */
+  #sheet table.vw-top tr:first-child td { background: #F2EDE4; font-weight: 600; }
+  /* Each piece of a large sheet is a table with borders of its own. A later one sits a border's
+     width higher, so its top line lies on the bottom line of the piece above, as the rows of one
+     table share theirs: one line between pieces rather than two, and every row its own height. */
+  #sheet table.vw-more { margin-top: -1px; }
 
   /* A spreadsheet has no paper to be faithful to, unlike a Word page, so the whole
      thing goes dark rather than just the surround. The rules are borrowed from the
@@ -60,7 +65,7 @@
     #tabs { background: #221F19; border-bottom-color: #4D4636; }
     #tabs button { background: var(--vw-card); border-color: #4D4636; color: var(--vw-ink); }
     #sheet td, #sheet th { border-color: #6B6250; color: var(--vw-ink); }
-    #sheet tr:first-child td { background: var(--vw-card); }
+    #sheet table.vw-top tr:first-child td { background: var(--vw-card); }
   }
 </style>
 <script src="lib/xlsx.full.min.js"></script>
