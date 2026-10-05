@@ -745,4 +745,142 @@ class MainActivityTest {
         assertThat(started.data.toString()).isEqualTo("market://details?id=${context.packageName}")
         assertThat(started.`package`).isEqualTo("com.android.vending")
     }
+
+    // ---------------------------------------------------------------
+    // Folder Sort and Filter
+    // ---------------------------------------------------------------
+
+    @Test
+    fun menuShowsHomeOptionsAtHomeAndFolderOptionsInFolder() {
+        grantedFolder()
+        val controller = home()
+        val toolbar = controller.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+
+        // At home: share and about visible, sort and filter hidden
+        assertThat(toolbar.menu.findItem(R.id.action_share_app).isVisible).isTrue()
+        assertThat(toolbar.menu.findItem(R.id.action_about).isVisible).isTrue()
+        assertThat(toolbar.menu.findItem(R.id.action_sort).isVisible).isFalse()
+        assertThat(toolbar.menu.findItem(R.id.action_filter).isVisible).isFalse()
+
+        // Inside folder: sort and filter visible, share and about hidden
+        controller.clickRow("Documents")
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(toolbar.menu.findItem(R.id.action_sort).isVisible).isTrue()
+        assertThat(toolbar.menu.findItem(R.id.action_filter).isVisible).isTrue()
+        assertThat(toolbar.menu.findItem(R.id.action_share_app).isVisible).isFalse()
+        assertThat(toolbar.menu.findItem(R.id.action_about).isVisible).isFalse()
+        assertThat(toolbar.menu.findItem(R.id.action_play).isVisible).isFalse()
+
+        // Back to home: home options restored
+        controller.get().onBackPressedDispatcher.onBackPressed()
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(toolbar.menu.findItem(R.id.action_share_app).isVisible).isTrue()
+        assertThat(toolbar.menu.findItem(R.id.action_about).isVisible).isTrue()
+        assertThat(toolbar.menu.findItem(R.id.action_sort).isVisible).isFalse()
+        assertThat(toolbar.menu.findItem(R.id.action_filter).isVisible).isFalse()
+    }
+
+    @Test
+    fun sortDialogChangesSortAndPersists() {
+        grantedFolder()
+        val controller = home()
+        controller.clickRow("Documents")
+        shadowOf(context.mainLooper).idle()
+
+        val toolbar = controller.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        toolbar.menu.performIdentifierAction(R.id.action_sort, 0)
+        shadowOf(context.mainLooper).idle()
+
+        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        assertThat(dialog).isNotNull()
+
+        // Select LARGEST (index 4)
+        val which = Settings.SortOrder.LARGEST.ordinal
+        dialog.listView.performItemClick(null, which, which.toLong())
+        shadowOf(context.mainLooper).idle()
+
+        // Check persistence
+        assertThat(Settings.sortOrder(context)).isEqualTo(Settings.SortOrder.LARGEST)
+
+        // Zeta (2048) comes before alpha (1024) when sorted by size descending
+        val titles = controller.rowTitles()
+        assertThat(titles).containsAtLeast("zeta.pdf", "alpha.pdf").inOrder()
+    }
+
+    @Test
+    fun filterDialogFiltersFilesShowsSubtitleAndClearsOnHome() {
+        FakeDocumentsProvider.install()
+            .folder(
+                "root", "Documents",
+                ChildDoc("f1", "doc1.pdf", "application/pdf", 1024, 0),
+                ChildDoc("f2", "notes.txt", "text/plain", 512, 0),
+                ChildDoc("f3", "sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 2048, 0),
+            )
+        val tree = FakeDocumentsProvider.treeUri()
+        context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val controller = home()
+        controller.clickRow("Documents")
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(controller.rowTitles()).containsAtLeast("doc1.pdf", "notes.txt", "sheet.xlsx")
+
+        val toolbar = controller.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        toolbar.menu.performIdentifierAction(R.id.action_filter, 0)
+        shadowOf(context.mainLooper).idle()
+
+        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        val container = dialog.findViewById<ViewGroup>(R.id.filterItemsContainer)!!
+
+        // Find the PDF row and check it
+        for (i in 0 until container.childCount) {
+            val row = container.getChildAt(i)
+            val badge = row.findViewById<TextView>(R.id.filterBadge)
+            if (badge.text == "PDF") {
+                row.performClick()
+            }
+        }
+
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(context.mainLooper).idle()
+
+        // Only PDF file should be shown and subtitle indicates active filter
+        assertThat(controller.rowTitles()).contains("doc1.pdf")
+        assertThat(controller.rowTitles()).doesNotContain("notes.txt")
+        assertThat(controller.rowTitles()).doesNotContain("sheet.xlsx")
+        assertThat(toolbar.subtitle?.toString()).isEqualTo("Filtered: PDF")
+
+        // Going back to home screen clears the filter and subtitle
+        controller.get().onBackPressedDispatcher.onBackPressed()
+        shadowOf(context.mainLooper).idle()
+
+        assertThat(toolbar.subtitle).isNull()
+
+        // Re-entering folder has filter cleared
+        controller.clickRow("Documents")
+        shadowOf(context.mainLooper).idle()
+        assertThat(toolbar.subtitle).isNull()
+        assertThat(controller.rowTitles()).containsAtLeast("doc1.pdf", "notes.txt", "sheet.xlsx")
+
+        // Set filter again and test saving instance state across rotation
+        toolbar.menu.performIdentifierAction(R.id.action_filter, 0)
+        shadowOf(context.mainLooper).idle()
+        val dialog2 = ShadowDialog.getLatestDialog() as AlertDialog
+        val container2 = dialog2.findViewById<ViewGroup>(R.id.filterItemsContainer)!!
+        container2.getChildAt(0).performClick()
+        dialog2.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(context.mainLooper).idle()
+
+        val state = Bundle()
+        controller.saveInstanceState(state)
+        assertThat(state.getStringArrayList("active_filters")).containsExactly("PDF")
+
+        val second = home(state)
+        val secondToolbar = second.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        assertThat(secondToolbar.subtitle?.toString()).isEqualTo("Filtered: PDF")
+        assertThat(second.rowTitles()).contains("doc1.pdf")
+        assertThat(second.rowTitles()).doesNotContain("notes.txt")
+        assertThat(second.rowTitles()).doesNotContain("sheet.xlsx")
+    }
 }

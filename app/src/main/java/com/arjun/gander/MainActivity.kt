@@ -16,6 +16,7 @@ import android.text.format.Formatter
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import com.google.android.material.checkbox.MaterialCheckBox
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private data class Crumb(val treeUri: Uri, val docId: String, val label: String)
 
     private val stack = ArrayDeque<Crumb>()
+    private val activeFilters = mutableSetOf<String>()
     private val adapter = RowAdapter()
     private lateinit var toolbar: MaterialToolbar
     private lateinit var lockup: View
@@ -110,6 +112,9 @@ class MainActivity : AppCompatActivity() {
     private val backCallback = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
             stack.removeLast()
+            if (stack.isEmpty()) {
+                activeFilters.clear()
+            }
             render()
         }
     }
@@ -156,6 +161,8 @@ class MainActivity : AppCompatActivity() {
         if (installedFromPlay()) toolbar.menu.findItem(R.id.action_play).setTitle(R.string.rate_app)
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
+                R.id.action_sort -> { showSortDialog(); true }
+                R.id.action_filter -> { showFilterDialog(); true }
                 R.id.action_play -> { openPlayListing(); true }
                 R.id.action_share_app -> { shareGander(); true }
                 R.id.action_about -> { showAbout(); true }
@@ -200,6 +207,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.addFolderButton).setOnClickListener { openTree.launch(null) }
 
         restoreStack(savedInstanceState)
+        restoreFilters(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, backCallback)
     }
 
@@ -225,6 +233,13 @@ class MainActivity : AppCompatActivity() {
         outState.putStringArrayList(STATE_TREE_URIS, ArrayList(stack.map { it.treeUri.toString() }))
         outState.putStringArrayList(STATE_DOC_IDS, ArrayList(stack.map { it.docId }))
         outState.putStringArrayList(STATE_LABELS, ArrayList(stack.map { it.label }))
+        outState.putStringArrayList(STATE_ACTIVE_FILTERS, ArrayList(activeFilters))
+    }
+
+    private fun restoreFilters(state: Bundle?) {
+        val saved = state?.getStringArrayList(STATE_ACTIVE_FILTERS) ?: return
+        activeFilters.clear()
+        activeFilters.addAll(saved)
     }
 
     private fun restoreStack(state: Bundle?) {
@@ -449,6 +464,23 @@ class MainActivity : AppCompatActivity() {
             else androidx.appcompat.content.res.AppCompatResources.getDrawable(this, R.drawable.ic_back)
         toolbar.navigationContentDescription = getString(R.string.back)
 
+        val inFolder = here != null
+        toolbar.menu.findItem(R.id.action_sort)?.isVisible = inFolder
+        toolbar.menu.findItem(R.id.action_filter)?.isVisible = inFolder
+        toolbar.menu.findItem(R.id.action_play)?.isVisible = !inFolder
+        toolbar.menu.findItem(R.id.action_share_app)?.isVisible = !inFolder
+        toolbar.menu.findItem(R.id.action_about)?.isVisible = !inFolder
+
+        val filterSummary = if (inFolder && activeFilters.isNotEmpty()) {
+            SUPPORTED_FILTER_TYPES
+                .map { it.badge }
+                .filter { it in activeFilters }
+                .joinToString(", ")
+        } else {
+            null
+        }
+        toolbar.subtitle = if (filterSummary != null) getString(R.string.filter_subtitle, filterSummary) else null
+
         val token = ++renderToken
         // Delayed rather than shown at once. Most folders come back in a few
         // milliseconds, and a bar that appears and vanishes inside one frame reads as a
@@ -459,6 +491,7 @@ class MainActivity : AppCompatActivity() {
         main.postDelayed(announce, RENDER_PROGRESS_DELAY_MS)
         // Read here, on the main thread, which is the only one that changes it
         val hidden = pending?.uri
+        val filters = activeFilters.toSet()
 
         loader.execute {
             // Checked here as well as after, because loader is a single thread: without
@@ -466,7 +499,7 @@ class MainActivity : AppCompatActivity() {
             // wait for the whole of the first, which on the slow provider this exists
             // for is the wait it was meant to remove.
             if (token != renderToken) return@execute
-            val screen = if (here == null) homeRows(hidden) else folderRows(here)
+            val screen = if (here == null) homeRows(hidden) else folderRows(here, filters)
             main.post {
                 main.removeCallbacks(announce)
                 if (token != renderToken || isDestroyed) return@post
@@ -647,7 +680,7 @@ class MainActivity : AppCompatActivity() {
         return Screen(rows)
     }
 
-    private fun folderRows(crumb: Crumb): Screen {
+    private fun folderRows(crumb: Crumb, filters: Set<String>): Screen {
         val children = mutableListOf<ChildDoc>()
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
             crumb.treeUri, crumb.docId
@@ -673,7 +706,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val (dirs, files) = orderChildren(children)
+        val sortOrder = Settings.sortOrder(this)
+        val (dirs, files) = orderChildren(children, sortOrder)
+
+        val filteredFiles = if (filters.isEmpty()) {
+            files
+        } else {
+            files.filter { f ->
+                val (badge, _) = badgeFor(f.name, f.mime)
+                badge in filters
+            }
+        }
 
         val rows = mutableListOf<Row>()
         dirs.forEach { d ->
@@ -682,7 +725,7 @@ class MainActivity : AppCompatActivity() {
                 render()
             })
         }
-        files.forEach { f ->
+        filteredFiles.forEach { f ->
             val (badge, color) = badgeFor(f.name, f.mime)
             val ext = f.name.substringAfterLast('.', "").lowercase()
             val fileUri = DocumentsContract.buildDocumentUriUsingTree(crumb.treeUri, f.docId)
@@ -700,7 +743,14 @@ class MainActivity : AppCompatActivity() {
                 thumbExt = ext
             )
         }
-        if (rows.isEmpty()) rows += Row.Hint(getString(R.string.empty_folder))
+        if (rows.isEmpty()) {
+            val emptyMsg = if (filters.isNotEmpty()) {
+                getString(R.string.filter_empty)
+            } else {
+                getString(R.string.empty_folder)
+            }
+            rows += Row.Hint(emptyMsg)
+        }
         return Screen(rows)
     }
 
@@ -745,6 +795,69 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.setScreenReaderFocusable(grid, true)
     }
 
+    private fun showSortDialog() {
+        val orders = Settings.SortOrder.values()
+        val current = Settings.sortOrder(this)
+        val items = orders.map { getString(it.labelRes) }.toTypedArray()
+        val checkedItem = orders.indexOf(current).coerceAtLeast(0)
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.sort_by)
+            .setSingleChoiceItems(items, checkedItem) { dialog, which ->
+                Settings.setSortOrder(this, orders[which])
+                render()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun showFilterDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_filter, null)
+        val container = view.findViewById<ViewGroup>(R.id.filterItemsContainer)
+        val resetBtn = view.findViewById<View>(R.id.resetFilterButton)
+
+        val tempSelected = activeFilters.toMutableSet()
+        val checkBoxes = mutableListOf<MaterialCheckBox>()
+
+        SUPPORTED_FILTER_TYPES.forEach { item ->
+            val row = layoutInflater.inflate(R.layout.dialog_filter_item, container, false)
+            val badge = row.findViewById<TextView>(R.id.filterBadge)
+            val title = row.findViewById<TextView>(R.id.filterTitle)
+            val checkbox = row.findViewById<MaterialCheckBox>(R.id.filterCheckbox)
+
+            badge.text = item.badge
+            badge.background.mutate().setTint(item.color)
+            title.setText(item.labelRes)
+            checkbox.isChecked = item.badge in tempSelected
+            checkBoxes += checkbox
+
+            row.setOnClickListener {
+                checkbox.isChecked = !checkbox.isChecked
+                if (checkbox.isChecked) {
+                    tempSelected += item.badge
+                } else {
+                    tempSelected -= item.badge
+                }
+            }
+
+            container.addView(row)
+        }
+
+        resetBtn.setOnClickListener {
+            tempSelected.clear()
+            checkBoxes.forEach { it.isChecked = false }
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setView(view)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                activeFilters.clear()
+                activeFilters.addAll(tempSelected)
+                render()
+            }
+            .show()
+    }
+
     override fun onDestroy() {
         // Anything already queued still runs to completion and the thread ends with it,
         // rather than outliving the activity it was drawing.
@@ -765,5 +878,6 @@ class MainActivity : AppCompatActivity() {
         const val STATE_TREE_URIS = "stack.treeUris"
         const val STATE_DOC_IDS = "stack.docIds"
         const val STATE_LABELS = "stack.labels"
+        const val STATE_ACTIVE_FILTERS = "active_filters"
     }
 }

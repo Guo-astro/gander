@@ -253,4 +253,72 @@ class ListingTest {
     fun theDirectoryMimeTypeMatchesTheFrameworkConstant() {
         assertThat(MIME_DIR).isEqualTo(DocumentsContract.Document.MIME_TYPE_DIR)
     }
+
+    private fun fileWith(name: String, size: Long, modified: Long) =
+        ChildDoc("id-$name", name, "application/pdf", size, modified)
+
+    @Test
+    fun sortByNameDescending() {
+        val (_, files) = orderChildren(
+            listOf(file("Apple.pdf"), file("cherry.pdf"), file("banana.pdf")),
+            sortOrder = Settings.SortOrder.NAME_ZA
+        )
+        assertThat(files.map { it.name })
+            .containsExactly("cherry.pdf", "banana.pdf", "Apple.pdf").inOrder()
+    }
+
+    @Test
+    fun sortByDateNewestAndOldest() {
+        val f1 = fileWith("old.pdf", 100, 1000L)
+        val f2 = fileWith("mid.pdf", 200, 2000L)
+        val f3 = fileWith("new.pdf", 300, 3000L)
+
+        val (_, newest) = orderChildren(
+            listOf(f2, f3, f1),
+            sortOrder = Settings.SortOrder.NEWEST
+        )
+        assertThat(newest.map { it.name }).containsExactly("new.pdf", "mid.pdf", "old.pdf").inOrder()
+
+        val (_, oldest) = orderChildren(
+            listOf(f2, f3, f1),
+            sortOrder = Settings.SortOrder.OLDEST
+        )
+        assertThat(oldest.map { it.name }).containsExactly("old.pdf", "mid.pdf", "new.pdf").inOrder()
+    }
+
+    @Test
+    fun sortBySizeLargestAndSmallest() {
+        val f1 = fileWith("small.pdf", 100, 1000L)
+        val f2 = fileWith("medium.pdf", 500, 1000L)
+        val f3 = fileWith("large.pdf", 1000, 1000L)
+
+        val (_, largest) = orderChildren(
+            listOf(f2, f3, f1),
+            sortOrder = Settings.SortOrder.LARGEST
+        )
+        assertThat(largest.map { it.name }).containsExactly("large.pdf", "medium.pdf", "small.pdf").inOrder()
+
+        val (_, smallest) = orderChildren(
+            listOf(f2, f3, f1),
+            sortOrder = Settings.SortOrder.SMALLEST
+        )
+        assertThat(smallest.map { it.name }).containsExactly("small.pdf", "medium.pdf", "large.pdf").inOrder()
+    }
+
+    @Test
+    fun directoriesRemainAlphabeticalUnderSizeOrders() {
+        val d1 = dir("Zeta")
+        val d2 = dir("Alpha")
+        val (dirsLargest, _) = orderChildren(listOf(d1, d2), sortOrder = Settings.SortOrder.LARGEST)
+        assertThat(dirsLargest.map { it.name }).containsExactly("Alpha", "Zeta").inOrder()
+
+        val (dirsSmallest, _) = orderChildren(listOf(d1, d2), sortOrder = Settings.SortOrder.SMALLEST)
+        assertThat(dirsSmallest.map { it.name }).containsExactly("Alpha", "Zeta").inOrder()
+    }
+
+    @Test
+    fun supportedFilterTypesCoversAllElevenFormats() {
+        val expectedBadges = listOf("PDF", "DOC", "XLS", "PPT", "IMG", "VID", "AUD", "MD", "TXT", "3D", "ZIP")
+        assertThat(SUPPORTED_FILTER_TYPES.map { it.badge }).containsExactlyElementsIn(expectedBadges).inOrder()
+    }
 }
