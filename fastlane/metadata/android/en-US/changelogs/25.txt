@@ -1,0 +1,1 @@
+Print a PDF or a Word file from the viewer's menu, through Android's own print screen. A PDF prints exactly as it is, and a Word, .odt or .rtf file prints the way Gander shows it. A file another app opens in Gander, such as a WhatsApp attachment, now gets a card of its own in your recent apps, so you can switch between the chat and the file.

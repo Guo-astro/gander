@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2 (2026-10-05)
 
 - Print a PDF or a Word file from the viewer's menu, through Android's own print screen (thanks
   @naz30ee-lab, who asked in #45). A PDF prints exactly as it is, and a Word, .odt or .rtf file
