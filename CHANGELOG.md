@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Sort and filter the files in a folder you added, from its menu (thanks @usernamebiney, who
+  built both in #42). Sort by puts them in order of name, date or size, either way round, and
+  the order you pick applies to every folder until you change it. Filter shows only the kinds of
+  file you tick, such as PDFs and images, and names them under the folder's title while it is
+  on. A filter never hides folders, and it clears when you go back to the home screen.
+
 ## 2.2 (2026-10-05)
 
 - Print a PDF or a Word file from the viewer's menu, through Android's own print screen (thanks
