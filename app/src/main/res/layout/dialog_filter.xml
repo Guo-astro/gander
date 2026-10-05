@@ -37,9 +37,12 @@
         android:layout_marginStart="24dp"
         android:layout_marginEnd="24dp" />
 
+    <!-- The line along the bottom shows while more kinds are below, since on some screens
+         the list stops exactly at a row's edge and looks complete -->
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="wrap_content"
+        android:scrollIndicators="bottom">
 
         <LinearLayout
             android:id="@+id/filterItemsContainer"
