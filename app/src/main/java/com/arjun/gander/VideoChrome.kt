@@ -75,8 +75,12 @@ internal class VideoChrome(
     private val toolbarElevation = toolbar.elevation
     private val darkNavigationIcons = bars.isAppearanceLightNavigationBars
     private val barsBehaviour = bars.systemBarsBehavior
+    // Read only below Android 15, where land() puts it back. Play lists a read with no version
+    // check as a deprecated edge-to-edge call.
     @Suppress("DEPRECATION")
-    private val navigationBarColour = window.navigationBarColor
+    private val navigationBarColour =
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) window.navigationBarColor
+        else Color.TRANSPARENT
     /** How long the controls stay up untouched, as the viewer set it. */
     private val timeout = playerView.controllerShowTimeoutMs
 
