@@ -94,10 +94,16 @@ android {
         // matching the day a dependency releases and turns the build red with no
         // change here at all.
         //
+        // OldTargetApi is off for a like reason: it fires once lint knows of an
+        // Android newer than targetSdk, which AGP 8.13 and the API 37 SDK brought
+        // with no change here. The target moves when Play requires it.
+        //
         // Regenerate after fixing some: delete app/lint-baseline.xml, run
         // ./gradlew lintDebug (it fails once, on purpose, having written a new
         // baseline), and read the diff before committing it.
-        disable += setOf("GradleDependency", "AndroidGradlePluginVersion", "NewerVersionAvailable")
+        disable += setOf(
+            "GradleDependency", "AndroidGradlePluginVersion", "NewerVersionAvailable", "OldTargetApi"
+        )
         baseline = file("lint-baseline.xml")
         warningsAsErrors = true
         // A lint failure should stop CI, not be buried in a report nobody opens
