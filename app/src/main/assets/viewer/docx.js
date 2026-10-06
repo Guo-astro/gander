@@ -33,7 +33,10 @@ document.createElement = function (name, options) {
  * drew into the sub or sup the run asked for, the element the library would have kept.
  */
 function makeElement(spec) {
-  if (this && this.renderRun && !this.vwRunsOnce) drawRunsOnce(this);
+  if (this && this.renderRun && !this.vwRunsOnce) {
+    vwSplitAsWordDid(this);
+    drawRunsOnce(this);
+  }
   return docx.defaultOptions.h(spec);
 }
 
@@ -119,11 +122,49 @@ function fitPageWidth() {
   var room = wrap.clientWidth -
     parseFloat(pad.paddingLeft || 0) - parseFloat(pad.paddingRight || 0);
 
-  var widest = 0;
+  var widest = 0, widestPage = null;
   for (var i = 0; i < pages.length; i++) {
-    widest = Math.max(widest, pages[i].getBoundingClientRect().width);
+    var width = pages[i].getBoundingClientRect().width;
+    if (width > widest) { widest = width; widestPage = pages[i]; }
   }
-  if (room > 0 && widest > 0) wrap.style.setProperty("--vw-page-zoom", room / widest);
+  if (room > 0 && widest > 0) {
+    wrap.style.setProperty("--vw-page-zoom", room / widest);
+    /* 1 where a zoomed page's rect includes its zoom, 1 / zoom where it does not, so the
+       page counter can read a rect either way. The widest page now fills the room. */
+    vwPages.rectScale = widestPage.getBoundingClientRect().width / room;
+  }
+}
+
+/* What the app sends besides search: "g<n>" to go to a page */
+window.vwPageCommand = function (msg) {
+  var verb = msg.charAt(0);
+  if (verb === "g") vwGoToPage(Math.floor(Number(msg.slice(1))));
+};
+
+/* The document may be up before the port arrives, and would otherwise say nothing until scrolled */
+window.vwPortReady = function () {
+  vwPageSent = 0;
+  vwReportPage();
+};
+
+function vwDrawWord(buf) {
+  return docx.renderAsync(buf, document.getElementById("container"), null, {
+    inWrapper: true,
+    breakPages: true,
+    renderHeadersFooters: true,
+    ignoreLastRenderedPageBreak: true,
+    experimental: true,
+    h: makeElement
+  });
+}
+
+/* A second drawing makes its pictures afresh, so the first one's are let go */
+function vwDrawWordAgain(buf) {
+  var pictures = [].map.call(document.querySelectorAll('#container img[src^="blob:"]'),
+    function (img) { return img.src; });
+  return vwDrawWord(buf).then(function () {
+    pictures.forEach(function (url) { URL.revokeObjectURL(url); });
+  });
 }
 
 /* Nothing is read below docx-preview's floor. The card is already up, and the library
@@ -132,24 +173,27 @@ function fitPageWidth() {
 if (!vwWebViewTooOld("Word documents")) {
   vwFetchDoc("buffer")
     .then(function (buf) {
-      return docx.renderAsync(buf, document.getElementById("container"), null, {
-        inWrapper: true,
-        breakPages: true,
-        renderHeadersFooters: true,
-        ignoreLastRenderedPageBreak: true,
-        experimental: true,
-        h: makeElement
-      });
+      return vwDrawWord(buf)
+        .then(function () {
+          /* Out of sight until its pages are final, or a second drawing would move them on screen */
+          document.getElementById("container").style.visibility = "hidden";
+          return vwFindMissingPages();
+        })
+        .then(function (missing) { if (missing) return vwDrawWordAgain(buf); });
     })
     .then(function () {
-      vwDisarmLinks(document.getElementById("container"));
-      fixSymbolChars(document.getElementById("container"));
+      var container = document.getElementById("container");
+      container.style.visibility = "";
+      vwDisarmLinks(container);
+      fixSymbolChars(container);
+      vwNumberPages(vwSheets());
       /* Width first: it decides whether the document still overflows 980, which is the
          one thing that moves the height vwFitHeight is about to read. */
       fitPageWidth();
       vwFitHeight();
-      vwPrintSizes(document.querySelectorAll(".docx-wrapper > section.docx"));
+      vwPrintSizes(vwSheets());
       vwStatusDone();
+      vwFollowPages();
     })
     .catch(function (e) { vwError("Could not render this Word document", String(e)); });
 }

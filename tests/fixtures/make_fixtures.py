@@ -526,6 +526,215 @@ def with_footnote(path: Path, marker: str, text: str) -> None:
             z.writestr(name, data)
 
 
+# Stands where Word wrote w:lastRenderedPageBreak, its record of where a page began.
+LRPB = "[[LRPB]]"
+
+
+def rewrite_parts(path: Path, edit) -> None:
+    """Runs edit(name, text) over every XML part of the package, keeping what it returns."""
+    with zipfile.ZipFile(path) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    for name, data in items.items():
+        if name.endswith(".xml"):
+            items[name] = edit(name, data.decode()).encode()
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
+
+
+def field_runs(code: str, saved: str) -> str:
+    """A field as Word writes one: its code, then the value it showed when last saved."""
+    return (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r><w:instrText xml:space="preserve"> {code} </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        f"<w:r><w:t>{saved}</w:t></w:r>"
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+def word_pages() -> None:
+    """
+    Issue #47: pages where Word recorded them. A list item, a table and the last
+    section each cross a page, an explicit break carries the record Word writes after
+    it, a continuous section shares its page and the last section counts in roman from
+    i. The footer's fields saved 1 and 6, the values every page of a shared footer had.
+    """
+    from docx import Document
+    from docx.enum.section import WD_SECTION
+    from docx.enum.text import WD_BREAK
+
+    doc = Document()
+    doc.add_heading("Willowmere survey", level=1)
+    doc.add_paragraph("Page one begins here.")
+    doc.add_paragraph("First numbered item.", style="List Number")
+    p = doc.add_paragraph("Second numbered item, ", style="List Number")
+    p.add_run(LRPB + "carried on to page two.")
+    doc.add_paragraph("Third numbered item.", style="List Number")
+    p = doc.add_paragraph("A footnote is cited here")
+    p.add_run("MARKER")
+    p.add_run(".")
+    table = doc.add_table(rows=3, cols=2)
+    rows = (("Well", "Reading"), (LRPB + "North", "4.2"), ("South", "3.8"))
+    for row, texts in zip(table.rows, rows):
+        for cell, text in zip(row.cells, texts):
+            cell.text = text
+    p = doc.add_paragraph("Before the explicit break.")
+    p.add_run().add_break(WD_BREAK.PAGE)
+    doc.add_paragraph(LRPB + "After the explicit break.")
+    doc.add_paragraph("Section one ends here.")
+    doc.add_section(WD_SECTION.CONTINUOUS)
+    doc.add_paragraph("Section two shares page four.")
+    doc.add_section(WD_SECTION.NEW_PAGE)
+    doc.add_paragraph("An appendix numbered in roman.")
+    p = doc.add_paragraph("It runs on ")
+    p.add_run(LRPB + "to a second roman page.")
+    doc.sections[0].footer.paragraphs[0].text = "Page [[PAGE]] of [[NUMPAGES]]"
+    fix_core_properties(doc)
+    target = OUT / "word-pages.docx"
+    doc.save(str(target))
+    with_footnote(target, "MARKER", "Counted on the page that cites it.")
+
+    def edit(name, xml):
+        xml = re.sub(r'<w:t( xml:space="preserve")?>' + re.escape(LRPB),
+                     r'<w:lastRenderedPageBreak/><w:t\1>', xml)
+        xml = re.sub(
+            r"<w:r>(?:<w:rPr>.*?</w:rPr>)?<w:t>Page \[\[PAGE\]\] of \[\[NUMPAGES\]\]</w:t></w:r>",
+            lambda m: '<w:r><w:t xml:space="preserve">Page </w:t></w:r>'
+            + field_runs(r"PAGE   \* MERGEFORMAT", "1")
+            + '<w:r><w:t xml:space="preserve"> of </w:t></w:r>'
+            + field_runs("NUMPAGES", "6"),
+            xml,
+        )
+        if name == "word/document.xml":
+            # The last section, which the body's own sectPr describes, counts i, ii
+            last = xml.rindex("<w:sectPr")
+            cols = xml.index("<w:cols", last)
+            xml = xml[:cols] + '<w:pgNumType w:fmt="lowerRoman" w:start="1"/>' + xml[cols:]
+        return xml
+
+    rewrite_parts(target, edit)
+    with zipfile.ZipFile(target) as z:
+        parts = "".join(z.read(n).decode() for n in z.namelist() if n.endswith(".xml"))
+    assert LRPB not in parts and "[[PAGE]]" not in parts
+    assert parts.count("<w:lastRenderedPageBreak/>") == 4
+    normalize_zip(target)
+    written(target)
+
+
+def word_columns() -> None:
+    """
+    Issue #47: Word records the top of each column as it does each page. Three pages in
+    Word: three columns and the section that runs on after them share page one, with a
+    record at the top of every column and of that section, then a paragraph crosses to
+    page two and the last section starts page three.
+    """
+    from docx import Document
+    from docx.enum.section import WD_SECTION
+    from docx.enum.text import WD_BREAK
+
+    doc = Document()
+    doc.add_heading("Willowmere columns", level=1)
+    doc.add_paragraph("Page one begins here.")
+    doc.add_section(WD_SECTION.CONTINUOUS)
+    for text, last in (("First column.", False), ("Second column.", False), ("Third column.", True)):
+        p = doc.add_paragraph(LRPB + text)
+        if not last:
+            p.add_run().add_break(WD_BREAK.COLUMN)
+    doc.add_section(WD_SECTION.CONTINUOUS)
+    doc.add_paragraph(LRPB + "Back to one column.")
+    p = doc.add_paragraph("A long paragraph Word ended page one in, ")
+    p.add_run(LRPB + "carried on to page two.")
+    doc.add_section(WD_SECTION.NEW_PAGE)
+    doc.add_paragraph(LRPB + "Section four begins page three.")
+    fix_core_properties(doc)
+    target = OUT / "word-columns.docx"
+    doc.save(str(target))
+
+    def edit(name, xml):
+        xml = re.sub(r'<w:t( xml:space="preserve")?>' + re.escape(LRPB),
+                     r'<w:lastRenderedPageBreak/><w:t\1>', xml)
+        if name == "word/document.xml":
+            # The second section, whose sectPr is the second in the body, is set in three
+            cols = [m.start() for m in re.finditer(r"<w:cols\b", xml)][1]
+            end = xml.index("/>", cols) + 2
+            xml = xml[:cols] + '<w:cols w:num="3" w:space="720"/>' + xml[end:]
+        return xml
+
+    rewrite_parts(target, edit)
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert LRPB not in body
+    assert body.count("<w:lastRenderedPageBreak/>") == 6
+    assert body.count('w:num="3"') == 1 and body.count('w:type="column"') == 2
+    normalize_zip(target)
+    written(target)
+
+
+def word_unrecorded() -> None:
+    """
+    Issue #47: pages Word began without a record, since it records one only in a run. Four
+    pages in Word, as docProps/app.xml says: page two begins among twenty-four blank lines,
+    page three where Word recorded it, and page four on a table row whose first cell is empty.
+    Each stretch of the document is about a page and a half, so the turns land in the middle.
+    """
+    from docx import Document
+    from docx.oxml import OxmlElement
+
+    doc = Document()
+    doc.add_heading("Willowmere ledger", level=1)
+    for n in range(1, 9):
+        doc.add_paragraph(f"Ledger line {n} of page one.")
+    for _ in range(24):
+        doc.add_paragraph()
+    doc.add_paragraph("Page two follows the blank lines.")
+    for n in range(1, 9):
+        doc.add_paragraph(f"Ledger line {n} of page two.")
+    doc.add_paragraph(LRPB + "Page three begins where Word recorded it.")
+    table = doc.add_table(rows=19, cols=2)
+    table.rows[0].cells[0].text = "Entry"
+    table.rows[0].cells[1].text = "Reading"
+    table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+    for n in range(1, 19):
+        cell = table.rows[n].cells[1]
+        cell.text = f"Reading {n}"
+        cell.add_paragraph(f"Checked {n}")
+    doc.add_paragraph("After the table.")
+    doc.sections[0].footer.paragraphs[0].text = "Page [[PAGE]] of [[NUMPAGES]]"
+    fix_core_properties(doc)
+    target = OUT / "word-unrecorded.docx"
+    doc.save(str(target))
+
+    def edit(name, xml):
+        xml = re.sub(r'<w:t( xml:space="preserve")?>' + re.escape(LRPB),
+                     r'<w:lastRenderedPageBreak/><w:t\1>', xml)
+        xml = re.sub(
+            r"<w:r>(?:<w:rPr>.*?</w:rPr>)?<w:t>Page \[\[PAGE\]\] of \[\[NUMPAGES\]\]</w:t></w:r>",
+            lambda m: '<w:r><w:t xml:space="preserve">Page </w:t></w:r>'
+            + field_runs(r"PAGE   \* MERGEFORMAT", "1")
+            + '<w:r><w:t xml:space="preserve"> of </w:t></w:r>'
+            + field_runs("NUMPAGES", "4"),
+            xml,
+        )
+        return xml
+
+    rewrite_parts(target, edit)
+    with zipfile.ZipFile(target) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    body = items["word/document.xml"].decode()
+    assert LRPB not in body and body.count("<w:lastRenderedPageBreak/>") == 1
+    # Twenty-four blank lines and eighteen empty first cells
+    assert body.count("<w:p/>") == 42 and body.count("<w:tblHeader/>") == 1
+    app, n = re.subn(rb"<Pages>\d+</Pages>", b"<Pages>4</Pages>", items["docProps/app.xml"])
+    assert n == 1
+    items["docProps/app.xml"] = app
+    with zipfile.ZipFile(target, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
+    normalize_zip(target)
+    written(target)
+
+
 SHEET_ROWS = [
     ("Item", "Quarter", "Amount"),
     ("Surveying", "Q3", 4200),
@@ -2151,7 +2360,7 @@ def models() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, raised_runs, xlsx, pptx,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped, relatives, texts, images, audio,
                  zips, prose, models):
         step()

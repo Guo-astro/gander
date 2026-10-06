@@ -45,6 +45,9 @@ should stay obviously so.
 | `not-a-pdf.pdf` | `vwFailure`: named `.pdf`, is plain text. |
 | `report.docx` | docx rendering, and `fixSymbolChars`: contains a Wingdings bullet at U+F0B7. |
 | `raised-runs.docx` | Runs set as subscript and superscript, which docx-preview draws twice and `drawRunsOnce` in `docx.js` draws once: a tab in a subscript run, tabs against stops after it, and a footnote whose marker is raised by its own run. |
+| `word-pages.docx` | Issue #47. Six pages where Word recorded them as `w:lastRenderedPageBreak`: a list item, a table and the last section each cross a page, an explicit break carries the record Word writes after it, a continuous section shares its page, and the last section counts in roman from i. The footer's fields saved 1 and 6. |
+| `word-columns.docx` | Issue #47. Word records the top of each column as it does each page. Three pages in Word: three columns and the section running on after them share page one, with a record at the top of each, then a paragraph crosses to page two and the last section starts page three. |
+| `word-unrecorded.docx` | Issue #47. Pages Word began where it can save no record, which it writes only in a run. Four pages, as `docProps/app.xml` says: page two begins among blank lines, page three where Word recorded it, and page four on a table row whose first cell is empty, under a header row that repeats. |
 | `budget.xlsx` | Three sheets, so the sheet tabs have something to switch between. |
 | `budget.csv` | The same rows as the first sheet. Routes to the spreadsheet viewer, not the text one. |
 | `utf8.csv` | Issue #37. UTF-8 with no byte order mark, which SheetJS reads as Latin-1 when handed bytes. Letters of two, three and four bytes. |

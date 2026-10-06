@@ -55,7 +55,8 @@ function vwProseOpen(container) {
  * The height is a least height. These readers do not paginate: deciding where a page
  * ends needs every line measured in the document's real fonts, which a phone does not
  * have. So a sheet ends where the file says a page must end, at a page break, and
- * otherwise runs as long as its text, the same as docx.html's does.
+ * otherwise runs as long as its text, as docx.html's does for a file with no record of
+ * where Word ended its pages.
  *
  * Sizes are held to what paper could be. They come from a file, and a width of nothing,
  * or of a mile, would otherwise become the width of the screen's whole layout.

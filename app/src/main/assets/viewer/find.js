@@ -356,8 +356,10 @@ var vwFind = (function () {
       if (matches.length) stepTo(active - 1);
     } else if (verb === "c") {
       clear();
+    } else if (window.vwPageCommand) {
+      /* A page to go to belongs to the page, where it has pages, as Word's does */
+      window.vwPageCommand(msg);
     }
-    /* Anything else is a PDF's: a page to go to, night mode. Not for these pages. */
   }
 
   window.addEventListener("message", function (e) {
@@ -369,6 +371,7 @@ var vwFind = (function () {
       try { onCommand(String(m.data || "")); } catch (err) { report(); }
     };
     port.start();
+    try { if (window.vwPortReady) window.vwPortReady(); } catch (err) { /* the port still works */ }
   });
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -387,5 +390,12 @@ var vwFind = (function () {
     };
   }
 
-  return { changed: changed };
+  /* Says something to the app over the same port, answering whether there was one to say it on */
+  function post(msg) {
+    if (!port) return false;
+    port.postMessage(msg);
+    return true;
+  }
+
+  return { changed: changed, post: post };
 })();

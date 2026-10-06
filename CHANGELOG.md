@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A Word file shows its pages where Word ended them, rather than as one long page (thanks
+  @BenjaminSk-04, who reported this in #47). Word records where each page began when it saves a
+  file, and Gander now splits the pages there, with the page number in each page's footer and
+  the page counter and Go to page that a PDF has. Word leaves no record of a page that begins
+  on a blank line, so Gander places those itself, from the page count Word saved with the file.
+  A file saved by WPS Office, Google Docs or LibreOffice has no such record, so it shows as before.
+
 - Sort and filter the files in a folder you added, from its menu (thanks @usernamebiney, who
   built both in #42). Sort by puts them in order of name, date or size, either way round, and
   the order you pick applies to every folder until you change it. Filter shows only the kinds of

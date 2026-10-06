@@ -597,7 +597,7 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Last page pdf.html reported, and how many there are. Zero until it says, which under
+     * Last page the document reported, and how many there are. Zero until it says, which under
      * Robolectric it never does, so tests set the count themselves.
      */
     private var pageAt = 0
@@ -715,15 +715,15 @@ open class ViewerActivity : AppCompatActivity() {
     /**
      * Put the page readout on screen, or keep it there.
      *
-     * Called from two places that know different things. pdf.html says which page is on
+     * Called from two places that know different things. The page says which page is on
      * screen, over the port search already uses, and only when that number changes. The
      * WebView says that something scrolled at all, which is what decides the pill is
      * worth showing: scrolling within one tall page changes no page number, and a
      * readout that only appeared on crossing a boundary would be absent exactly when
      * somebody goes looking for it.
      *
-     * A no-op for everything that is not a PDF of more than one page, because nothing
-     * else ever sets the total.
+     * A no-op for everything that is not a PDF or Word document of more than one page,
+     * because nothing else ever sets the total.
      */
     private fun showPageIndicator() {
         if (pageTotal < 2 || searchBarOpen) return
@@ -1261,9 +1261,10 @@ open class ViewerActivity : AppCompatActivity() {
             object : WebMessagePortCompat.WebMessageCallbackCompat() {
                 override fun onMessage(port: WebMessagePortCompat, message: WebMessageCompat?) {
                     when (val said = parsePortMessage(message?.data)) {
-                        // Only a PDF has pages to report. Any other page saying so is its
-                        // document talking, and is not given a readout to write in.
-                        is PortMessage.Page -> if (kind == FileKind.PDF) {
+                        // Only a PDF and a Word document have pages to report. Any other
+                        // page saying so is its document talking, and is not given a
+                        // readout to write in.
+                        is PortMessage.Page -> if (kind.paged) {
                             if (pageTotal == 0) goToPageItem?.isVisible = true
                             pageAt = said.n
                             pageTotal = said.of

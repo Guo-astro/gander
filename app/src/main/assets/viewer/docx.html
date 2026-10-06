@@ -80,6 +80,16 @@
     .docx-wrapper > section.docx { box-shadow: 0 1px 8px rgba(0,0,0,0.6) !important; }
   }
 
+  /* The rest of a paragraph a page cut in two (docx-pages.js): its number and first-line
+     indent stay with the first half, as Word draws it */
+  .docx-wrapper p.vw-cont::before { content: none !important; counter-increment: none !important; }
+  .docx-wrapper p.vw-cont {
+    list-style-type: none !important;
+    counter-set: none !important;
+    text-indent: 0 !important;
+    margin-top: 0 !important;
+  }
+
   /* Print: each page starts a sheet of its own, at its real size, without the ground,
      gaps and shadow around it. Its padding is the document's margins, so the sheet adds
      none. vwPrintSizes in app.js gives each sheet its size. */
@@ -113,6 +123,7 @@
 <div id="container" data-vw-find></div>
 <script src="app.js"></script>
 <script src="find.js"></script>
+<script src="docx-pages.js"></script>
 <script src="docx.js"></script>
 </body>
 </html>

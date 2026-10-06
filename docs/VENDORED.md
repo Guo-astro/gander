@@ -109,6 +109,24 @@ which is why its floor is 92 rather than the 80 its syntax alone would give. JSZ
 and DOMPurify parse as ES2015 and reach for newer names only behind `typeof` checks,
 so neither sets a floor today.
 
+## Before upgrading docx-preview
+
+docx-preview stays as upstream ships it, so `docx.js` and `docx-pages.js` change it from
+outside, through the `h` option, which it calls as the renderer's own method. From there
+they replace seven renderer methods by name: `renderRun` (subscript runs drawn twice,
+docxjs#233, and the page-number fields), and `splitBySection`, `groupByPageBreaks`,
+`createPageElement`, `renderHeaderFooter`, `renderParagraph` and `renderTableRow` (Word's
+own pages, issue #47). The names survive minification. Check that each still exists in a new file, with the same
+arguments, before upgrading.
+
+They also read the shapes of the parsed document: a break whose `break` is
+`"lastRenderedPageBreak"`, a run's `fieldRun` with `complexField` (by `charType`) and
+`instruction` children, a section's `pageNumber.start`, `pageNumber.format` and
+`columns.numberOfColumns`, a row's `isHeader`, which is null for Word's `<w:tblHeader/>`,
+and the page count Word saved, `document.extendedPropsPart.props.pages`.
+`test_docx_pages.py` fails if the pages stop splitting or numbering. Once upstream
+releases the fix for #233 (PR #234), `drawRunsOnce` can go.
+
 ## Before upgrading pdf.js
 
 `pdf.html` is the only viewer loaded as an ES module, and a module the WebView

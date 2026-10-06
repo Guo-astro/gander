@@ -29,6 +29,12 @@ enum class FileKind(val page: String) {
     ARCHIVE(""),
     UNSUPPORTED("unsupported.html");
 
+    /**
+     * Drawn as pages: its page says which one is on screen and goes to one when asked.
+     * A PDF, and a Word document since issue #47.
+     */
+    val paged: Boolean get() = this == PDF || this == DOCX
+
     companion object {
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
         private val imageWebExt = setOf("gif", "svg", "avif", "ico")
