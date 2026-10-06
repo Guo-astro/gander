@@ -357,7 +357,7 @@ class FileKindTest {
         assertThat(ARCHIVE.page).isEmpty()
     }
 
-    /** The two whose pages report themselves and take Go to page. */
+    /** The two whose pages report themselves, take Go to page and turn over at night. */
     @Test
     fun onlyPdfAndWordArePaged() {
         assertThat(FileKind.entries.filter { it.paged }).containsExactly(PDF, DOCX)

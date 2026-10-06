@@ -735,6 +735,81 @@ def word_unrecorded() -> None:
     written(target)
 
 
+def word_colours() -> None:
+    """
+    Issue #47's night mode for Word: ink, a coloured heading, a colour given only by
+    the theme, a highlight, a shaded cell, a bordered paragraph, and three pictures. A
+    photograph stays as it is; a white-backed figure and ink drawn on nothing read as
+    paper and turn over with the page.
+    """
+    from docx import Document
+    from docx.shared import Inches, RGBColor
+    from PIL import Image, ImageDraw
+
+    def png(im) -> io.BytesIO:
+        out = io.BytesIO()
+        im.save(out, format="PNG")
+        out.seek(0)
+        return out
+
+    rng = random.Random(47)
+    photo = Image.new("RGB", (64, 48))
+    photo.putdata([
+        (200 + rng.randrange(40), 30 + rng.randrange(20), 30 + rng.randrange(20)) if x < 32
+        else (28 + rng.randrange(20), 82 + rng.randrange(20), 196 + rng.randrange(40))
+        for y in range(48) for x in range(64)
+    ])
+    figure = Image.new("RGB", (120, 80), "white")
+    ImageDraw.Draw(figure).line([(10, 70), (40, 30), (70, 50), (110, 10)], fill="black", width=3)
+    ink = Image.new("RGBA", (120, 80), (0, 0, 0, 0))
+    ImageDraw.Draw(ink).line([(10, 40), (60, 10), (110, 70)], fill=(0, 0, 0, 255), width=4)
+
+    doc = Document()
+    p = doc.add_paragraph()
+    heading = p.add_run("Willowmere at night")
+    heading.font.color.rgb = RGBColor(0x00, 0x77, 0xC7)
+    p = doc.add_paragraph()
+    p.add_run("Ink set in a near black.").font.color.rgb = RGBColor(0x14, 0x14, 0x14)
+    doc.add_paragraph("Ink left to the default.")
+    p = doc.add_paragraph()
+    p.add_run("THEMED")
+    p = doc.add_paragraph()
+    p.add_run("HIGHLIT")
+    p = doc.add_paragraph("A paragraph with a rule under it.")
+    p.paragraph_format.space_after = 0
+    table = doc.add_table(rows=1, cols=1)
+    table.rows[0].cells[0].text = "SHADED"
+    doc.add_picture(png(photo), width=Inches(1.6))
+    doc.add_picture(png(figure), width=Inches(2.4))
+    doc.add_picture(png(ink), width=Inches(2.4))
+    fix_core_properties(doc)
+    target = OUT / "word-colours.docx"
+    doc.save(str(target))
+
+    def edit(name, xml):
+        if name != "word/document.xml":
+            return xml
+        xml = xml.replace("<w:r><w:t>THEMED</w:t></w:r>",
+                          '<w:r><w:rPr><w:color w:themeColor="accent1"/></w:rPr>'
+                          "<w:t>Coloured by the theme alone.</w:t></w:r>")
+        xml = xml.replace("<w:r><w:t>HIGHLIT</w:t></w:r>",
+                          '<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr>'
+                          "<w:t>Highlighted in yellow.</w:t></w:r>")
+        xml = re.sub(r"<w:p><w:pPr>((?:(?!</w:pPr>).)*</w:pPr><w:r><w:t>A paragraph with a rule)",
+                     r'<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="1"'
+                     r' w:color="C81E1E"/></w:pBdr>\1', xml)
+        xml = xml.replace("</w:tcPr>", '<w:shd w:val="clear" w:color="auto" w:fill="1E963C"/></w:tcPr>', 1)
+        return xml
+
+    rewrite_parts(target, edit)
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert 'w:themeColor="accent1"' in body and "w:highlight" in body
+    assert 'w:color="C81E1E"' in body and 'w:fill="1E963C"' in body
+    normalize_zip(target)
+    written(target)
+
+
 SHEET_ROWS = [
     ("Item", "Quarter", "Amount"),
     ("Surveying", "Q3", 4200),
@@ -2360,7 +2435,7 @@ def models() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, xlsx, pptx,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped, relatives, texts, images, audio,
                  zips, prose, models):
         step()

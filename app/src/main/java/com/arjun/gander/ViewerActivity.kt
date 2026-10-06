@@ -361,7 +361,7 @@ open class ViewerActivity : AppCompatActivity() {
         }
         setUpSearch(toolbar, kind)
         setUpActions(toolbar, kind, uri, name, ext, mime)
-        // A PDF that opens turned over opens with the parts around it dark as well
+        // A document that opens turned over opens with the parts around it dark as well
         if (loadedNight) nightChrome.show(true)
     }
 
@@ -409,15 +409,15 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Turning the contents of a PDF over for reading in the dark. Issue #19.
+     * Turning a document's pages over for reading in the dark: a PDF's since issue #19,
+     * a Word document's since #47.
      *
-     * Only a PDF, because it is the only format drawn as a picture rather than laid out
-     * as a document, and only where the message port exists, because that is the whole
-     * of how the page is told. The initial state has already gone out on the URL by the
-     * time this runs, so a WebView without the port still opens in the right mode; what
-     * it cannot do is change it without reopening the file, and offering a control that
-     * quietly does nothing is worse than not offering it. The search item is hidden on
-     * the same test a few lines further down, and for the same reason.
+     * Only where the message port exists, because that is the whole of how the page is
+     * told. The initial state has already gone out on the URL by the time this runs, so a
+     * WebView without the port still opens in the right mode; what it cannot do is change
+     * it without reopening the file, and offering a control that quietly does nothing is
+     * worse than not offering it. The search item is hidden on the same test a few lines
+     * further down, and for the same reason.
      */
     private fun setUpNightMode(toolbar: MaterialToolbar, kind: FileKind) {
         val item = toolbar.menu.findItem(R.id.action_night_mode)
@@ -426,7 +426,7 @@ open class ViewerActivity : AppCompatActivity() {
         // then, and turning a card that says "update your WebView" dark is not a
         // feature. Same standard as the two above, and as action_search.
         val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
-        if (kind != FileKind.PDF || !canPortSearch() || blocked) {
+        if (!kind.paged || !canPortSearch() || blocked) {
             item.isVisible = false
             return
         }
@@ -704,7 +704,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     private val pageIndicator: TextView by lazy { findViewById(R.id.pageIndicator) }
 
-    /** The viewer's own parts, dark with a PDF in night mode. See [NightChrome]. */
+    /** The viewer's own parts, dark with a document in night mode. See [NightChrome]. */
     private val nightChrome by lazy { NightChrome(this) }
 
     private val pageFader by lazy { AutoHide(pageIndicator, View.GONE) }
@@ -1710,7 +1710,7 @@ open class ViewerActivity : AppCompatActivity() {
         // instead of drawing itself white and then again. It is also the only route that
         // survives process death and the recreate() in showRendererGone, neither of which
         // leaves a port to send anything down.
-        val night = if (kind == FileKind.PDF && Settings.night(this)) 1 else 0
+        val night = if (kind.paged && Settings.night(this)) 1 else 0
         loadedNight = night == 1
         // The page a PDF was left at goes the same way, for the same two reasons and one
         // more: a document that opened at the top and then jumped would spend its opening

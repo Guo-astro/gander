@@ -357,7 +357,7 @@ var vwFind = (function () {
     } else if (verb === "c") {
       clear();
     } else if (window.vwPageCommand) {
-      /* A page to go to belongs to the page, where it has pages, as Word's does */
+      /* A page to go to and night mode belong to the page, where it has them, as Word's does */
       window.vwPageCommand(msg);
     }
   }

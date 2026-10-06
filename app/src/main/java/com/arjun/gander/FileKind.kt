@@ -30,8 +30,8 @@ enum class FileKind(val page: String) {
     UNSUPPORTED("unsupported.html");
 
     /**
-     * Drawn as pages: its page says which one is on screen and goes to one when asked.
-     * A PDF, and a Word document since issue #47.
+     * Drawn as pages: its page says which one is on screen, goes to one when asked, and
+     * turns over for night mode. A PDF, and a Word document since issue #47.
      */
     val paged: Boolean get() = this == PDF || this == DOCX
 

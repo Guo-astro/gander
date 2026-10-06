@@ -9,6 +9,10 @@
   on a blank line, so Gander places those itself, from the page count Word saved with the file.
   A file saved by WPS Office, Google Docs or LibreOffice has no such record, so it shows as before.
 
+- Night mode works in Word files too (also #47): the page goes black and the text light,
+  colours keep their hue, and a photograph stays as it was while a figure on a white background
+  turns over with the page. Printing still uses the document's own colours.
+
 - Sort and filter the files in a folder you added, from its menu (thanks @usernamebiney, who
   built both in #42). Sort by puts them in order of name, date or size, either way round, and
   the order you pick applies to every folder until you change it. Filter shows only the kinds of

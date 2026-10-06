@@ -135,10 +135,11 @@ function fitPageWidth() {
   }
 }
 
-/* What the app sends besides search: "g<n>" to go to a page */
+/* What the app sends besides search: "g<n>" to go to a page, "i1" and "i0" for night mode */
 window.vwPageCommand = function (msg) {
   var verb = msg.charAt(0);
   if (verb === "g") vwGoToPage(Math.floor(Number(msg.slice(1))));
+  else if (verb === "i") vwSetNight(msg.charAt(1) === "1");
 };
 
 /* The document may be up before the port arrives, and would otherwise say nothing until scrolled */
@@ -187,6 +188,7 @@ if (!vwWebViewTooOld("Word documents")) {
       vwDisarmLinks(container);
       fixSymbolChars(container);
       vwNumberPages(vwSheets());
+      if (vwNightOn) vwPrepareNight();
       /* Width first: it decides whether the document still overflows 980, which is the
          one thing that moves the height vwFitHeight is about to read. */
       fitPageWidth();

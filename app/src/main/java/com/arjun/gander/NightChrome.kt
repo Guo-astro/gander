@@ -27,8 +27,8 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.shape.MaterialShapeDrawable
 
 /**
- * The viewer's own parts in the app's night colours while a PDF is in night mode, whatever the
- * phone is set to.
+ * The viewer's own parts in the app's night colours while a PDF or Word document is in night
+ * mode, whatever the phone is set to.
  *
  * Night mode, issue #19, turns the page over inside the WebView, and pdf.html darkens its own
  * cards for the reader night mode is for: one whose phone is set to light. Everything around the

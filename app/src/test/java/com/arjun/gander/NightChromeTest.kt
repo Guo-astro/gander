@@ -156,10 +156,22 @@ class NightChromeTest {
         assertThat(parts.menu).isEqualTo(context.color(R.color.gander_surface_container))
     }
 
+    /** Word turns over as well since issue #47, so the frame goes dark with it. */
+    @Test
+    fun aWordDocumentOpenedInNightModeOpensWithTheViewerDark() {
+        Settings.setNight(context, true)
+        val parts = open("report.docx").parts()
+
+        assertThat(parts.toolbar).isEqualTo(Color.BLACK)
+        assertThat(parts.behindTheBars).isEqualTo(Color.BLACK)
+        assertThat(parts.searchBar).isEqualTo(Color.BLACK)
+        assertThat(parts.menu).isEqualTo(night.color(R.color.gander_surface_container))
+    }
+
     @Test
     fun nightModeLeavesTheOtherFormatsAsThePhoneHasThem() {
         Settings.setNight(context, true)
-        for (fixture in listOf("plain.txt", "report.docx", "notes.md", "tiny.png")) {
+        for (fixture in listOf("plain.txt", "letter.odt", "notes.md", "tiny.png")) {
             val parts = open(fixture).parts()
             assertThat(parts.behindTheBars).isEqualTo(context.color(R.color.gander_surface))
             assertThat(parts.searchBar).isEqualTo(context.color(R.color.gander_surface))
