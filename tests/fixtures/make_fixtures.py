@@ -1291,6 +1291,34 @@ def placed_by_design() -> None:
     written(OUT / "placed-by-design.pptx")
 
 
+def unsized() -> None:
+    """
+    Text whose size nothing in the deck gives, not its run, its master's styles or the deck's
+    defaults, beside a run that says 18 point (#48). PowerPoint draws both at 18 point, and
+    PPTXjs drew the first at whatever size its paragraph had.
+    """
+    from pptx import Presentation
+    from pptx.oxml.ns import qn
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    for styles in (prs.slide_master.element.find(qn("p:txStyles")), prs.part._element.find(qn("p:defaultTextStyle"))):
+        for props in styles.iter(qn("a:defRPr")):
+            props.attrib.pop("sz", None)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for n, (name, text, size) in enumerate((("Unsized", "No size anywhere", None), ("Sized", "Eighteen point", Pt(18)))):
+        box = slide.shapes.add_textbox(Inches(1), Inches(1 + 2 * n), Inches(8), Inches(1))
+        box.name = name
+        run = box.text_frame.paragraphs[0].add_run()
+        run.text = text
+        if size:
+            run.font.size = size
+    fix_core_properties(prs)
+    prs.save(str(OUT / "unsized.pptx"))
+    normalize_zip(OUT / "unsized.pptx")
+    written(OUT / "unsized.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2547,7 +2575,7 @@ def main() -> int:
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
-                 symbol_bullets, placed_by_design, relatives, texts, images, audio,
+                 symbol_bullets, placed_by_design, unsized, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

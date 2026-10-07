@@ -65,6 +65,7 @@ should stay obviously so.
 | `unwrapped.pptx` | Text boxes set not to wrap (`wrap="none"`), each far too narrow for its line: one aligned left, one centred and one aligned right, beside one that wraps as usual. A title that takes the setting from its layout, and a text box the layout draws behind the slide. PPTXjs never read the setting and wrapped every one of them at its width. |
 | `symbol-bullets.pptx` | Issue #48. Bullets in Wingdings 2 and Wingdings 3, as the Circuit design sets them. PPTXjs maps them to Unicode from `dingbat.js`, which Gander did not ship, and threw on the first. |
 | `placed-by-design.pptx` | Issue #48. Placeholders with an outline but no place of their own, as a deck converted from a PDF writes them: a title placed by the master and a body by its layout. PPTXjs read the place from the shape alone, and threw. |
+| `unsized.pptx` | Issue #48. Text whose size nothing in the deck gives, beside a run of 18 point, which is what PowerPoint draws both at. PPTXjs left the first the size of its paragraph. |
 | `report.docm`, `report.dotx` | Word's relatives: `report.docx` with its main part declared as a macro-enabled document's and as a template's, which is all that tells them apart. There are no macros in it. |
 | `budget.xltx` | `budget.xlsx` declared as an Excel template. |
 | `deck.ppsx`, `deck.pptm`, `deck.potx` | `deck.pptx` declared as a slide show, a macro-enabled presentation and a template. |

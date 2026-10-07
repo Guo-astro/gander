@@ -367,3 +367,22 @@ def test_a_placeholder_with_an_outline_but_no_place_sits_where_its_design_puts_i
     assert drawn_box(page, "From the layout") == pytest.approx([v * px for v in layouts_body], abs=1)
     said = page.text_content("#result").replace(" ", " ")
     assert "Placed by the master" in said and "Placed by the layout" in said
+
+
+# ---------------------------------------------------------------------------
+# Size: see sizeWhereNoneIsGiven in pptx.js
+# ---------------------------------------------------------------------------
+
+def test_text_whose_size_nothing_gives_is_drawn_at_18_point(viewer, page):
+    """
+    PowerPoint's own size. PPTXjs left such text the size of its paragraph: 0 in a placeholder
+    or shape, which drew nothing (#48), and the browser's 16 px in this text box.
+    """
+    viewer("pptx.html", "unsized.pptx")
+    wait_for_deck(page, 1)
+    sizes = page.evaluate(
+        """() => Object.fromEntries([...document.querySelectorAll('#result .text-block')]
+             .map((run) => [run.textContent.trim(), getComputedStyle(run).fontSize]))"""
+    )
+    assert sizes["Eighteen point"] != "0px", sizes
+    assert sizes["No size anywhere"] == sizes["Eighteen point"], sizes

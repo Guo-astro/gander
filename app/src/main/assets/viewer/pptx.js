@@ -29,6 +29,9 @@ var vwOpenPackage = JSZip.prototype.load;
 JSZip.prototype.load = function () {
   var zip = vwOpenPackage.apply(this, arguments);
   if (!zip.file("docProps/app.xml")) zip.file("docProps/app.xml", "<Properties/>");
+  var presentation = zip.file("ppt/presentation.xml");
+  var sized = presentation && sizeWhereNoneIsGiven(presentation.asText());
+  if (sized && sized !== presentation.asText()) zip.file("ppt/presentation.xml", sized);
   zip.file(/^ppt\/(slides|slideLayouts|slideMasters)\/[^/]+\.xml$/).forEach(function (part) {
     var xml = part.asText();
     var drawable = breaksPptxjsKeeps(pathsPptxjsDraws(xml));
@@ -47,6 +50,31 @@ JSZip.prototype.load = function () {
   });
   return zip;
 };
+
+/*
+ * PowerPoint draws text whose size nothing in the deck gives at 18 point. PPTXjs leaves it the
+ * size of its paragraph, 0 in a placeholder or shape, where it went undrawn. The deck's
+ * defaults, where PPTXjs looks last, are given 18 point at each level that names no size.
+ */
+function sizeWhereNoneIsGiven(xml) {
+  var doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) return xml;
+  var root = doc.documentElement;
+  var defaults = childrenNamed(root, "defaultTextStyle")[0];
+  if (!defaults) defaults = root.appendChild(doc.createElementNS(PRESENTATIONML, "p:defaultTextStyle"));
+  var changed = false;
+  for (var lvl = 1; lvl <= 9; lvl++) {
+    var level = childrenNamed(defaults, "lvl" + lvl + "pPr")[0];
+    if (!level) level = defaults.appendChild(doc.createElementNS(DRAWINGML, "a:lvl" + lvl + "pPr"));
+    var props = childrenNamed(level, "defRPr")[0];
+    if (!props) props = level.appendChild(doc.createElementNS(DRAWINGML, "a:defRPr"));
+    if (!props.hasAttribute("sz")) {
+      props.setAttribute("sz", "1800");
+      changed = true;
+    }
+  }
+  return changed ? new XMLSerializer().serializeToString(doc) : xml;
+}
 
 function pathsPptxjsDraws(xml) {
   // A path closed, or written empty, with another straight after it, or a lone segment
