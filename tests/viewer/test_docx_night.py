@@ -145,6 +145,30 @@ def test_the_port_turns_it_on_and_off(viewer, page, port):
     assert seen["pictures"] == ["none", "none", "none"]
 
 
+# Night mode asked for once the first drawing is up, as the port can ask it, and the file then
+# drawn again, as it is when Word's count finds pages it left no record of
+BETWEEN_DRAWINGS = """
+document.addEventListener('DOMContentLoaded', () => {
+  window.vwFindMissingPages = function () {
+    window.__vwFirstPicture = document.querySelector('#container img').src;
+    window.vwPageCommand('i1');
+    return Promise.resolve(true);
+  };
+});
+"""
+
+
+def test_night_mode_asked_for_between_two_drawings_turns_over_the_last(viewer, page):
+    """The second drawing replaces everything marked on the first, so night waits for it."""
+    page.add_init_script(BETWEEN_DRAWINGS)
+    open_word(viewer, page, night=False)
+    wait_for_pictures(page)
+    assert page.evaluate("() => document.querySelector('#container img').src !== window.__vwFirstPicture")
+    seen = look(page)
+    assert (seen["heading"], seen["ink"], seen["paper"]) == (HEADING_OVER, INK_OVER, PAPER_OVER)
+    assert seen["pictures"] == ["none", INVERT, INVERT]
+
+
 def test_a_document_opened_at_night_shows_once_it_is_dark(viewer, page):
     """Hidden until its colours are turned, so it never shows white first."""
     open_word(viewer, page)

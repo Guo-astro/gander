@@ -180,10 +180,10 @@ function vwNightPictures(container) {
   });
 }
 
-/* Once, the first time night is wanted after the document is drawn */
+/* Once, the first time night is wanted after the document's last drawing */
 function vwPrepareNight() {
   var container = document.getElementById("container");
-  if (vwNightReady || !container || !container.querySelector(".docx-wrapper")) return;
+  if (vwNightReady || !vwPages.settled || !container) return;
   vwNightReady = true;
   var style = document.createElement("style");
   style.id = "vw-night-rules";

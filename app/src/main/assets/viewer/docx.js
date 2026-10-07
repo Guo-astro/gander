@@ -203,6 +203,7 @@ if (!vwWebViewTooOld("Word documents")) {
         .then(function (missing) { if (missing) return vwDrawWordAgain(buf); });
     })
     .then(function () {
+      vwPages.settled = true;
       var container = document.getElementById("container");
       container.style.visibility = "";
       vwDisarmLinks(container);

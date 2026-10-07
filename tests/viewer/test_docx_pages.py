@@ -9,6 +9,7 @@ import re
 import zipfile
 
 from helpers import wait_until_done
+from port import _HANDSHAKE
 
 FIXTURE = "word-pages.docx"
 UNRECORDED = "word-unrecorded.docx"
@@ -319,6 +320,32 @@ def test_go_to_page_past_the_end_is_ignored(viewer, page, port):
     assert p.pages() == ["page 1 6"]
     # Nor does it throw, which the channel answers with a stray search count
     assert p.counts() == []
+
+
+# The app's channel handed over once the first drawing is up, as it is when the page finishes
+# loading then, and the missing pages drawn only after the page has heard it
+CHANNEL_BETWEEN_DRAWINGS = """
+document.addEventListener('DOMContentLoaded', () => {
+  const find = window.vwFindMissingPages, ready = window.vwPortReady;
+  let heard;
+  const told = new Promise(r => { heard = r; });
+  window.vwPortReady = function () { ready(); heard(); };
+  window.vwFindMissingPages = function () {
+    window.__vwFirstSheets = document.querySelectorAll('.docx-wrapper > section.docx').length;
+    (%s)();
+    return told.then(find);
+  };
+});
+""" % _HANDSHAKE
+
+
+def test_a_channel_that_comes_between_two_drawings_hears_the_last_ones_count(viewer, page):
+    page.add_init_script(CHANNEL_BETWEEN_DRAWINGS)
+    open_word(viewer, page, UNRECORDED)
+    page.wait_for_function("() => window.__vwInbox.some(m => m.startsWith('page '))")
+    page.wait_for_timeout(300)
+    assert page.evaluate("window.__vwFirstSheets") == 2
+    assert [m for m in page.evaluate("window.__vwInbox") if m.startswith("page ")] == ["page 1 4"]
 
 
 def test_a_document_of_one_page_says_nothing_about_pages(viewer, page, port):

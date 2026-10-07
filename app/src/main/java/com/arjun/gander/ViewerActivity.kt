@@ -412,12 +412,9 @@ open class ViewerActivity : AppCompatActivity() {
      * Turning a document's pages over for reading in the dark: a PDF's since issue #19,
      * a Word document's since #47.
      *
-     * Only where the message port exists, because that is the whole of how the page is
-     * told. The initial state has already gone out on the URL by the time this runs, so a
-     * WebView without the port still opens in the right mode; what it cannot do is change
-     * it without reopening the file, and offering a control that quietly does nothing is
-     * worse than not offering it. The search item is hidden on the same test a few lines
-     * further down, and for the same reason.
+     * Only where the page is handed the message port, see [pageSearches], since that is the
+     * whole of how it is told. Without it a document still opens in the right mode from the
+     * URL, but a control that could not change it would quietly do nothing.
      */
     private fun setUpNightMode(toolbar: MaterialToolbar, kind: FileKind) {
         val item = toolbar.menu.findItem(R.id.action_night_mode)
@@ -426,7 +423,7 @@ open class ViewerActivity : AppCompatActivity() {
         // then, and turning a card that says "update your WebView" dark is not a
         // feature. Same standard as the two above, and as action_search.
         val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
-        if (!kind.paged || !canPortSearch() || blocked) {
+        if (!kind.paged || !pageSearches || blocked) {
             item.isVisible = false
             return
         }

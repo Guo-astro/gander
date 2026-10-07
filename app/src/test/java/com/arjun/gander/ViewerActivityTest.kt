@@ -3,6 +3,7 @@ package com.arjun.gander
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
@@ -31,6 +32,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowToast
+import org.robolectric.shadows.ShadowWebView
 
 /**
  * The viewer, driven by the intents that really reach it.
@@ -198,6 +200,24 @@ class ViewerActivityTest {
             .findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_search)
         assertThat(search("plain.txt").isVisible).isTrue()
         assertThat(search("bracket.stl").isVisible).isFalse()
+    }
+
+    /**
+     * Night mode reaches a Word document's page over the channel, which a WebView below
+     * Chromium 105 never hands it, so there the toggle would darken the bars around a white page.
+     */
+    @Test
+    fun aWordDocumentOffersNightModeOnlyWhereItsPageHearsIt() {
+        fun nightOn(chromium: String): Boolean {
+            ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
+                packageName = "com.google.android.webview"
+                versionName = chromium
+            })
+            return open("report.docx").get()
+                .findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_night_mode).isVisible
+        }
+        assertThat(nightOn("104.0.5112.97")).isFalse()
+        assertThat(nightOn("105.0.5195.136")).isTrue()
     }
 
     /** A photo gets the tiling view, not a WebView. */

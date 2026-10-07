@@ -12,6 +12,9 @@
 var vwPages = {
   /* Whether this document's pages are Word's */
   split: false,
+  /* Whether the drawing on screen is the last, which the page counter and night mode wait for:
+     a second drawing replaces the first's pages and everything marked on them */
+  settled: false,
   /* Word's own count of its pages when it last saved the file, from docProps/app.xml */
   wordPages: 0,
   /* The places a second drawing starts a page Word left no record of; see vwFindMissingPages */
@@ -576,7 +579,7 @@ function vwPageOnScreen(sheets, vv) {
 function vwReportPage() {
   var sheets = vwSheets();
   var vv = window.visualViewport;
-  if (sheets.length < 2 || !vv || !vv.height) return;
+  if (!vwPages.settled || sheets.length < 2 || !vv || !vv.height) return;
   /* A page Go to page put on screen is named until the reader moves */
   if (vwPageAskedFor && Math.abs(vv.pageTop - vwPageAskedFor.top) > 1) vwPageAskedFor = null;
   var n = vwPageAskedFor ? vwPageAskedFor.n : vwPageOnScreen(sheets, vv);
