@@ -24,6 +24,10 @@
   file you tick, such as PDFs and images, and names them under the folder's title while it is
   on. A filter never hides folders, and it clears when you go back to the home screen.
 
+- More presentations open (thanks @xMohnad, who sent two of them to #48). Bullets in Wingdings 2
+  and 3 and titles placed by the slide layout used to stop the whole file with an error, and text
+  left at PowerPoint's default size drew too small or not at all.
+
 ## 2.2 (2026-10-05)
 
 - Print a PDF or a Word file from the viewer's menu, through Android's own print screen (thanks
