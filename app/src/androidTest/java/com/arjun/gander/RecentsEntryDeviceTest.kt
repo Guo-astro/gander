@@ -102,9 +102,18 @@ class RecentsEntryDeviceTest {
         return task
     }
 
-    /** The tasks of Gander's that the recent apps screen lists. */
+    /**
+     * The tasks of Gander's that the recent apps screen lists. A task can close between the list and the read of
+     * its id, which throws, so one that closed counts as gone.
+     */
     private fun recents(): List<Int> =
-        target.getSystemService(ActivityManager::class.java).appTasks.map { it.taskInfo.taskId }
+        target.getSystemService(ActivityManager::class.java).appTasks.mapNotNull {
+            try {
+                it.taskInfo.taskId
+            } catch (closed: IllegalArgumentException) {
+                null
+            }
+        }
 
     private fun <T : Any> waitFor(what: String, probe: () -> T?): T {
         val deadline = SystemClock.uptimeMillis() + 15_000
