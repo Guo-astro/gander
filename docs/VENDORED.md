@@ -125,7 +125,10 @@ the three forms `parseSpacing` writes for `line-height`: a bare number for "auto
 `calc(100% + <length>)` for "atLeast" and a length for "exact". It reads the theme's fonts
 from the `--docx-<name>-font` properties `renderTheme` writes, the paragraph mark's
 `runProps.fontSize`, and the class `processStyleName` gives a style, `docx_` and its id.
-`test_docx_lines.py` fails if any of these change shape.
+`docx.js` draws through `parseAsync` and `renderDocument`, the two halves of `renderAsync`,
+with `keepOrigin` set, so that `docx-lines.js` reads `contextualSpacing` from the styles
+part's `_xmlDocument` rather than parsing `styles.xml` again, then clears every part's in
+`document.parts`. `test_docx_lines.py` fails if any of these change shape.
 
 They also read the shapes of the parsed document: a break whose `break` is
 `"lastRenderedPageBreak"`, a run's `fieldRun` with `complexField` (by `charType`) and

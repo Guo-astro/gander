@@ -152,15 +152,31 @@ window.vwPortReady = function () {
   vwReportPage();
 };
 
+var VW_DRAW = {
+  inWrapper: true,
+  breakPages: true,
+  renderHeadersFooters: true,
+  ignoreLastRenderedPageBreak: true,
+  experimental: true,
+  keepOrigin: true,
+  h: makeElement
+};
+
+/*
+ * renderAsync in its two halves, so docx-lines.js can read what docx-preview leaves out of the
+ * styles from the XML it has just parsed (keepOrigin keeps it) instead of parsing it again.
+ */
 function vwDrawWord(buf) {
-  return docx.renderAsync(buf, document.getElementById("container"), null, {
-    inWrapper: true,
-    breakPages: true,
-    renderHeadersFooters: true,
-    ignoreLastRenderedPageBreak: true,
-    experimental: true,
-    h: makeElement
-  });
+  return docx.parseAsync(buf, VW_DRAW)
+    .then(function (doc) {
+      vwContextualSpacing(doc);
+      return docx.renderDocument(doc, VW_DRAW);
+    })
+    .then(function (nodes) {
+      var container = document.getElementById("container");
+      container.innerHTML = "";
+      nodes.forEach(function (node) { container.appendChild(node); });
+    });
 }
 
 /* A second drawing makes its pictures afresh, so the first one's are let go */
@@ -178,14 +194,12 @@ function vwDrawWordAgain(buf) {
 if (!vwWebViewTooOld("Word documents")) {
   vwFetchDoc("buffer")
     .then(function (buf) {
-      var spacing = vwContextualSpacing(buf);
       return vwDrawWord(buf)
         .then(function () {
           /* Out of sight until its pages are final, or a second drawing would move them on screen */
           document.getElementById("container").style.visibility = "hidden";
-          return spacing;
+          return vwFindMissingPages();
         })
-        .then(vwFindMissingPages)
         .then(function (missing) { if (missing) return vwDrawWordAgain(buf); });
     })
     .then(function () {

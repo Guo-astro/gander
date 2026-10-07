@@ -156,31 +156,28 @@ function vwStrutAsText(el, para) {
 
 /*
  * Word sets no space between paragraphs of a style that asks for none (w:contextualSpacing, as
- * List Paragraph does), and docx-preview reads no such setting, so it is read here. Resolves
- * once the rules are in, and on any failure, which leaves the spacing as docx-preview drew it.
+ * List Paragraph does), and docx-preview reads no such setting, so it is read here, from the
+ * styles' XML that vwDrawWord has docx-preview keep. Then every part's XML is let go before the
+ * document is drawn, so a long one is not held twice.
  */
-function vwContextualSpacing(buf) {
-  if (typeof JSZip === "undefined") return Promise.resolve();
-  return JSZip.loadAsync(buf)
-    .then(function (zip) {
-      var part = zip.file("word/styles.xml");
-      return part ? part.async("string") : "";
-    })
-    .then(function (xml) {
-      var css = xml && vwContextualCss(xml);
-      if (!css) return;
-      var style = document.createElement("style");
-      style.textContent = css;
-      document.head.appendChild(style);
-    })
-    .catch(function () {});
+function vwContextualSpacing(doc) {
+  var styles = doc.stylesPart && doc.stylesPart._xmlDocument;
+  var css = styles ? vwContextualCss(styles) : "";
+  (doc.parts || []).forEach(function (part) { part._xmlDocument = null; });
+  /* A second drawing of the same file needs the same rules, which are already in */
+  if (!css || document.getElementById("vw-contextual")) return;
+  var style = document.createElement("style");
+  style.id = "vw-contextual";
+  style.textContent = css;
+  document.head.appendChild(style);
 }
 
 var VW_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
-function vwContextualCss(xml) {
-  var doc = new DOMParser().parseFromString(xml, "application/xml");
-  var own = {}, basedOn = {}, css = "";
+function vwContextualCss(doc) {
+  /* Most files set it nowhere, and walking each of a long template's styles costs the phone milliseconds */
+  if (!doc.getElementsByTagNameNS(VW_W, "contextualSpacing").length) return "";
+  var own = {}, basedOn = {}, done = {}, css = "";
   [].forEach.call(doc.getElementsByTagNameNS(VW_W, "style"), function (style) {
     if (style.getAttributeNS(VW_W, "type") !== "paragraph") return;
     var id = style.getAttributeNS(VW_W, "styleId");
@@ -193,8 +190,9 @@ function vwContextualCss(xml) {
     if (id in own) return own[id];
     return depth < 20 && id in basedOn ? on(basedOn[id], depth + 1) : false;
   }
-  Object.keys(basedOn).concat(Object.keys(own)).forEach(function (id, i, all) {
-    if (all.indexOf(id) !== i || !on(id, 0)) return;
+  Object.keys(basedOn).concat(Object.keys(own)).forEach(function (id) {
+    if (done[id] || !on(id, 0)) return;
+    done[id] = true;
     /* docx-preview's class for the style, as its processStyleName makes it */
     var p = "p." + CSS.escape("docx_" + id.replace(/[ .]+/g, "-").replace(/[&]+/g, "and").toLowerCase());
     css += ".docx-wrapper " + p + " + " + p + " { margin-top: 0 !important; }\n" +
