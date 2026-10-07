@@ -203,21 +203,29 @@ class ViewerActivityTest {
     }
 
     /**
-     * Night mode reaches a Word document's page over the channel, which a WebView below
-     * Chromium 105 never hands it, so there the toggle would darken the bars around a white page.
+     * A Word document's night mode, page counter and Go to page go over the channel, so its page
+     * gets one below Chromium 105 too, where it is too old to search itself. A Markdown file
+     * there needs none, since Chromium's own find searches it.
      */
     @Test
-    fun aWordDocumentOffersNightModeOnlyWhereItsPageHearsIt() {
-        fun nightOn(chromium: String): Boolean {
-            ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
-                packageName = "com.google.android.webview"
-                versionName = chromium
-            })
-            return open("report.docx").get()
-                .findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_night_mode).isVisible
+    fun aWordDocumentGetsTheChannelOnAWebViewTooOldToSearchIt() {
+        ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
+            packageName = "com.google.android.webview"
+            versionName = "104.0.5112.97"
+        })
+        fun loaded(fixture: String) = open(fixture).also {
+            val web = it.webView()!!
+            web.webViewClient.onPageFinished(web, it.loadedUrl())
         }
-        assertThat(nightOn("104.0.5112.97")).isFalse()
-        assertThat(nightOn("105.0.5195.136")).isTrue()
+        assertThat(shadowOf(loaded("notes.md").webView()!!).createdPorts).isEmpty()
+
+        val word = loaded("report.docx")
+        val channels = shadowOf(word.webView()!!).createdPorts
+        assertThat(channels).hasSize(1)
+        val menu = word.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
+        assertThat(menu.findItem(R.id.action_night_mode).isVisible).isTrue()
+        menu.performIdentifierAction(R.id.action_night_mode, 0)
+        assertThat(channels[0][0].outgoingMessages).containsExactly("i1")
     }
 
     /** A photo gets the tiling view, not a WebView. */

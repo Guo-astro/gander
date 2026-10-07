@@ -412,7 +412,7 @@ open class ViewerActivity : AppCompatActivity() {
      * Turning a document's pages over for reading in the dark: a PDF's since issue #19,
      * a Word document's since #47.
      *
-     * Only where the page is handed the message port, see [pageSearches], since that is the
+     * Only where the page is handed the message port, see [pageGetsChannel], since that is the
      * whole of how it is told. Without it a document still opens in the right mode from the
      * URL, but a control that could not change it would quietly do nothing.
      */
@@ -423,7 +423,7 @@ open class ViewerActivity : AppCompatActivity() {
         // then, and turning a card that says "update your WebView" dark is not a
         // feature. Same standard as the two above, and as action_search.
         val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
-        if (!kind.paged || !pageSearches || blocked) {
+        if (!kind.paged || !pageGetsChannel(kind) || blocked) {
             item.isVisible = false
             return
         }
@@ -1236,6 +1236,12 @@ open class ViewerActivity : AppCompatActivity() {
                 WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK)
 
     /**
+     * Whether the page is handed the channel: a page that searches itself, and a paged document
+     * whatever searches it, since its page counter and night mode go over the channel too.
+     */
+    private fun pageGetsChannel(kind: FileKind): Boolean = pageSearches || (kind.paged && canPortSearch())
+
+    /**
      * Hand the page one end of a message channel: pdf.html, or a page that finds with find.js.
      *
      * This is the only channel from this app into a page, and it is deliberately not
@@ -1629,8 +1635,9 @@ open class ViewerActivity : AppCompatActivity() {
 
         web.webViewClient = object : WebViewClientCompat() {
             override fun onPageFinished(view: WebView, url: String) {
-                // The viewers that search from inside the page need a way to answer
-                if (pageSearches) openSearchChannel(view, kind)
+                // The viewers that search from inside the page need a way to answer, and a
+                // paged document a way to report its pages and hear night mode
+                if (pageGetsChannel(kind)) openSearchChannel(view, kind)
             }
 
             /**
