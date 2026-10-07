@@ -43,9 +43,11 @@ class ReleaseHygieneTest {
          * the SHA-256 of en-US/short_description.txt followed by
          * en-US/full_description.txt, which is what
          * `cat short_description.txt full_description.txt | shasum -a 256` prints
-         * from that folder.
+         * from that folder. The translated short descriptions keep their "no ads"
+         * while the English one leaves it out, because Play Console flags the
+         * English phrase as a promotion keyword and none of the translated ones.
          */
-        const val TRANSLATED_FROM = "81e0a45ac2f27f0b1ea383873fec1425081062a64cc69bfcff62c837e8906173"
+        const val TRANSLATED_FROM = "8eeaa9e310b2cf232ac3918f99fec5cdbbfb63f0f61651ba42afc7c0716eaad9"
 
         /** Every listing language beside the English, read off the disk. */
         val TRANSLATIONS: List<File> = LISTING.listFiles { f -> f.isDirectory && f.name != "en-US" }
