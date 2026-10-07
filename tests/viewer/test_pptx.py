@@ -327,3 +327,16 @@ def test_a_box_set_not_to_wrap_keeps_its_lines_whole(viewer, page):
     (box, text) = text_span(page, "Centred")
     assert text[0] < box[0] - 20 and text[1] > box[1] + 20, (box, text)
     assert abs((text[0] + text[1]) - (box[0] + box[1])) / 2 < 2, (box, text)
+
+
+# ---------------------------------------------------------------------------
+# Symbol bullets: see dingbat.js in pptx.html
+# ---------------------------------------------------------------------------
+
+def test_a_bullet_in_wingdings_2_or_3_is_drawn_as_its_unicode(viewer, page):
+    """PPTXjs maps them from a table Gander did not ship, and threw on the first (#48)."""
+    viewer("pptx.html", "symbol-bullets.pptx")
+    wait_for_deck(page, 1)
+    said = page.text_content('#result div[_name="Bullets"]')
+    assert "●" in said, said
+    assert "\U0001f782" in said, said

@@ -27,6 +27,7 @@ commit.
 | `marked.min.js` | marked | 15.0.12 | MIT | https://github.com/markedjs/marked |
 | `purify.min.js` | DOMPurify | 3.4.12 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
 | `pptx/pptxjs.js` | PPTXjs | 1.21.1 | MIT | https://github.com/meshesha/PPTXjs |
+| `pptx/dingbat.js` | PPTXjs (its table of symbol-font characters) | 1.21.1 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/divs2slides.js` | divs2slides (PPTXjs) | 1.3.2 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/filereader.js` | FileReader.js (PPTXjs bundle) | 0.99 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/jquery.min.js` | jQuery | 1.11.3 | MIT | https://github.com/jquery/jquery |

@@ -1227,6 +1227,41 @@ def unwrapped() -> None:
     written(OUT / "unwrapped.pptx")
 
 
+def symbol_bullets() -> None:
+    """
+    Bullets in Wingdings 2 and Wingdings 3, as the Circuit design sets them (#48). PPTXjs
+    maps their characters to Unicode from a table in a file of its own, which Gander did not
+    ship, so the first such bullet stopped the deck.
+    """
+    from pptx import Presentation
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(2))
+    box.name = "Bullets"
+    frame = box.text_frame
+    for n, (font, char, text) in enumerate((
+        ("Wingdings 2", chr(0xF098), "A circle from Wingdings 2"),
+        ("Wingdings 3", chr(0xF07D), "An arrowhead from Wingdings 3"),
+    )):
+        paragraph = frame.paragraphs[0] if n == 0 else frame.add_paragraph()
+        run = paragraph.add_run()
+        run.text = text
+        run.font.size = Pt(24)
+        props = paragraph._p.get_or_add_pPr()
+        props.set("marL", "457200")
+        props.set("indent", "-457200")
+        props.append(parse_xml(f'<a:buFont {nsdecls("a")} typeface="{font}"/>'))
+        props.append(parse_xml(f'<a:buChar {nsdecls("a")} char="{char}"/>'))
+    fix_core_properties(prs)
+    prs.save(str(OUT / "symbol-bullets.pptx"))
+    normalize_zip(OUT / "symbol-bullets.pptx")
+    written(OUT / "symbol-bullets.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2482,7 +2517,8 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
-                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped, relatives, texts, images, audio,
+                 without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
+                 symbol_bullets, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
