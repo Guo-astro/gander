@@ -18,6 +18,7 @@ access at all**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/mokshablr/gander)](../../releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/mokshablr/gander/total)](../../releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/mokshablr/gander/build.yml?branch=main)](../../actions)
 ![Min API](https://img.shields.io/badge/minSdk-26%20(Android%208)-brightgreen)
 ![Kotlin](https://img.shields.io/badge/Kotlin-100%25-purple)
