@@ -810,6 +810,52 @@ def word_colours() -> None:
     written(target)
 
 
+def word_lines() -> None:
+    """
+    Lines as Word sets them, in python-docx's template: the theme's Cambria at 11pt with Word's
+    1.15 lines and 10pt after each paragraph. Then a blank line, spacing of at least 14pt and of
+    at least 10pt, exactly 12pt, a run in Arial, three List Paragraph items, a style that asks
+    for no space between its paragraphs, and a blank line whose mark is 20pt.
+    """
+    from docx import Document
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Pt
+
+    long = " ".join(["The Willowmere ledger keeps one line for every reading taken at the north well."] * 5)
+    doc = Document()
+    doc.add_paragraph("Auto. " + long)
+    doc.add_paragraph()
+    doc.add_paragraph("After the blank line.")
+    for name, size, rule in (("At least fourteen. ", 14, WD_LINE_SPACING.AT_LEAST),
+                             ("At least ten. ", 10, WD_LINE_SPACING.AT_LEAST),
+                             ("Exactly twelve. ", 12, WD_LINE_SPACING.EXACTLY)):
+        spacing = doc.add_paragraph(name + long).paragraph_format
+        spacing.line_spacing = Pt(size)
+        spacing.line_spacing_rule = rule
+    doc.add_paragraph().add_run("Arial. " + long).font.name = "Arial"
+    for n in (1, 2, 3):
+        doc.add_paragraph(f"List item {n}.", style="List Paragraph")
+    doc.add_paragraph("After the list.")
+    mark, size = OxmlElement("w:rPr"), OxmlElement("w:sz")
+    size.set(qn("w:val"), "40")
+    mark.append(size)
+    doc.add_paragraph()._p.get_or_add_pPr().append(mark)
+    doc.add_paragraph("After the tall blank line.")
+    fix_core_properties(doc)
+    target = OUT / "word-lines.docx"
+    doc.save(str(target))
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+        styles = z.read("word/styles.xml").decode()
+    assert body.count('w:lineRule="atLeast"') == 2 and body.count('w:lineRule="exact"') == 1
+    assert body.count('<w:pPr><w:rPr><w:sz w:val="40"/></w:rPr></w:pPr>') == 1
+    assert re.search(r'w:styleId="ListParagraph".*?<w:contextualSpacing/>', styles, re.S)
+    normalize_zip(target)
+    written(target)
+
+
 SHEET_ROWS = [
     ("Item", "Quarter", "Amount"),
     ("Surveying", "Q3", 4200),
@@ -2435,7 +2481,7 @@ def models() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, xlsx, pptx,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped, relatives, texts, images, audio,
                  zips, prose, models):
         step()

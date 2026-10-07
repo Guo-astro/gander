@@ -386,8 +386,8 @@ function vwFindMissingPages() {
   });
 }
 
-/* Over its paper by more than 5%, leaving room for Gander's fonts running longer than Word's */
-var VW_OVERFLOW = 1.05;
+/* Over its paper by more than 2%: lines as Word sets them (docx-lines.js) run that close to Word's */
+var VW_OVERFLOW = 1.02;
 
 /*
  * Each missing page goes to the sheet that runs furthest over its paper, while one does and
@@ -452,9 +452,10 @@ function vwMeasureSheet(sheet) {
   var padTop = parseFloat(style.paddingTop) || 0;
   var room = (parseFloat(style.minHeight) || 0) - padTop - (parseFloat(style.paddingBottom) || 0);
   var top = sheet.getBoundingClientRect().top + padTop, bottom = top;
-  var articles = sheet.querySelectorAll(":scope > article");
-  for (var a = 0; a < articles.length; a++) {
-    bottom = Math.max(bottom, articles[a].getBoundingClientRect().bottom);
+  /* To the last ink, since Word lets a page's last space after fall below its margin */
+  var blocks = sheet.querySelectorAll(":scope > article > *");
+  for (var a = 0; a < blocks.length; a++) {
+    bottom = Math.max(bottom, blocks[a].getBoundingClientRect().bottom);
   }
   var places = [], last = null;
   var marked = sheet.querySelectorAll(":scope > article [data-vw-place]");

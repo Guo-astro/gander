@@ -111,13 +111,21 @@ so neither sets a floor today.
 
 ## Before upgrading docx-preview
 
-docx-preview stays as upstream ships it, so `docx.js` and `docx-pages.js` change it from
-outside, through the `h` option, which it calls as the renderer's own method. From there
-they replace seven renderer methods by name: `renderRun` (subscript runs drawn twice,
-docxjs#233, and the page-number fields), and `splitBySection`, `groupByPageBreaks`,
+docx-preview stays as upstream ships it, so `docx.js`, `docx-pages.js` and `docx-lines.js`
+change it from outside, through the `h` option, which it calls as the renderer's own method.
+From there they replace eight renderer methods by name: `renderRun` (subscript runs drawn
+twice, docxjs#233, and the page-number fields), `splitBySection`, `groupByPageBreaks`,
 `createPageElement`, `renderHeaderFooter`, `renderParagraph` and `renderTableRow` (Word's
-own pages, issue #47). The names survive minification. Check that each still exists in a new file, with the same
-arguments, before upgrading.
+own pages, issue #47), and `styleToString` (lines as Word sets them). The names survive
+minification. Check that each still exists in a new file, with the same arguments, before
+upgrading.
+
+`docx-lines.js` also rewrites the style objects `h` receives for `p` and `span`, so it reads
+the three forms `parseSpacing` writes for `line-height`: a bare number for "auto",
+`calc(100% + <length>)` for "atLeast" and a length for "exact". It reads the theme's fonts
+from the `--docx-<name>-font` properties `renderTheme` writes, the paragraph mark's
+`runProps.fontSize`, and the class `processStyleName` gives a style, `docx_` and its id.
+`test_docx_lines.py` fails if any of these change shape.
 
 They also read the shapes of the parsed document: a break whose `break` is
 `"lastRenderedPageBreak"`, a run's `fieldRun` with `complexField` (by `charType`) and

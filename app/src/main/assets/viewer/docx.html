@@ -80,6 +80,19 @@
     .docx-wrapper > section.docx { box-shadow: 0 1px 8px rgba(0,0,0,0.6) !important; }
   }
 
+  /*
+   * Lines as Word sets them (docx-lines.js): a line's height from Word's rule for it and the
+   * line of the font it is in, and a blank line as tall as a line. The first rule keeps a
+   * paragraph inside another, as in a text box, from taking its spacing.
+   */
+  :where(.docx-wrapper section.docx p) { --vw-m: 1; --vw-lh: initial; }
+  .docx-wrapper section.docx p, .docx-wrapper section.docx span {
+    line-height: var(--vw-lh, calc(var(--vw-m, 1) * var(--vw-f, 1.2)));
+  }
+  .docx-wrapper section.docx p {
+    min-height: var(--vw-lh, calc(var(--vw-m, 1) * var(--vw-f, 1.2) * 1em));
+  }
+
   /* The rest of a paragraph a page cut in two (docx-pages.js): its number and first-line
      indent stay with the first half, as Word draws it */
   .docx-wrapper p.vw-cont::before { content: none !important; counter-increment: none !important; }
@@ -158,6 +171,7 @@
 <script src="app.js"></script>
 <script src="find.js"></script>
 <script src="docx-pages.js"></script>
+<script src="docx-lines.js"></script>
 <script src="docx-night.js"></script>
 <script src="docx.js"></script>
 </body>

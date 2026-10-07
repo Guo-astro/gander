@@ -36,8 +36,12 @@ function makeElement(spec) {
   if (this && this.renderRun && !this.vwRunsOnce) {
     vwSplitAsWordDid(this);
     drawRunsOnce(this);
+    vwWordLines(this);
   }
-  return docx.defaultOptions.h(spec);
+  var custom = vwWordElement(spec);
+  var el = docx.defaultOptions.h(spec);
+  for (var name in custom) el.style.setProperty(name, custom[name]);
+  return el;
 }
 
 function drawRunsOnce(renderer) {
@@ -174,12 +178,14 @@ function vwDrawWordAgain(buf) {
 if (!vwWebViewTooOld("Word documents")) {
   vwFetchDoc("buffer")
     .then(function (buf) {
+      var spacing = vwContextualSpacing(buf);
       return vwDrawWord(buf)
         .then(function () {
           /* Out of sight until its pages are final, or a second drawing would move them on screen */
           document.getElementById("container").style.visibility = "hidden";
-          return vwFindMissingPages();
+          return spacing;
         })
+        .then(vwFindMissingPages)
         .then(function (missing) { if (missing) return vwDrawWordAgain(buf); });
     })
     .then(function () {

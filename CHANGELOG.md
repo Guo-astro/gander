@@ -9,6 +9,11 @@
   on a blank line, so Gander places those itself, from the page count Word saved with the file.
   A file saved by WPS Office, Google Docs or LibreOffice has no such record, so it shows as before.
 
+- Word pages look more like Word's (also #47). Lines sit as far apart as Word sets them, blank
+  lines included, and list items Word sets with no space between them have none. Your phone has
+  none of Word's fonts, so Gander draws each in one of the phone's own, sized to the same width,
+  and a page holds what it held in Word. That also finds more of the pages Word left no record of.
+
 - Night mode works in Word files too (also #47): the page goes black and the text light,
   colours keep their hue, and a photograph stays as it was while a figure on a white background
   turns over with the page. Printing still uses the document's own colours.

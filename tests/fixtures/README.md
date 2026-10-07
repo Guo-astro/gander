@@ -49,6 +49,7 @@ should stay obviously so.
 | `word-columns.docx` | Issue #47. Word records the top of each column as it does each page. Three pages in Word: three columns and the section running on after them share page one, with a record at the top of each, then a paragraph crosses to page two and the last section starts page three. |
 | `word-unrecorded.docx` | Issue #47. Pages Word began where it can save no record, which it writes only in a run. Four pages, as `docProps/app.xml` says: page two begins among blank lines, page three where Word recorded it, and page four on a table row whose first cell is empty, under a header row that repeats. |
 | `word-colours.docx` | Issue #47's night mode for Word: ink, a coloured heading, a colour given only by the theme, a highlight, a shaded cell, a bordered paragraph, a photograph that must stay as it is, and a white-backed figure and an ink drawing on nothing that must turn over. |
+| `word-lines.docx` | Lines as Word sets them (`docx-lines.js`): the theme's Cambria at 11pt with Word's 1.15 lines, a blank line, spacing of at least 14pt and of at least 10pt, exactly 12pt, a run in Arial, and three List Paragraph items, a style asking for no space between its paragraphs. |
 | `budget.xlsx` | Three sheets, so the sheet tabs have something to switch between. |
 | `budget.csv` | The same rows as the first sheet. Routes to the spreadsheet viewer, not the text one. |
 | `utf8.csv` | Issue #37. UTF-8 with no byte order mark, which SheetJS reads as Latin-1 when handed bytes. Letters of two, three and four bytes. |
