@@ -4,6 +4,7 @@
 
 <p align="center">
   <a href="https://play.google.com/store/apps/details?id=com.arjun.gander"><img src="docs/play-badge.png" alt="Get it on Google Play" height="80"></a>
+  <a href="https://trendshift.io/repositories/98260"><img src="https://trendshift.io/api/badge/repositories/98260" alt="Trendshift: GitHub Trending, #8 Repository Of The Day" width="250" height="55"></a>
 </p>
 
 # Gander 🪿
