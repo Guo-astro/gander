@@ -340,3 +340,30 @@ def test_a_bullet_in_wingdings_2_or_3_is_drawn_as_its_unicode(viewer, page):
     said = page.text_content('#result div[_name="Bullets"]')
     assert "●" in said, said
     assert "\U0001f782" in said, said
+
+
+# ---------------------------------------------------------------------------
+# Placeholders: see placeTheDesignGives in pptx.js
+# ---------------------------------------------------------------------------
+
+def drawn_box(page, name):
+    """Where the shape called [name] is drawn on its slide: left, top, width and height."""
+    return page.evaluate(
+        """(n) => { const s = document.querySelector(`#result div.block[_name="${n}"]`);
+             const slide = s.closest('.slide'), r = s.getBoundingClientRect(), o = slide.getBoundingClientRect();
+             return [r.x - o.x - slide.clientLeft, r.y - o.y - slide.clientTop, r.width, r.height]; }""",
+        name,
+    )
+
+
+def test_a_placeholder_with_an_outline_but_no_place_sits_where_its_design_puts_it(viewer, page):
+    """PPTXjs read the place of a shape with an outline from the shape alone, and threw (#48)."""
+    viewer("pptx.html", "placed-by-design.pptx")
+    wait_for_deck(page, 1)
+    px = 96 / 914400
+    masters_title = (457200, 274638, 8229600, 1143000)
+    layouts_body = (4572000, 2286000, 3657600, 2743200)
+    assert drawn_box(page, "From the master") == pytest.approx([v * px for v in masters_title], abs=1)
+    assert drawn_box(page, "From the layout") == pytest.approx([v * px for v in layouts_body], abs=1)
+    said = page.text_content("#result").replace(" ", " ")
+    assert "Placed by the master" in said and "Placed by the layout" in said

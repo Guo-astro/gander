@@ -42,7 +42,7 @@ JSZip.prototype.load = function () {
   });
   zip.file(/^ppt\/(slides|slideLayouts|slideMasters)\/[^/]+\.xml$/).forEach(function (part) {
     var xml = part.asText();
-    var marked = linesLeftWhole(zip, part.name, xml, designs);
+    var marked = placeTheDesignGives(zip, part.name, linesLeftWhole(zip, part.name, xml, designs), designs);
     if (marked !== xml) zip.file(part.name, marked);
   });
   return zip;
@@ -317,6 +317,39 @@ function linesLeftWhole(zip, name, xml, designs) {
     }
   }
   return changed ? new XMLSerializer().serializeToString(doc) : xml;
+}
+
+/*
+ * A placeholder that gives its shape an outline but no place sits where its layout's
+ * placeholder does, or else its master's. PPTXjs reads that place from the shape alone and
+ * threw ("reading 'x'"), so the place is written into the shape.
+ */
+var PLACED_BY_DESIGN = /<p:spPr\b[^>]*>\s*<a:(prstGeom|custGeom)\b/;
+
+function placeTheDesignGives(zip, name, xml, designs) {
+  if (!PLACED_BY_DESIGN.test(xml)) return xml;
+  var layout = /^ppt\/slides\//.test(name) ? designPart(zip, relatedPart(zip, name, "slideLayout"), designs) : null;
+  var master = designPart(zip, relatedPart(zip, layout ? layout.name : name, "slideMaster"), designs);
+  var doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) return xml;
+  var changed = false;
+  var shapes = doc.getElementsByTagNameNS(PRESENTATIONML, "sp");
+  for (var i = 0; i < shapes.length; i++) {
+    var spPr = childrenNamed(shapes[i], "spPr")[0];
+    var first = spPr && spPr.firstElementChild;
+    if (!first || (first.localName !== "prstGeom" && first.localName !== "custGeom")) continue;
+    var behind = placeholdersBehind(shapes[i], layout, master);
+    var place = behind && (placeOf(behind.layout) || placeOf(behind.master));
+    if (!place) continue;
+    spPr.insertBefore(doc.importNode(place, true), first);
+    changed = true;
+  }
+  return changed ? new XMLSerializer().serializeToString(doc) : xml;
+}
+
+function placeOf(sp) {
+  var spPr = sp && childrenNamed(sp, "spPr")[0];
+  return spPr ? childrenNamed(spPr, "xfrm")[0] : null;
 }
 
 /*

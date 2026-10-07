@@ -1262,6 +1262,35 @@ def symbol_bullets() -> None:
     written(OUT / "symbol-bullets.pptx")
 
 
+def placed_by_design() -> None:
+    """
+    Placeholders that give their shape an outline but leave out where it sits, as a deck
+    converted from a PDF writes them (#48): a title that sits where the master's does, and a
+    body where its layout's does. PPTXjs read that place from the shape alone, and threw.
+    """
+    from pptx import Presentation
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+    from pptx.util import Inches
+
+    prs = Presentation()
+    layout = prs.slide_layouts[1]
+    body = layout.placeholders.get(idx=1)
+    body.left, body.top, body.width, body.height = Inches(5), Inches(2.5), Inches(4), Inches(3)
+    slide = prs.slides.add_slide(layout)
+    for shape, name, text in (
+        (slide.shapes.title, "From the master", "Placed by the master"),
+        (slide.placeholders[1], "From the layout", "Placed by the layout"),
+    ):
+        shape.name = name
+        shape.text = text
+        shape._element.spPr.append(parse_xml(f'<a:prstGeom {nsdecls("a")} prst="rect"><a:avLst/></a:prstGeom>'))
+    fix_core_properties(prs)
+    prs.save(str(OUT / "placed-by-design.pptx"))
+    normalize_zip(OUT / "placed-by-design.pptx")
+    written(OUT / "placed-by-design.pptx")
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2518,7 +2547,7 @@ def main() -> int:
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
-                 symbol_bullets, relatives, texts, images, audio,
+                 symbol_bullets, placed_by_design, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
