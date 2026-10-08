@@ -50,7 +50,7 @@ It cannot phone home because it does not even hold the INTERNET permission.
 - **Opens `.zip` files**: a zip lists like a folder, and each file in it opens in its usual viewer, read straight out of the archive with nothing unzipped to the phone
 - **Pinch zoom and smooth scrolling** everywhere, with deep zoom into huge photos (tiled decoding)
 - **Recent files** with thumbnail previews (image, video frame, PDF first page)
-- **Folder browsing** through one-time system grants, still without any storage permission
+- **Folder browsing** through one-time system grants, still without any storage permission. A folder's menu sorts its files by name, date or size, and filters them by kind
 - **Share sheet and "Open with" integration**: share a file from any app (chat, mail, browser) into Gander, or tap it in a file manager
 - **Find in document**: search inside PDF, Word, OpenDocument, Rich Text, every sheet of a workbook, slides, Markdown, text and code with match navigation
 - **Select and copy text in a PDF**, and read one with a screen reader
@@ -102,6 +102,10 @@ pictures, footnotes, headers and footers, in any script. The file's first bytes 
 reader, so a `.doc` that is Rich Text inside, as many are, opens all the same. Word 6 and
 Word 95 files show their text without formatting, and a Windows metafile picture shows a
 box saying it cannot be drawn.
+
+In a `.pptx`, a chart, diagram, picture, table or text that PPTXjs cannot draw, such as a
+doughnut or radar chart or an EMF or WMF picture, is left out, and a box in its place says
+what is missing. The rest of the slide is drawn.
 
 Legacy binary `.ppt` is not supported (no open-source renderer is both faithful and small
 enough to bundle); the app explains this and suggests re-saving as `.pptx`. Binary `.xls`
