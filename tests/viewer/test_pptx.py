@@ -396,7 +396,9 @@ def test_what_pptxjs_cannot_draw_is_left_out_and_every_slide_drawn(viewer, page)
     """
     A chart whose part is missing ("reading 'c:chartSpace'") and a picture with no image on a
     layout each put the error card up in place of every slide (#48). Only they are left out:
-    the chart's slide keeps its other shapes, and the layout its text.
+    the chart's slide keeps its other shapes, and the layout its text. Each is marked where
+    it would be, as is a shaded box with text, which PPTXjs also throws on. One with no text
+    is left out unmarked, as is the layout's empty placeholder, which no slide shows.
     """
     viewer("pptx.html", "unreadable.pptx")
     wait_for_deck(page, 3)
@@ -407,10 +409,16 @@ def test_what_pptxjs_cannot_draw_is_left_out_and_every_slide_drawn(viewer, page)
                  "On a layout with a broken picture", "Drawn by the layout"):
         assert text in said, text
     assert page.query_selector("#result [id^='chart']") is None
+    assert missing(page) == [
+        (1, "A chart that cannot be shown here", [96, 192, 384, 288]),
+        (2, "A shape that cannot be shown here", [480, 192, 288, 96]),
+        (3, "A picture that cannot be shown here", [48, 48, 96, 96]),
+    ]
 
 
-# nv.d3's bar chart throws as PPTXjs draws it, the way an odd chart could inside nv.d3.
-# nv.d3 sets window.nv before it fills nv.models, so the models are wrapped as they are read.
+# nv.d3's bar chart throws as PPTXjs draws it, once its svg is in, the way an odd chart could
+# inside nv.d3. nv.d3 sets window.nv before it fills nv.models, so the models are wrapped as
+# they are read, and the chart keeps its axes, which PPTXjs sets before it draws.
 CHART_THAT_THROWS = """
 (() => {
   let nv;
@@ -420,11 +428,22 @@ CHART_THAT_THROWS = """
     set: (real) => {
       nv = new Proxy(real, { get: (target, key) => key !== "models" ? target[key]
         : new Proxy(target.models, { get: (models, name) => name !== "multiBarChart" ? models[name]
-          : () => { throw new Error("a chart nv.d3 cannot draw"); } }) });
+          : () => Object.assign(() => { throw new Error("a chart nv.d3 cannot draw"); }, models[name]()) }) });
     },
   });
 })();
 """
+
+
+def missing(page):
+    """Each box pptx.js put where something is missing: its slide, its sentence, and its place there."""
+    return [tuple(box) for box in page.evaluate("""
+        [...document.querySelectorAll('#result .vw-missing')].map(box => {
+          const slide = box.closest('.slide'), at = box.getBoundingClientRect(), on = slide.getBoundingClientRect();
+          return [[...document.querySelectorAll('#result .slide')].indexOf(slide) + 1, box.textContent,
+                  [at.left - on.left - slide.clientLeft, at.top - on.top - slide.clientTop, at.width, at.height]
+                    .map(Math.round)];
+        })""")]
 
 
 def test_a_chart_that_throws_as_it_is_drawn_is_left_out_and_the_deck_drawn(viewer, page):
@@ -438,4 +457,36 @@ def test_a_chart_that_throws_as_it_is_drawn_is_left_out_and_the_deck_drawn(viewe
     said = page.text_content("#result")
     for text in ("A chart nv.d3 draws", "Beside the chart", "The slide after it"):
         assert text in said, text
+    # What nv.d3 drew before it threw goes, and the chart is marked where it would be
     assert page.query_selector("#result [id^='chart'] svg") is None
+    assert missing(page) == [(1, "A chart that cannot be shown here", [96, 192, 384, 288])]
+
+
+def test_a_picture_or_chart_that_never_draws_is_marked_where_it_would_be(viewer, page):
+    """
+    A Windows metafile is a picture no browser draws, a PNG cut short draws nothing either, and
+    PPTXjs draws no doughnut chart. None of them throws, and each was left blank. Each is
+    marked where it would be now, and the whole PNG beside them is drawn.
+    """
+    viewer("pptx.html", "undrawn.pptx")
+    wait_for_deck(page, 2)
+    page.wait_for_function("() => document.querySelectorAll('#result .vw-missing').length >= 3",
+                           timeout=10000)
+    assert missing(page) == [
+        (1, "A picture in a format that cannot be shown here", [96, 192, 288, 192]),
+        (1, "A picture that cannot be shown here", [528, 432, 288, 192]),
+        (2, "A chart that cannot be shown here", [96, 192, 384, 288]),
+    ]
+    assert page.evaluate("[...document.querySelectorAll('#result img')].map(i => i.naturalWidth)") == [60]
+    assert "Beside the chart" in page.text_content("#result")
+
+
+@pytest.mark.parametrize("name", ["deck.pptx", "charted.pptx"])
+def test_a_deck_drawn_whole_has_no_box(viewer, page, name):
+    """A box goes only where something is missing: none on a deck whose pictures and chart draw."""
+    viewer("pptx.html", name)
+    wait_for_deck(page, 2)
+    page.wait_for_function("() => [...document.querySelectorAll('#result img')].every(i => i.complete)")
+    if name == "charted.pptx":
+        assert page.query_selector("#result [id^='chart'] svg") is not None
+    assert missing(page) == []

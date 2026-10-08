@@ -1,39 +1,75 @@
 diff --git a/app/src/main/assets/viewer/lib/pptx/pptxjs.js b/app/src/main/assets/viewer/lib/pptx/pptxjs.js
-index e17e480..8269803 100644
+index e17e480..7759964 100644
 --- a/app/src/main/assets/viewer/lib/pptx/pptxjs.js
 +++ b/app/src/main/assets/viewer/lib/pptx/pptxjs.js
-@@ -781,6 +781,10 @@
+@@ -781,6 +781,11 @@
          function processNodesInSlide(nodeKey, nodeValue, nodes, warpObj, source, sType) {
              var result = "";
  
 +            // Gander, #48: a shape this cannot draw is left out and the rest drawn, where its
 +            // throw ended the deck and put the error card up in place of every slide. Every
 +            // shape, a group's members and a layout's or master's included, comes through here.
++            // Its place is kept, for pptx.js to say there what is missing (missingPlace).
 +            try {
              switch (nodeKey) {
                  case "p:sp":    // Shape, Text
                      result = processSpNode(nodeValue, nodes, warpObj, source, sType);
-@@ -805,6 +809,10 @@
+@@ -805,11 +810,43 @@
                  default:
                      //console.log("nodeKey: ", nodeKey)
              }
 +            } catch (e) {
 +                (window.vwLeftOut = window.vwLeftOut || []).push(nodeKey + ": " + e.message);
-+                return "";
++                return missingPlace(nodeKey, nodeValue, nodes, source, sType);
 +            }
  
              return result;
  
-@@ -13782,7 +13790,13 @@
+         }
+ 
++        // Gander, #48: an empty block where a shape left out would have been, placed as the
++        // code above places one of its kind, and marked with what it was. Nothing if that
++        // place cannot be read either, for a layout's or master's placeholder, which is not
++        // drawn behind a slide, or for a line or shape with no text, which is there for its
++        // look: such a shape often lies under another's text, and a box would cover it.
++        function missingPlace(nodeKey, node, pNode, source, sType) {
++            try {
++                var xfrm = nodeKey == "p:graphicFrame" ? node["p:xfrm"]
++                    : nodeKey == "p:grpSp" ? node["p:grpSpPr"]["a:xfrm"] : node["p:spPr"]["a:xfrm"];
++                var shape = nodeKey == "p:sp" || nodeKey == "p:cxnSp";
++                var place = shape ? getPosition(xfrm, pNode, undefined, undefined, sType) : getPosition(xfrm, node, undefined, undefined);
++                var size = getSize(xfrm, undefined, undefined);
++                var nv = { "p:sp": "p:nvSpPr", "p:pic": "p:nvPicPr", "p:graphicFrame": "p:nvGraphicFramePr" }[nodeKey];
++                if (!place || !size || (source != "slide" && nv && getTextByPathList(node, [nv, "p:nvPr", "p:ph"]) !== undefined)
++                    || (shape && !/"a:t":"[^"]*[^"\s]/.test(JSON.stringify(node["p:txBody"] || null)))) {
++                    return "";
++                }
++                var uri = getTextByPathList(node, ["a:graphic", "a:graphicData", "attrs", "uri"]) || "";
++                var kind = nodeKey == "p:pic" ? "picture" : nodeKey != "p:graphicFrame" ? "shape"
++                    : (uri.match(/\/(chart|table|diagram)$/) || [0, "object"])[1];
++                var order = getTextByPathList(node, ["attrs", "order"]);
++                return "<div class='block' data-vw-missing='" + kind + "' style='" + place + size +
++                    (order === undefined ? "" : " z-index: " + order + ";") + "'></div>";
++            } catch (e) {
++                return "";
++            }
++        }
++
+         function processGroupSpNode(node, warpObj, source) {
+             //console.log("processGroupSpNode: node: ", node)
+             var xfrmNode = getTextByPathList(node, ["p:grpSpPr", "a:xfrm"]);
+@@ -13782,7 +13819,15 @@
  
          function processMsgQueue(queue) {
              for (var i = 0; i < queue.length; i++) {
 +                // Gander, #48: charts are drawn once every slide is built, and a throw here
-+                // put the error card up in place of them all. That chart is left out instead.
++                // put the error card up in place of them all. That chart is left out instead,
++                // and its box marked for pptx.js to say so.
 +                try {
                  processSingleMsg(queue[i].data);
 +                } catch (e) {
 +                    (window.vwLeftOut = window.vwLeftOut || []).push("chart: " + e.message);
++                    $("#" + queue[i].data.chartID).attr("data-vw-missing", "chart");
 +                }
              }
          }

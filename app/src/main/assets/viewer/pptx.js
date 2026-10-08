@@ -425,12 +425,79 @@ function regularWeight(root) {
   }
 }
 
+/*
+ * What Gander cannot draw is marked where it would be, by a box that says what is missing,
+ * as a picture in a .doc or .odt is (prose-draw.js). Left blank, a slide reads as though
+ * the deck had nothing there. Three kinds, which between them mark 23 of the 97 that open of
+ * the 108 decks this was tried on, Apache POI's 100 test decks among them:
+ *
+ * - a chart, picture, table or diagram PPTXjs threw on, or a shape with text, which the
+ *   catch in lib/pptx/pptxjs.js leaves as an empty block in its place, marked with what it
+ *   was, as it marks a chart that threw as nv.d3 drew it (7 decks);
+ * - a chart of a type PPTXjs does not draw. It draws line, bar, pie, area and scatter
+ *   charts, and leaves the box of any other, a doughnut or a radar, empty (4 decks);
+ * - a picture in a format no browser draws, Windows' EMF and WMF or TIFF, which goes in
+ *   as an image that fails to load (13 decks).
+ */
+var MISSING = {
+  chart: "A chart that cannot be shown here",
+  table: "A table that cannot be shown here",
+  diagram: "A diagram that cannot be shown here",
+  object: "An object that cannot be shown here",
+  picture: "A picture that cannot be shown here",
+  format: "A picture in a format that cannot be shown here",
+  shape: "A shape that cannot be shown here"
+};
+
+function whatIsMissing(root) {
+  var marked = root.querySelectorAll("[data-vw-missing]");
+  for (var i = 0; i < marked.length; i++) markMissing(marked[i], marked[i].getAttribute("data-vw-missing"));
+  var charts = root.querySelectorAll("div[id^='chart']");
+  for (var j = 0; j < charts.length; j++) {
+    if (!charts[j].querySelector("svg, .vw-missing")) markMissing(charts[j], "chart");
+  }
+}
+
+/*
+ * A picture's error does not bubble, so it is caught on its way down, from before the slides
+ * go in. A picture bullet is an image too, inside the text, and is left alone.
+ */
+document.getElementById("result").addEventListener("error", function (e) {
+  var img = e.target;
+  if (img.tagName !== "IMG" || !img.parentNode || !img.parentNode.classList.contains("block")) return;
+  // A browser draws these, so one that fails is damaged rather than in a format it cannot show
+  var drawn = /^data:image\/(png|jpeg|gif|bmp|webp|svg\+xml);/.test((img.getAttribute("src") || "").slice(0, 30));
+  markMissing(img.parentNode, drawn ? "picture" : "format");
+}, true);
+
+/*
+ * The box fills the block. Its type is sized to the slide, as the WebView fits each deck to
+ * the screen, so that it comes out the same size on the screen whatever the deck's width.
+ * In a block too small for the sentence it is set smaller, and smaller still leaves the
+ * outline alone.
+ */
+function markMissing(block, kind) {
+  while (block.firstChild) block.removeChild(block.firstChild);
+  var box = document.createElement("div");
+  box.className = "vw-missing";
+  box.textContent = MISSING[kind] || MISSING.shape;
+  block.appendChild(box);
+  var slide = block.closest(".slide");
+  var width = slide ? slide.offsetWidth : 960;
+  for (var size = width / 40; size > width / 100; size *= 0.8) {
+    box.style.fontSize = size + "px";
+    if (box.scrollHeight <= box.clientHeight && box.scrollWidth <= box.clientWidth) return;
+  }
+  box.textContent = "";
+}
+
 new MutationObserver(function (records, observer) {
   var result = document.getElementById("result");
   if (!result.querySelector(".slide")) return;
   observer.disconnect();
   spacesThatBreak(result);
   regularWeight(result);
+  whatIsMissing(result);
 }).observe(document.getElementById("result"), { childList: true });
 
 try {

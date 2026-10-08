@@ -1324,7 +1324,10 @@ def unreadable() -> None:
     Things PPTXjs throws on, which stopped every slide (#48): a chart whose part is missing
     from the file, which gave the reporter's "reading 'c:chartSpace'", and a picture with no
     image on a layout, which PPTXjs draws behind each slide that uses it. The layout's text
-    must still be drawn, and a slide with neither sits between them.
+    must still be drawn, and a slide with neither sits between them. The layout also has an
+    empty picture placeholder that PPTXjs throws on, which PowerPoint shows on no slide, and
+    the slide between has two shaded boxes PPTXjs throws on (a gradient with no colours,
+    as in POI's 63200.pptx), one with text and one with none.
     """
     from pptx import Presentation
     from pptx.chart.data import CategoryChartData
@@ -1353,9 +1356,27 @@ def unreadable() -> None:
     data.add_series("Visits", (3, 5))
     slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(2), Inches(4), Inches(3), data)
     slide.shapes.add_textbox(Inches(5.5), Inches(2), Inches(3), Inches(1)).text_frame.text = "Beside the chart"
-    prs.slides.add_slide(prs.slide_layouts[5]).shapes.title.text = "The slide after it"
+    after = prs.slides.add_slide(prs.slide_layouts[5])
+    after.shapes.title.text = "The slide after it"
+    for xml in (
+        '<p:sp {ns}><p:nvSpPr><p:cNvPr id="60" name="Shaded, no text"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="914400" y="1828800"/><a:ext cx="1828800" cy="914400"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:gradFill/></p:spPr></p:sp>',
+        '<p:sp {ns}><p:nvSpPr><p:cNvPr id="61" name="Shaded, with text"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="4572000" y="1828800"/><a:ext cx="2743200" cy="914400"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:gradFill/></p:spPr><p:txBody><a:bodyPr/>'
+        '<a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="1800"/><a:t>Words in a shaded box</a:t></a:r></a:p>'
+        '</p:txBody></p:sp>',
+    ):
+        after.shapes._spTree.append(parse_xml(xml.format(ns=nsdecls("p", "a"))))
     box = prs.slides.add_slide(blank).shapes.add_textbox(Inches(1), Inches(2), Inches(8), Inches(1))
     box.text_frame.text = "On a layout with a broken picture"
+    # Added after the slide, which would otherwise be given a copy of it
+    blank.shapes._spTree.append(parse_xml(
+        '<p:pic {ns}><p:nvPicPr><p:cNvPr id="52" name="Picture placeholder"/><p:cNvPicPr/>'
+        '<p:nvPr><p:ph type="pic" idx="13"/></p:nvPr></p:nvPicPr><p:blipFill/><p:spPr><a:xfrm>'
+        '<a:off x="5486400" y="457200"/><a:ext cx="914400" cy="914400"/></a:xfrm></p:spPr></p:pic>'
+        .format(ns=nsdecls("p", "a"))))
     fix_core_properties(prs)
     path = OUT / "unreadable.pptx"
     prs.save(str(path))
@@ -1395,6 +1416,64 @@ def charted() -> None:
     fix_core_properties(prs)
     path = OUT / "charted.pptx"
     prs.save(str(path))
+    normalize_zip(path)
+    written(path)
+
+
+def undrawn() -> None:
+    """
+    Pictures and a chart that PPTXjs puts on the slide and that never draw, though nothing
+    throws: a Windows metafile, which no browser draws, beside a PNG that does and a PNG cut
+    short, and a doughnut chart, a type PPTXjs does not draw. pptx.js marks each where it is
+    (#48).
+    """
+    from PIL import Image
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.util import Inches
+
+    # A placeable metafile of one rectangle 3 by 2 inches, as a drawing pasted from another
+    # program is kept: its header, with a checksum of the words before it, then the records
+    inch, right, bottom = 1440, 4320, 2880
+    head = struct.pack("<IHhhhhHI", 0x9AC6CDD7, 0, 0, 0, right, bottom, inch, 0)
+    checksum = 0
+    for (word,) in struct.iter_unpack("<H", head):
+        checksum ^= word
+    records = (struct.pack("<IHhh", 5, 0x020B, 0, 0) + struct.pack("<IHhh", 5, 0x020C, bottom, right)
+               + struct.pack("<IHhhhh", 7, 0x041B, bottom, right, 0, 0) + struct.pack("<IH", 3, 0))
+    metafile = (head + struct.pack("<H", checksum)
+                + struct.pack("<HHHIHIH", 1, 9, 0x0300, (18 + len(records)) // 2, 0, 7, 0) + records)
+    png, damaged = io.BytesIO(), io.BytesIO()
+    Image.new("RGB", (60, 40), (70, 130, 180)).save(png, "PNG")
+    Image.new("RGB", (60, 40), (180, 70, 70)).save(damaged, "PNG")
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "A drawing in Windows' own format"
+    slide.shapes.add_picture(io.BytesIO(metafile), Inches(1), Inches(2), Inches(3), Inches(2))
+    slide.shapes.add_picture(png, Inches(5.5), Inches(2), Inches(3), Inches(2))
+    slide.shapes.add_picture(io.BytesIO(damaged.getvalue()), Inches(5.5), Inches(4.5), Inches(3), Inches(2))
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "A doughnut chart"
+    data = CategoryChartData()
+    data.categories = ["North", "South"]
+    data.add_series("Visits", (3, 5))
+    slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(1), Inches(2), Inches(4), Inches(3), data)
+    slide.shapes.add_textbox(Inches(5.5), Inches(2), Inches(3), Inches(1)).text_frame.text = "Beside the chart"
+    fix_core_properties(prs)
+    path = OUT / "undrawn.pptx"
+    prs.save(str(path))
+
+    # The second PNG ends after its header, as a file cut off in a copy would
+    with zipfile.ZipFile(path) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    for name, data in items.items():
+        if data == damaged.getvalue():
+            items[name] = data[:33]
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
     normalize_zip(path)
     written(path)
 
@@ -2655,7 +2734,7 @@ def main() -> int:
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
-                 symbol_bullets, placed_by_design, unsized, unreadable, charted, relatives, texts, images, audio,
+                 symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

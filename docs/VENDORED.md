@@ -146,10 +146,15 @@ releases the fix for #233 (PR #234), `drawRunsOnce` can go.
 members and a layout's or master's included; the other is around each chart nv.d3 draws
 once the slides are built. A shape or chart PPTXjs throws on is left out and the rest of the
 deck drawn, where the throw put the error card up in place of every slide, and
-`window.vwLeftOut` lists what was left out. The change is `scripts/pptxjs.patch`, which
-`fetch-viewer-libs.sh` applies after each fetch, stopping if upstream's file has moved under
-it. Everything else is still put right from outside, in `pptx.js`, as the package opens.
-`test_pptx.py` fails if either catch goes.
+`window.vwLeftOut` lists what was left out. The first catch keeps the shape's place as an
+empty block marked with what it was (`missingPlace`), and the second marks the chart's own
+box, so that `pptx.js` can put a box there saying what is missing. The change is
+`scripts/pptxjs.patch`, which `fetch-viewer-libs.sh` applies after each fetch, stopping if
+upstream's file has moved under it. Everything else is still put right from outside, in
+`pptx.js`, as the package opens. `test_pptx.py` fails if either catch goes, or either mark.
+
+The file keeps upstream's Windows line endings, and so does the patch. A script that writes
+it back with Unix ones, as Python's text mode does, leaves git showing every line changed.
 
 ## Before upgrading pdf.js
 

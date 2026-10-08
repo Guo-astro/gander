@@ -27,8 +27,11 @@
 - A presentation opens even when Gander can't draw everything in it (thanks @rabindra789, who
   reported this in #48, and @xMohnad, who sent two decks to it). One chart, picture or shape it
   couldn't read used to stop the whole file with an error; now that one thing is left out and the
-  rest is drawn. Bullets in Wingdings 2 and 3 and titles placed by the slide layout used to stop
-  the file too, and text left at PowerPoint's default size drew too small or not at all.
+  rest is drawn, and a box marks where a missing chart, diagram, picture, table or text would be.
+  Charts of a type Gander doesn't draw, such as doughnut and radar charts, and pictures in formats
+  it can't show, such as Windows' EMF and WMF, used to leave an unexplained blank, and now get the
+  same box. Bullets in Wingdings 2 and 3 and titles placed by the slide layout used to stop the
+  file too, and text left at PowerPoint's default size drew too small or not at all.
 
 ## 2.2 (2026-10-05)
 
