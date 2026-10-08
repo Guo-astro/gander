@@ -26,7 +26,7 @@ commit.
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
 | `marked.min.js` | marked | 15.0.12 | MIT | https://github.com/markedjs/marked |
 | `purify.min.js` | DOMPurify | 3.4.12 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
-| `pptx/pptxjs.js` | PPTXjs | 1.21.1 | MIT | https://github.com/meshesha/PPTXjs |
+| `pptx/pptxjs.js` | PPTXjs | 1.21.1, with one change (below) | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/dingbat.js` | PPTXjs (its table of symbol-font characters) | 1.21.1 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/divs2slides.js` | divs2slides (PPTXjs) | 1.3.2 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/filereader.js` | FileReader.js (PPTXjs bundle) | 0.99 | MIT | https://github.com/meshesha/PPTXjs |
@@ -138,6 +138,18 @@ They also read the shapes of the parsed document: a break whose `break` is
 and the page count Word saved, `document.extendedPropsPart.props.pages`.
 `test_docx_pages.py` fails if the pages stop splitting or numbering. Once upstream
 releases the fix for #233 (PR #234), `drawRunsOnce` can go.
+
+## PPTXjs's one change
+
+`pptx/pptxjs.js` is upstream's 1.21.1 with two catches added for issue #48, each marked
+`Gander, #48`. One is in `processNodesInSlide`, which every shape comes through, a group's
+members and a layout's or master's included; the other is around each chart nv.d3 draws
+once the slides are built. A shape or chart PPTXjs throws on is left out and the rest of the
+deck drawn, where the throw put the error card up in place of every slide, and
+`window.vwLeftOut` lists what was left out. The change is `scripts/pptxjs.patch`, which
+`fetch-viewer-libs.sh` applies after each fetch, stopping if upstream's file has moved under
+it. Everything else is still put right from outside, in `pptx.js`, as the package opens.
+`test_pptx.py` fails if either catch goes.
 
 ## Before upgrading pdf.js
 

@@ -1319,6 +1319,86 @@ def unsized() -> None:
     written(OUT / "unsized.pptx")
 
 
+def unreadable() -> None:
+    """
+    Things PPTXjs throws on, which stopped every slide (#48): a chart whose part is missing
+    from the file, which gave the reporter's "reading 'c:chartSpace'", and a picture with no
+    image on a layout, which PPTXjs draws behind each slide that uses it. The layout's text
+    must still be drawn, and a slide with neither sits between them.
+    """
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+    from pptx.util import Inches
+
+    prs = Presentation()
+    blank = prs.slide_layouts[6]
+    for xml in (
+        '<p:pic {ns}><p:nvPicPr><p:cNvPr id="50" name="No image"/><p:cNvPicPr/><p:nvPr userDrawn="1"/></p:nvPicPr>'
+        '<p:blipFill/><p:spPr><a:xfrm><a:off x="457200" y="457200"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>',
+        '<p:sp {ns}><p:nvSpPr><p:cNvPr id="51" name="Layout text"/><p:cNvSpPr txBox="1"/><p:nvPr userDrawn="1"/>'
+        '</p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="5943600"/><a:ext cx="4572000" cy="457200"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>'
+        '<a:p><a:r><a:rPr lang="en-US" sz="1800"/><a:t>Drawn by the layout</a:t></a:r></a:p></p:txBody></p:sp>',
+    ):
+        blank.shapes._spTree.append(parse_xml(xml.format(ns=nsdecls("p", "a"))))
+
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "A chart Gander cannot read"
+    data = CategoryChartData()
+    data.categories = ["North", "South"]
+    data.add_series("Visits", (3, 5))
+    slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(2), Inches(4), Inches(3), data)
+    slide.shapes.add_textbox(Inches(5.5), Inches(2), Inches(3), Inches(1)).text_frame.text = "Beside the chart"
+    prs.slides.add_slide(prs.slide_layouts[5]).shapes.title.text = "The slide after it"
+    box = prs.slides.add_slide(blank).shapes.add_textbox(Inches(1), Inches(2), Inches(8), Inches(1))
+    box.text_frame.text = "On a layout with a broken picture"
+    fix_core_properties(prs)
+    path = OUT / "unreadable.pptx"
+    prs.save(str(path))
+
+    # The chart's part goes, with its workbook, and the slide's relationship to it stays
+    with zipfile.ZipFile(path) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()
+                 if not i.filename.startswith(("ppt/charts/", "ppt/embeddings/"))}
+    items["[Content_Types].xml"] = re.sub(rb'<Override PartName="/ppt/charts/[^"]*"[^>]*/>', b"", items["[Content_Types].xml"])
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
+    normalize_zip(path)
+    written(path)
+
+
+def charted() -> None:
+    """
+    A chart PPTXjs reads and hands to nv.d3, which draws it once every slide is built, with
+    text beside it and a slide after it. test_pptx makes the drawing throw, as an odd chart
+    could inside nv.d3, which put the error card up in place of every slide (#48).
+    """
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.util import Inches
+
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "A chart nv.d3 draws"
+    data = CategoryChartData()
+    data.categories = ["North", "South"]
+    data.add_series("Visits", (3, 5))
+    slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(2), Inches(4), Inches(3), data)
+    slide.shapes.add_textbox(Inches(5.5), Inches(2), Inches(3), Inches(1)).text_frame.text = "Beside the chart"
+    prs.slides.add_slide(prs.slide_layouts[5]).shapes.title.text = "The slide after it"
+    fix_core_properties(prs)
+    path = OUT / "charted.pptx"
+    prs.save(str(path))
+    normalize_zip(path)
+    written(path)
+
+
 # What [Content_Types].xml declares each format's main part to be. The rest of a
 # package is the same across a family, so this one line is all that tells a
 # template, a slide show or a macro-enabled file from its format, and a reader
@@ -2575,7 +2655,7 @@ def main() -> int:
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
-                 symbol_bullets, placed_by_design, unsized, relatives, texts, images, audio,
+                 symbol_bullets, placed_by_design, unsized, unreadable, charted, relatives, texts, images, audio,
                  zips, prose, models):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())

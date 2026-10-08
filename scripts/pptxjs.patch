@@ -1,0 +1,40 @@
+diff --git a/app/src/main/assets/viewer/lib/pptx/pptxjs.js b/app/src/main/assets/viewer/lib/pptx/pptxjs.js
+index e17e480..8269803 100644
+--- a/app/src/main/assets/viewer/lib/pptx/pptxjs.js
++++ b/app/src/main/assets/viewer/lib/pptx/pptxjs.js
+@@ -781,6 +781,10 @@
+         function processNodesInSlide(nodeKey, nodeValue, nodes, warpObj, source, sType) {
+             var result = "";
+ 
++            // Gander, #48: a shape this cannot draw is left out and the rest drawn, where its
++            // throw ended the deck and put the error card up in place of every slide. Every
++            // shape, a group's members and a layout's or master's included, comes through here.
++            try {
+             switch (nodeKey) {
+                 case "p:sp":    // Shape, Text
+                     result = processSpNode(nodeValue, nodes, warpObj, source, sType);
+@@ -805,6 +809,10 @@
+                 default:
+                     //console.log("nodeKey: ", nodeKey)
+             }
++            } catch (e) {
++                (window.vwLeftOut = window.vwLeftOut || []).push(nodeKey + ": " + e.message);
++                return "";
++            }
+ 
+             return result;
+ 
+@@ -13782,7 +13790,13 @@
+ 
+         function processMsgQueue(queue) {
+             for (var i = 0; i < queue.length; i++) {
++                // Gander, #48: charts are drawn once every slide is built, and a throw here
++                // put the error card up in place of them all. That chart is left out instead.
++                try {
+                 processSingleMsg(queue[i].data);
++                } catch (e) {
++                    (window.vwLeftOut = window.vwLeftOut || []).push("chart: " + e.message);
++                }
+             }
+         }
+ 

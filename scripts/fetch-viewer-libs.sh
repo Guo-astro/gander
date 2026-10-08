@@ -62,6 +62,9 @@ get pptx/filereader.js  "$P/js/filereader.js"
 get pptx/d3.min.js      "$P/js/d3.min.js"
 get pptx/nv.d3.min.js   "$P/js/nv.d3.min.js"
 get pptx/pptxjs.js      "$P/js/pptxjs.js"
+# Gander's one change to PPTXjs, for #48 (docs/VENDORED.md). patch stops this script
+# if upstream's file has moved under it, rather than the change going quietly.
+patch -s "$LIB/pptx/pptxjs.js" < "$(dirname "$0")/pptxjs.patch" && echo "patched pptx/pptxjs.js"
 get pptx/dingbat.js     "$P/js/dingbat.js"
 get pptx/divs2slides.js "$P/js/divs2slides.js"
 get pptx/pptxjs.css     "$P/css/pptxjs.css"

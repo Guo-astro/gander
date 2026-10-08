@@ -66,6 +66,8 @@ should stay obviously so.
 | `symbol-bullets.pptx` | Issue #48. Bullets in Wingdings 2 and Wingdings 3, as the Circuit design sets them. PPTXjs maps them to Unicode from `dingbat.js`, which Gander did not ship, and threw on the first. |
 | `placed-by-design.pptx` | Issue #48. Placeholders with an outline but no place of their own, as a deck converted from a PDF writes them: a title placed by the master and a body by its layout. PPTXjs read the place from the shape alone, and threw. |
 | `unsized.pptx` | Issue #48. Text whose size nothing in the deck gives, beside a run of 18 point, which is what PowerPoint draws both at. PPTXjs left the first the size of its paragraph. |
+| `unreadable.pptx` | Issue #48. A chart whose part is missing from the file, which PPTXjs threw on as the reported deck did, and a picture with no image on a layout, with a slide that has neither between them. Only those two may be left out. |
+| `charted.pptx` | Issue #48. A column chart that draws, with text beside it and a slide after it. The test makes nv.d3 throw as it draws the chart, and only the chart may be missing. |
 | `report.docm`, `report.dotx` | Word's relatives: `report.docx` with its main part declared as a macro-enabled document's and as a template's, which is all that tells them apart. There are no macros in it. |
 | `budget.xltx` | `budget.xlsx` declared as an Excel template. |
 | `deck.ppsx`, `deck.pptm`, `deck.potx` | `deck.pptx` declared as a slide show, a macro-enabled presentation and a template. |

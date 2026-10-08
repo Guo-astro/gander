@@ -1,9 +1,9 @@
 /*
  * Two things PPTXjs takes for granted that the format does not promise, either of which
  * puts the error card up in place of every slide. Both are put right here, in the package
- * as PPTXjs opens it and before it reads a part, so the library stays as upstream ships it
- * (docs/VENDORED.md). Upstream has not moved since 2022 and has both open, as issues 42
- * and 32.
+ * as PPTXjs opens it and before it reads a part, so the library keeps to upstream's code
+ * but for its one change (docs/VENDORED.md). Upstream has not moved since 2022 and has
+ * both open, as issues 42 and 32.
  *
  * docProps/app.xml is optional, and Google Slides leaves it out. PPTXjs reads it without
  * looking: "Cannot read properties of null (reading 'Properties')". A deck without one is

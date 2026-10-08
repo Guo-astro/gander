@@ -24,9 +24,11 @@
   file you tick, such as PDFs and images, and names them under the folder's title while it is
   on. A filter never hides folders, and it clears when you go back to the home screen.
 
-- More presentations open (thanks @xMohnad, who sent two of them to #48). Bullets in Wingdings 2
-  and 3 and titles placed by the slide layout used to stop the whole file with an error, and text
-  left at PowerPoint's default size drew too small or not at all.
+- A presentation opens even when Gander can't draw everything in it (thanks @rabindra789, who
+  reported this in #48, and @xMohnad, who sent two decks to it). One chart, picture or shape it
+  couldn't read used to stop the whole file with an error; now that one thing is left out and the
+  rest is drawn. Bullets in Wingdings 2 and 3 and titles placed by the slide layout used to stop
+  the file too, and text left at PowerPoint's default size drew too small or not at all.
 
 ## 2.2 (2026-10-05)
 

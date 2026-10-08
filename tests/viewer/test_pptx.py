@@ -386,3 +386,56 @@ def test_text_whose_size_nothing_gives_is_drawn_at_18_point(viewer, page):
     )
     assert sizes["Eighteen point"] != "0px", sizes
     assert sizes["No size anywhere"] == sizes["Eighteen point"], sizes
+
+
+# ---------------------------------------------------------------------------
+# What PPTXjs cannot draw: see the lines marked Gander in lib/pptx/pptxjs.js
+# ---------------------------------------------------------------------------
+
+def test_what_pptxjs_cannot_draw_is_left_out_and_every_slide_drawn(viewer, page):
+    """
+    A chart whose part is missing ("reading 'c:chartSpace'") and a picture with no image on a
+    layout each put the error card up in place of every slide (#48). Only they are left out:
+    the chart's slide keeps its other shapes, and the layout its text.
+    """
+    viewer("pptx.html", "unreadable.pptx")
+    wait_for_deck(page, 3)
+    assert len(page.query_selector_all("#result .slide")) == 3
+    assert len(page.query_selector_all("#all_slides_warpper")) == 1
+    said = page.text_content("#result").replace(" ", " ")
+    for text in ("A chart Gander cannot read", "Beside the chart", "The slide after it",
+                 "On a layout with a broken picture", "Drawn by the layout"):
+        assert text in said, text
+    assert page.query_selector("#result [id^='chart']") is None
+
+
+# nv.d3's bar chart throws as PPTXjs draws it, the way an odd chart could inside nv.d3.
+# nv.d3 sets window.nv before it fills nv.models, so the models are wrapped as they are read.
+CHART_THAT_THROWS = """
+(() => {
+  let nv;
+  Object.defineProperty(window, "nv", {
+    configurable: true,
+    get: () => nv,
+    set: (real) => {
+      nv = new Proxy(real, { get: (target, key) => key !== "models" ? target[key]
+        : new Proxy(target.models, { get: (models, name) => name !== "multiBarChart" ? models[name]
+          : () => { throw new Error("a chart nv.d3 cannot draw"); } }) });
+    },
+  });
+})();
+"""
+
+
+def test_a_chart_that_throws_as_it_is_drawn_is_left_out_and_the_deck_drawn(viewer, page):
+    """
+    PPTXjs draws its charts with nv.d3 once every slide is built, and a throw there put the
+    error card up in place of every slide (#48). The chart is left out and the rest drawn.
+    """
+    page.add_init_script(CHART_THAT_THROWS)
+    viewer("pptx.html", "charted.pptx")
+    wait_for_deck(page, 2)
+    said = page.text_content("#result")
+    for text in ("A chart nv.d3 draws", "Beside the chart", "The slide after it"):
+        assert text in said, text
+    assert page.query_selector("#result [id^='chart'] svg") is None
