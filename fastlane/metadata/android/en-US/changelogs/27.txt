@@ -1,0 +1,1 @@
+A Word file saved in Word shows its pages where Word ended them, with a page number in each footer, a page counter and Go to page, and night mode works in Word files too. Sort the files in a folder you added by name, date or size, and filter them by kind. A presentation opens even when Gander can't draw everything in it: the rest is drawn, and a box marks what is missing.

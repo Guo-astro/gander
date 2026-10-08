@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.3 (2026-10-09)
 
 - A Word file shows its pages where Word ended them, rather than as one long page (thanks
   @BenjaminSk-04, who reported this in #47). Word records where each page began when it saves a
