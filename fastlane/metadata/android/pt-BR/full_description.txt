@@ -31,7 +31,7 @@ Feito para ler no celular
 - Pesquise dentro de PDF, Word, Excel, PowerPoint, Markdown, texto e código, navegando entre os resultados
 - Selecione e copie texto em um PDF, e use um leitor de tela para ouvi-lo
 - Abra PDFs protegidos por senha digitando a senha
-- Modo noturno para PDFs: o papel fica preto e o texto fica branco, as cores mantêm o tom e as fotos ficam exatamente como foram impressas
+- Modo noturno para PDFs e documentos do Word: o papel fica preto e o texto fica branco, as cores mantêm o tom e as fotos ficam exatamente como foram impressas
 - Amplie fotos grandes em detalhe com decodificação em blocos, com a orientação correta a partir dos dados EXIF
 - Compartilhe o arquivo aberto, salve uma cópia ou vá direto para a pasta onde ele está
 - Design Material 3, modo escuro e tela de ponta a ponta

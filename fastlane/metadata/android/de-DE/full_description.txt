@@ -31,7 +31,7 @@ Gemacht zum Lesen auf dem Smartphone
 - Im Dokument suchen (PDF, Word, Excel, PowerPoint, Markdown, Text und Code) und von Treffer zu Treffer springen
 - Text in PDFs markieren und kopieren und PDFs mit einem Screenreader vorlesen lassen
 - Passwortgeschützte PDFs durch Eingabe des Passworts öffnen
-- Nachtmodus für PDFs: Das Papier wird schwarz und der Text weiß, Farben behalten ihren Farbton, und Fotos bleiben genau so, wie sie gedruckt wurden
+- Nachtmodus für PDFs und Word-Dokumente: Das Papier wird schwarz und der Text weiß, Farben behalten ihren Farbton, und Fotos bleiben genau so, wie sie gedruckt wurden
 - Stark in große Fotos hineinzoomen dank kachelweiser Dekodierung, mit korrekter Drehung anhand der EXIF-Daten
 - Die geöffnete Datei teilen, eine Kopie speichern oder direkt zum Ordner springen, in dem sie liegt
 - Material-3-Design, Dunkelmodus und randlose Darstellung

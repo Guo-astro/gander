@@ -31,7 +31,7 @@ Pensato per leggere sul telefono
 - Cerca nel documento: in PDF, Word, Excel, PowerPoint, Markdown, testo e codice, spostandoti tra i risultati
 - Seleziona e copia il testo di un PDF, e fallo leggere a uno screen reader
 - Apri i PDF protetti inserendo la password
-- Modalità notte per i PDF: la carta diventa nera e il testo bianco, i colori mantengono la loro tonalità e le foto restano esattamente come sono state stampate
+- Modalità notte per i PDF e i documenti Word: la carta diventa nera e il testo bianco, i colori mantengono la loro tonalità e le foto restano esattamente come sono state stampate
 - Zoom estremo sulle foto grandi con decodifica a riquadri, e rotazione corretta letta dai dati EXIF
 - Condividi il file aperto, salvane una copia o vai alla cartella in cui si trova
 - Design Material 3, tema scuro, visualizzazione da bordo a bordo

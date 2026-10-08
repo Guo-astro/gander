@@ -31,7 +31,7 @@ Conçu pour lire sur un téléphone
 - Recherche dans les PDF, Word, Excel, PowerPoint, Markdown, textes et code, avec passage d'un résultat à l'autre
 - Sélectionnez et copiez du texte dans un PDF, et faites lire le PDF par un lecteur d'écran
 - Ouvrez les PDF protégés en saisissant leur mot de passe
-- Mode nuit pour les PDF : le papier devient noir et le texte blanc, les couleurs gardent leur teinte, et les photos restent exactement telles qu'elles ont été imprimées
+- Mode nuit pour les PDF et les documents Word : le papier devient noir et le texte blanc, les couleurs gardent leur teinte, et les photos restent exactement telles qu'elles ont été imprimées
 - Zoom poussé sur les grandes photos grâce au décodage par tuiles, et orientation correcte lue dans les données EXIF
 - Partagez le fichier ouvert, enregistrez-en une copie ou ouvrez le dossier où il se trouve
 - Design Material 3, mode sombre, affichage bord à bord

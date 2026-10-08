@@ -31,7 +31,7 @@ Para leer cómodamente en el teléfono
 - Busca dentro de PDF, Word, Excel, PowerPoint, Markdown, texto y código, y salta entre coincidencias
 - Selecciona y copia texto de un PDF, y escúchalo con un lector de pantalla
 - Abre PDF protegidos con contraseña escribiendo la contraseña
-- Modo nocturno para PDF: el papel se vuelve negro y el texto blanco, los colores conservan su tono y las fotos quedan exactamente como se imprimieron
+- Modo nocturno para PDF y documentos de Word: el papel se vuelve negro y el texto blanco, los colores conservan su tono y las fotos quedan exactamente como se imprimieron
 - Amplía al detalle fotos grandes gracias a la decodificación por bloques, con la orientación correcta según los datos EXIF
 - Comparte el archivo abierto, guarda una copia o ve a la carpeta donde está
 - Diseño Material 3, modo oscuro y pantalla de borde a borde
