@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://play.google.com/store/apps/details?id=com.arjun.gander"><img src="docs/play-badge.png" alt="Get it on Google Play" height="80" align="middle"></a>
+  <a href="https://play.google.com/store/apps/details?id=com.arjun.gander&listing=github"><img src="docs/play-badge.png" alt="Get it on Google Play" height="80" align="middle"></a>
   <a href="https://trendshift.io/repositories/98260"><img src="https://trendshift.io/api/badge/repositories/98260" alt="Trendshift: GitHub Trending, #8 Repository Of The Day" width="250" height="55" align="middle"></a>
 </p>
 
@@ -121,7 +121,7 @@ past all three; if yours is not, Gander says so when you open the file rather th
 failing quietly.
 
 **From Google Play**, which keeps it updated:
-[Gander on Google Play](https://play.google.com/store/apps/details?id=com.arjun.gander).
+[Gander on Google Play](https://play.google.com/store/apps/details?id=com.arjun.gander&listing=github).
 Already installed it from here? Open the listing and tap Update. Play moves your
 install over, recents and folder grants included, since both copies are signed with
 the same key.
