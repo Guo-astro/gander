@@ -27,8 +27,11 @@ internal enum class PrintRoute { FILE, PAGE }
 internal fun printRoute(kind: FileKind): PrintRoute? = when (kind) {
     FileKind.PDF -> PrintRoute.FILE
     FileKind.DOCX, FileKind.PROSE -> PrintRoute.PAGE
+    // A book has one chapter on its page at a time, so printing the page would print that
+    // chapter and call it the book.
     FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.XLSX, FileKind.PPTX,
-    FileKind.MD, FileKind.TEXT, FileKind.MODEL, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
+    FileKind.MD, FileKind.TEXT, FileKind.MODEL, FileKind.EPUB, FileKind.ARCHIVE,
+    FileKind.UNSUPPORTED -> null
 }
 
 /**

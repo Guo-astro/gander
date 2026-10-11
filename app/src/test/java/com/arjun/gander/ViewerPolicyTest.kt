@@ -23,7 +23,7 @@ class ViewerPolicyTest {
     @Test
     fun everyViewerPageIsChecked() {
         assertThat(PAGES.map { it.name }).containsExactly(
-            "docx.html", "imgweb.html", "md.html", "model.html", "pdf.html",
+            "docx.html", "epub.html", "imgweb.html", "md.html", "model.html", "pdf.html",
             "pptx.html", "prose.html", "text.html", "unsupported.html", "xlsx.html",
         )
     }

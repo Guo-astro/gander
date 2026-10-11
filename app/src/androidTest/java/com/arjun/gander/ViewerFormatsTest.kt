@@ -119,6 +119,13 @@ class ViewerFormatsTest {
     fun aRichTextFileRenders() =
         expect("memo.rtf", "#container", "Field Survey")
 
+    // A book's chapter is drawn in a shadow tree, which this cannot see into, so it reads
+    // the strip above it: that names the chapter once the zip, the book's list of chapters
+    // and its contents have all been read.
+    @Test
+    fun aBookOpensAtItsFirstChapter() =
+        expect("harbour.epub", "#epub-where", "Title page")
+
     /**
      * WebGL on the device's own graphics driver, which no browser test stands in for. The
      * page says what it drew, and the pixels are read back off the graphics card in the same

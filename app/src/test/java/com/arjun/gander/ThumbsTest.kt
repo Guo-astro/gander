@@ -64,7 +64,7 @@ class ThumbsTest {
     fun documentsAndTextKeepTheirBadges() {
         listOf(
             FileKind.DOCX, FileKind.PROSE, FileKind.XLSX, FileKind.PPTX,
-            FileKind.MD, FileKind.TEXT, FileKind.MODEL, FileKind.UNSUPPORTED,
+            FileKind.MD, FileKind.TEXT, FileKind.MODEL, FileKind.EPUB, FileKind.UNSUPPORTED,
         ).forEach { assertThat(Thumbs.supported(it, "")).isFalse() }
     }
 

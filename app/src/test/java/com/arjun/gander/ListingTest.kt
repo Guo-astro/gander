@@ -102,6 +102,7 @@ class ListingTest {
             "main.kt" to TXT_BADGE,
             "photos.zip" to ZIP_BADGE,
             "bracket.stl" to MODEL_BADGE,
+            "novel.epub" to DOC_BADGE,
         )
         expected.forEach { (name, badge) ->
             assertThat(badgeFor(name, null)).isEqualTo(badge)

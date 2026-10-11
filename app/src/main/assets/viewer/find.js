@@ -50,6 +50,10 @@ var vwFind = (function () {
    *   shown()  which part is on the page now
    * and, for a page with several parts on it at once, as a large sheet has its pieces,
    *   drawn(i) whether part i is on the page, which then counts for highlighting, not shown()
+   * and, for a page that has to fetch parts before root(i) can hold their text, as a book
+   * does its chapters,
+   *   busy()   whether it is still fetching them, in which case a count is a not-yet. It
+   *            calls vwFind.reread() when it has them.
    */
   function parts() {
     if (window.vwFindParts) return window.vwFindParts;
@@ -216,6 +220,8 @@ var vwFind = (function () {
 
   /* Whether the page is still drawing its document, in which case a count is a not-yet. */
   function loading() {
+    var p = parts();
+    if (p.busy && p.busy()) return true;
     var card = document.getElementById("vw-status");
     return !!card && card.style.display !== "none" && card.className.indexOf("vw-error") < 0;
   }
@@ -392,6 +398,19 @@ var vwFind = (function () {
     };
   }
 
+  /*
+   * The parts a search could not read are there now. A search that had found something is run
+   * again as for any other change, staying where it was. One that had found nothing has no
+   * place to stay, so it goes to its first match, as it would have had the parts been there
+   * when the query came.
+   */
+  function reread() {
+    if (!query || matches.length) { changed(); return; }
+    cache = [];
+    search();
+    stepTo(0);
+  }
+
   /* Says something to the app over the same port, answering whether there was one to say it on */
   function post(msg) {
     if (!port) return false;
@@ -399,5 +418,5 @@ var vwFind = (function () {
     return true;
   }
 
-  return { changed: changed, post: post };
+  return { changed: changed, reread: reread, post: post };
 })();

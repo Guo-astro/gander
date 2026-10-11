@@ -59,7 +59,8 @@ internal const val HIGHLIGHT_MIN_CHROMIUM_MAJOR = 105
  */
 internal fun searchesInPage(kind: FileKind, major: Int?): Boolean = when (kind) {
     FileKind.PDF -> true
-    FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX ->
+    FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX,
+    FileKind.EPUB ->
         major == null || major >= HIGHLIGHT_MIN_CHROMIUM_MAJOR
     FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.MODEL, FileKind.ARCHIVE,
     FileKind.UNSUPPORTED -> false
@@ -80,8 +81,11 @@ internal fun minChromiumMajor(kind: FileKind): Int? = when (kind) {
     // or earlier, and they lean on nothing newer than JSZip does. model.js and
     // model-stl.js parse from 51 too, and the newest thing either calls is pointer
     // events, from 55, which is older than the WebView Android 8 shipped with.
+    // epub.js is written the same way and parses from 51 as well. The newest thing it calls
+    // is a shadow tree, from 53.
     FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.XLSX, FileKind.PPTX,
-    FileKind.PROSE, FileKind.TEXT, FileKind.MODEL, FileKind.ARCHIVE, FileKind.UNSUPPORTED -> null
+    FileKind.PROSE, FileKind.TEXT, FileKind.MODEL, FileKind.EPUB, FileKind.ARCHIVE,
+    FileKind.UNSUPPORTED -> null
 }
 
 /**

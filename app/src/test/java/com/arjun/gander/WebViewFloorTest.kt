@@ -223,14 +223,15 @@ class WebViewFloorTest {
     // ---------------------------------------------------------------
 
     /**
-     * The six that have find.js do, from the engine that can mark what it found; below it they
+     * The seven that have find.js do, from the engine that can mark what it found; below it they
      * keep Chromium's own find. A PDF has no other search to fall back to, and the rest have
      * nothing to search or are not pages at all.
      */
     @Test
     fun pagesSearchThemselvesWhereTheEngineCanMarkWhatItFound() {
         val finders = listOf(
-            FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX
+            FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX,
+            FileKind.EPUB
         )
         for (kind in finders) {
             assertThat(searchesInPage(kind, HIGHLIGHT_MIN_CHROMIUM_MAJOR)).isTrue()

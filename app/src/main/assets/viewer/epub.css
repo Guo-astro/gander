@@ -1,0 +1,142 @@
+/*
+ * epub.html, outside the book: the ground, the strip above a chapter, the two buttons under
+ * it and the contents list. The chapter itself is styled in epub.js, since a shadow tree
+ * takes no rule from here.
+ *
+ * A book is prose, so this page follows the phone's theme as md.html and text.html do, and
+ * has no night mode of its own: see test_theme.py for the two families.
+ */
+:root {
+  --epub-paper: #ffffff;
+  --epub-ink: #1E1B15;
+  --epub-quiet: #6B655A;
+  --epub-line: #E2DDD2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --epub-paper: #17130A;
+    --epub-ink: #E7E2D9;
+    --epub-quiet: #A8A294;
+    --epub-line: #3A362D;
+  }
+}
+
+body { background: #ffffff; background: var(--epub-paper); }
+
+/* The ink a chapter inherits where the book names none of its own */
+#book {
+  display: block;
+  color: #1E1B15;
+  color: var(--epub-ink);
+}
+
+/* An element with a display of its own would otherwise ignore the attribute */
+[hidden] { display: none !important; }
+
+.epub-bar, .epub-turn, .epub-contents-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  max-width: 42em;
+  margin: 0 auto;
+  padding: 0 8px;
+}
+
+.epub-bar { border-bottom: 1px solid var(--epub-line); }
+.epub-turn { border-top: 1px solid var(--epub-line); padding-bottom: 24px; }
+
+/* 48 px, the least Android asks of anything tapped, and this page is laid out in dp */
+.epub-bar button, .epub-turn button, .epub-contents button {
+  min-height: 48px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: #af2d18;
+  color: var(--vw-accent);
+}
+
+.epub-turn button[disabled] { color: var(--epub-quiet); opacity: 0.5; }
+
+.epub-where {
+  min-width: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--epub-quiet);
+}
+
+/*
+ * The contents, over the chapter rather than in place of it, so closing them leaves the
+ * reader where they were. Under the status card, which is 1000. overscroll-behavior keeps a
+ * short list from handing its scrolling on to the chapter behind it.
+ */
+.epub-contents {
+  position: fixed;
+  z-index: 900;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  padding-top: var(--vw-top, 0px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #ffffff;
+  background: var(--epub-paper);
+  color: #1E1B15;
+  color: var(--epub-ink);
+}
+
+.epub-contents-head { border-bottom: 1px solid var(--epub-line); }
+
+.epub-contents-head h1 {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.epub-title {
+  max-width: 42em;
+  margin: 0 auto;
+  padding: 16px 20px 4px;
+  box-sizing: border-box;
+  font-size: 13px;
+  color: var(--epub-quiet);
+}
+
+.epub-contents-list {
+  max-width: 42em;
+  margin: 0 auto;
+  padding: 0 8px 32px;
+  box-sizing: border-box;
+  list-style: none;
+}
+
+.epub-contents-list button, .epub-contents-list span {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--epub-ink);
+}
+
+.epub-contents-list button { font-weight: 400; }
+.epub-contents-list span { color: var(--epub-quiet); }
+.epub-contents-list button[aria-current] { font-weight: 600; color: var(--vw-accent); }
+
+/* A book printed from here would be the one chapter on screen, so nothing offers it; this
+   only keeps the page's own parts off any paper that does come out. */
+@media print {
+  .epub-bar, .epub-turn, .epub-contents { display: none !important; }
+}

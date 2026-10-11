@@ -8,7 +8,8 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * The page each PDF was last left open at, so that it opens there next time. Issue #25.
+ * The page each PDF or book was last left open at, so that it opens there next time. Issues
+ * #25 and #50.
  *
  * Kept against what the file holds rather than where it came from. One document reaches
  * the viewer under a different URI from the picker, from a granted folder and from a file

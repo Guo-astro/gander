@@ -176,6 +176,7 @@ class FormatRegistryTest {
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
                 to FileKind.PPTX,
             "application/vnd.ms-excel" to FileKind.XLSX,
+            "application/epub+zip" to FileKind.EPUB,
             "application/zip" to FileKind.ARCHIVE,
             "application/x-zip-compressed" to FileKind.ARCHIVE,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.template"

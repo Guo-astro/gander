@@ -14,7 +14,7 @@
          accessibility, so this is the whole announcement and it is one stop rather than
          nine, the same way a file row carries the description for its own four views. It
          names what the ETC tile stands for as well, which a list read aloud has room for. -->
-    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown, text files, zips and 3D models.</string>
+    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown, text files, books, zips and 3D models.</string>
     <string name="open_a_file">Open a file</string>
     <string name="recent_files">Recent files</string>
     <string name="folders">Folders</string>

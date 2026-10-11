@@ -79,6 +79,9 @@ should stay obviously so.
 | `snapshot.json` | Issue #32. A .json file as they arrive, all on one line. Its id is 2<sup>53</sup>+1, the smallest whole number a double cannot hold, so laying it out by parsing and restringifying would round it and be caught. Carries an accent and an emoji, both inside strings the formatter copies through. |
 | `utf16le.txt`, `utf16be.txt` | `vwEncodingOf` byte order mark sniffing. The mark itself must not appear in the output. |
 | `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. |
+| `harbour.epub` | Issue #50, an EPUB 3 in four chapters. A stylesheet that imports another, a picture named from a chapter, a stylesheet, an inline style and a drawing, a scrambled font, a link to a place in another chapter, and a nav contents list with one entry under another and one that goes nowhere. Chapter one carries script four ways and a picture on another host. Chapter two is six pages long and is not sound XML. "Heronsgate" is once in chapter one and twice in chapter three. |
+| `almanac.epub` | The older kind of book: contents in an NCX file, the package at the top of the zip, and a chapter whose name has a space in it. |
+| `locked.epub` | A book whose one chapter is encrypted, as DRM leaves it, which must be said rather than drawn as noise. |
 | `captions.srt`, `captions.vtt` | The same two captions as SubRip and as WebVTT, which the text viewer shows as written. |
 | `playlist.m3u` | A playlist of tracks that are not there. Android labels it audio, and Gander shows it as text. |
 | `release.nfo` | The notes that come with a download, as text. |

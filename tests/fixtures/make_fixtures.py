@@ -3140,13 +3140,292 @@ def models() -> None:
     written(OUT / "bracket-ascii.stl")
 
 
+# ---------------------------------------------------------------------------
+# Books: EPUB 3, EPUB 2 and one under a lock, for epub.html. Issue #50.
+# ---------------------------------------------------------------------------
+
+EPUB_NEEDLE = "Heronsgate"
+
+EPUB_CONTAINER = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n'
+    ' <rootfiles>\n'
+    '  <rootfile full-path="{path}" media-type="application/oebps-package+xml"/>\n'
+    ' </rootfiles>\n'
+    '</container>\n'
+)
+
+
+def xhtml5(title: str, body: str, *, head: str = "", attrs: str = "") -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE html>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n'
+        f'<head><title>{title}</title>'
+        '<link rel="stylesheet" type="text/css" href="../styles/book.css"/>'
+        f'{head}</head>\n'
+        f'<body{attrs}>\n{body}\n</body>\n</html>\n'
+    ).encode("utf-8")
+
+
+def epub3() -> None:
+    """
+    harbour.epub: an EPUB 3 in four chapters, made of what a reader has to get right.
+
+    A stylesheet that imports another from its own folder, a picture named from a chapter, a
+    stylesheet and an inline style, a font the book scrambles, a link from one chapter to a
+    place in another, and a contents list in the nav file with one entry under another.
+    Chapter one carries the four ways script gets into a page and a picture on another host.
+    Chapter two is long enough to be several pages, and is not sound XML, for an &nbsp; and an
+    empty title, so it is the chapter that must be read again as HTML. The needle is once in
+    chapter one and twice in chapter three, so a search has to cross chapters to count three.
+    """
+    buf = io.BytesIO()
+    from PIL import Image
+    Image.new("RGB", (48, 48), (175, 45, 24)).save(buf, format="PNG")
+    mark = buf.getvalue()
+    scrambled = random.Random(50).randbytes(600)
+
+    opf = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">\n'
+        ' <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
+        '  <dc:identifier id="uid">urn:uuid:00000000-0000-4000-8000-000000000050</dc:identifier>\n'
+        '  <dc:title>The Harbour at Low Tide</dc:title>\n'
+        '  <dc:creator>Imogen Farrow</dc:creator>\n'
+        '  <dc:language>en</dc:language>\n'
+        f'  <meta property="dcterms:modified">{ISO_EPOCH}</meta>\n'
+        ' </metadata>\n'
+        ' <manifest>\n'
+        '  <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>\n'
+        '  <item id="title" href="text/title.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="c1" href="text/chapter-1.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="c2" href="text/chapter-2.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="c3" href="text/chapter-3.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="css" href="styles/book.css" media-type="text/css"/>\n'
+        '  <item id="more" href="styles/extra.css" media-type="text/css"/>\n'
+        '  <item id="mark" href="images/mark.png" media-type="image/png"/>\n'
+        '  <item id="hand" href="fonts/hand.otf" media-type="font/otf"/>\n'
+        ' </manifest>\n'
+        ' <spine>\n'
+        '  <itemref idref="title"/>\n  <itemref idref="c1"/>\n  <itemref idref="c2"/>\n  <itemref idref="c3"/>\n'
+        ' </spine>\n'
+        '</package>\n'
+    )
+    nav = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE html>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\n'
+        '<head><title>Contents</title></head>\n<body>\n'
+        '<nav epub:type="landmarks"><ol><li><a href="text/title.xhtml">Start</a></li></ol></nav>\n'
+        '<nav epub:type="toc"><h1>Contents</h1>\n<ol>\n'
+        ' <li><a href="text/title.xhtml">Title page</a></li>\n'
+        ' <li><a href="text/chapter-1.xhtml">One: The Lamp Room</a>\n'
+        '  <ol><li><a href="text/chapter-1.xhtml#ledger">The ledger</a></li></ol></li>\n'
+        ' <li><a href="text/chapter-2.xhtml">Two: The Long Watch</a></li>\n'
+        ' <li><a href="text/chapter-3.xhtml">Three: The Tide Table</a></li>\n'
+        ' <li><span>Notes, in the printed edition only</span></li>\n'
+        '</ol></nav>\n</body>\n</html>\n'
+    )
+    title = xhtml5(
+        "The Harbour at Low Tide",
+        '<h1 class="book-title">The Harbour at Low Tide</h1>\n'
+        '<p class="byline">Imogen Farrow</p>\n'
+        '<p><img id="mark" src="../images/mark.png" alt="The printer\'s mark" width="48" height="48"/></p>',
+        attrs=' class="front"',
+    )
+    one = xhtml5(
+        "The Lamp Room",
+        '<h1>One: The Lamp Room</h1>\n'
+        f'<p class="lead">The keeper at {EPUB_NEEDLE} trimmed the lamp at four, as the ledger said he must.</p>\n'
+        '<script>window.__xss = "script";</script>\n'
+        '<p id="tapped" onclick="window.__xss = \'handler\'">A paragraph with a handler on it.</p>\n'
+        '<p><img id="missing" src="nowhere.png" onerror="window.__xss = \'onerror\'" alt="A picture the book does not hold"/></p>\n'
+        '<p><img id="remote" src="https://example.invalid/track.png" alt="A picture on another host"/></p>\n'
+        '<p><a id="bad-link" href="javascript:window.__xss=\'link\'">A link that is script</a>, '
+        '<a id="web-link" href="https://example.invalid/">a web address</a> and '
+        '<a id="to-tide" href="chapter-3.xhtml#tide-table">the tide table</a>.</p>\n'
+        '<div id="crest" class="crest" style="background-image: url(../images/mark.png); width: 24px; height: 24px"></div>\n'
+        '<h2 id="ledger">The ledger</h2>\n'
+        '<p class="note">Text after the injected markup, which must survive it.</p>',
+    )
+    watch = "\n".join(
+        f'<p>Hour {n}. The glass stood at {990 + n} and the wind held in the west, so the '
+        f'keeper wrote the figure down, wound the clock, and walked the gallery {n} times '
+        'before the kettle had boiled.</p>' + ('\n<a id="halfway"/>' if n == 30 else "")
+        for n in range(1, 61)
+    )
+    # Not sound XML on purpose: &nbsp; is not an entity XML knows, and the title is empty
+    two = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE html>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" lang="en">\n'
+        '<head><title/><link rel="stylesheet" type="text/css" href="../styles/book.css"/></head>\n'
+        '<body>\n<h1>Two: The Long&nbsp;Watch</h1>\n' + watch + '\n</body>\n</html>\n'
+    ).encode("utf-8")
+    three = xhtml5(
+        "The Tide Table",
+        '<h1>Three: The Tide Table</h1>\n'
+        f'<p>Low water at {EPUB_NEEDLE} came at six, and nobody at {EPUB_NEEDLE.upper()} minded.</p>\n'
+        '<h2 id="tide-table">The table</h2>\n'
+        '<table><tr><th>Day</th><th>Low water</th></tr><tr><td>Monday</td><td>06:10</td></tr></table>\n'
+        '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        'viewBox="0 0 48 48" width="48" height="48">'
+        '<image id="drawn" width="48" height="48" xlink:href="../images/mark.png"/></svg>',
+        head='<style>h2 { letter-spacing: 1px; }</style>',
+    )
+    css = (
+        '@import "extra.css";\n'
+        ':root { font-style: normal; }\n'
+        '@font-face { font-family: "Keeper Hand"; src: url("../fonts/hand.otf"); }\n'
+        'body.front { text-align: center; }\n'
+        'h1 { color: rgb(120, 40, 20); font-family: "Keeper Hand", serif; }\n'
+        'p.lead { text-indent: 0; }\n'
+    )
+    extra = (
+        '.note { font-style: italic; }\n'
+        '.byline { background-image: url("../images/mark.png"); background-repeat: no-repeat; padding-left: 56px; }\n'
+    )
+    encryption = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#">\n'
+        ' <enc:EncryptedData>\n'
+        '  <enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/>\n'
+        '  <enc:CipherData><enc:CipherReference URI="OEBPS/fonts/hand.otf"/></enc:CipherData>\n'
+        ' </enc:EncryptedData>\n'
+        '</encryption>\n'
+    )
+    members = [
+        Member(b"mimetype", b"application/epub+zip", method=STORED),
+        Member(b"META-INF/container.xml", EPUB_CONTAINER.format(path="OEBPS/package.opf").encode()),
+        Member(b"META-INF/encryption.xml", encryption.encode()),
+        Member(b"OEBPS/package.opf", opf.encode()),
+        Member(b"OEBPS/nav.xhtml", nav.encode()),
+        Member(b"OEBPS/text/title.xhtml", title),
+        Member(b"OEBPS/text/chapter-1.xhtml", one),
+        Member(b"OEBPS/text/chapter-2.xhtml", two),
+        Member(b"OEBPS/text/chapter-3.xhtml", three),
+        Member(b"OEBPS/styles/book.css", css.encode()),
+        Member(b"OEBPS/styles/extra.css", extra.encode()),
+        Member(b"OEBPS/images/mark.png", mark, method=STORED),
+        Member(b"OEBPS/fonts/hand.otf", scrambled, method=STORED),
+    ]
+    (OUT / "harbour.epub").write_bytes(zip_bytes(members))
+    written(OUT / "harbour.epub")
+
+
+def epub2() -> None:
+    """
+    almanac.epub: the older kind of book. Its contents are an NCX file, since it has no nav
+    file, its package sits at the top of the zip, and one chapter's name has a space in it,
+    which the package writes as %20.
+    """
+    def page(title: str, body: str) -> bytes:
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">\n'
+            f'<head><title>{title}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>\n'
+            f'<body>\n{body}\n</body>\n</html>\n'
+        ).encode("utf-8")
+
+    opf = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="uid">\n'
+        ' <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
+        '  <dc:identifier id="uid">urn:uuid:00000000-0000-4000-8000-000000000051</dc:identifier>\n'
+        '  <dc:title>A Willowmere Almanac</dc:title>\n'
+        '  <dc:language>en</dc:language>\n'
+        ' </metadata>\n'
+        ' <manifest>\n'
+        '  <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>\n'
+        '  <item id="one" href="chapter%20one.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="two" href="two.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="css" href="style.css" media-type="text/css"/>\n'
+        ' </manifest>\n'
+        ' <spine toc="ncx">\n  <itemref idref="one"/>\n  <itemref idref="two"/>\n </spine>\n'
+        '</package>\n'
+    )
+    ncx = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">\n'
+        ' <docTitle><text>A Willowmere Almanac</text></docTitle>\n'
+        ' <navMap>\n'
+        '  <navPoint id="n1" playOrder="1"><navLabel><text>First Light</text></navLabel>'
+        '<content src="chapter%20one.xhtml"/></navPoint>\n'
+        '  <navPoint id="n2" playOrder="2"><navLabel><text>Second Watch</text></navLabel>'
+        '<content src="two.xhtml"/>\n'
+        '   <navPoint id="n3" playOrder="3"><navLabel><text>The watch bell</text></navLabel>'
+        '<content src="two.xhtml#bell"/></navPoint>\n'
+        '  </navPoint>\n'
+        ' </navMap>\n'
+        '</ncx>\n'
+    )
+    members = [
+        Member(b"mimetype", b"application/epub+zip", method=STORED),
+        Member(b"META-INF/container.xml", EPUB_CONTAINER.format(path="content.opf").encode()),
+        Member(b"content.opf", opf.encode()),
+        Member(b"toc.ncx", ncx.encode()),
+        Member(b"chapter one.xhtml", page("First Light", '<h1>First Light</h1>\n<p>The almanac opens at dawn.</p>')),
+        Member(b"two.xhtml", page("Second Watch", '<h1>Second Watch</h1>\n<p>Before the bell.</p>\n'
+                                                   '<h2 id="bell">The watch bell</h2>\n<p>It rang twice.</p>')),
+        Member(b"style.css", b"h1 { font-variant: small-caps; }\n"),
+    ]
+    (OUT / "almanac.epub").write_bytes(zip_bytes(members))
+    written(OUT / "almanac.epub")
+
+
+def epub_locked() -> None:
+    """
+    locked.epub: a book whose one chapter is encrypted, as a shop's DRM leaves it. The list
+    in META-INF/encryption.xml is what says so, and the chapter itself is noise.
+    """
+    opf = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">\n'
+        ' <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
+        '  <dc:identifier id="uid">urn:uuid:00000000-0000-4000-8000-000000000052</dc:identifier>\n'
+        '  <dc:title>A Book Under Lock</dc:title>\n  <dc:language>en</dc:language>\n'
+        ' </metadata>\n'
+        ' <manifest><item id="c" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>\n'
+        ' <spine><itemref idref="c"/></spine>\n'
+        '</package>\n'
+    )
+    encryption = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#">\n'
+        ' <enc:EncryptedData>\n'
+        '  <enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes256-cbc"/>\n'
+        '  <enc:CipherData><enc:CipherReference URI="OEBPS/chapter.xhtml"/></enc:CipherData>\n'
+        ' </enc:EncryptedData>\n'
+        '</encryption>\n'
+    )
+    members = [
+        Member(b"mimetype", b"application/epub+zip", method=STORED),
+        Member(b"META-INF/container.xml", EPUB_CONTAINER.format(path="OEBPS/package.opf").encode()),
+        Member(b"META-INF/encryption.xml", encryption.encode()),
+        Member(b"OEBPS/package.opf", opf.encode()),
+        Member(b"OEBPS/chapter.xhtml", random.Random(52).randbytes(900), method=STORED),
+    ]
+    (OUT / "locked.epub").write_bytes(zip_bytes(members))
+    written(OUT / "locked.epub")
+
+
+def epubs() -> None:
+    epub3()
+    epub2()
+    epub_locked()
+
+
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, relatives, texts, images, audio,
-                 photo_formats, zips, prose, workbooks, models):
+                 photo_formats, zips, prose, workbooks, models, epubs):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
     count = sum(1 for p in OUT.iterdir() if p.is_file())

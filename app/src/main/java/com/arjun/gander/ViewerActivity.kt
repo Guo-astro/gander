@@ -435,7 +435,7 @@ open class ViewerActivity : AppCompatActivity() {
         // then, and turning a card that says "update your WebView" dark is not a
         // feature. Same standard as the two above, and as action_search.
         val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
-        if (!kind.paged || !pageGetsChannel(kind) || blocked) {
+        if (!kind.turnsOver || !pageGetsChannel(kind) || blocked) {
             item.isVisible = false
             return
         }
@@ -1773,15 +1773,16 @@ open class ViewerActivity : AppCompatActivity() {
         // instead of drawing itself white and then again. It is also the only route that
         // survives process death and the recreate() in showRendererGone, neither of which
         // leaves a port to send anything down.
-        val night = if (kind.paged && Settings.night(this)) 1 else 0
+        val night = if (kind.turnsOver && Settings.night(this)) 1 else 0
         loadedNight = night == 1
-        // The page a PDF was left at goes the same way, for the same two reasons and one
+        // The page a PDF or a book was left at goes the same way, for the same two reasons and one
         // more: a document that opened at the top and then jumped would spend its opening
         // drawing a page nobody asked to see. Issue #25. Never for a file inside a zip:
         // the position is filed on the phone under a fingerprint of the file, nothing in a
         // zip is written to the phone, and one under a password would leave a fingerprint
         // of what the password was keeping.
-        val keepsPosition = kind == FileKind.PDF && !ArchiveProvider.isEntry(this, uri)
+        val keepsPosition = (kind == FileKind.PDF || kind == FileKind.EPUB) &&
+            !ArchiveProvider.isEntry(this, uri)
         positionKey = null
 
         // Both looked up off the main thread, since both ask the provider, and the page's

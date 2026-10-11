@@ -25,15 +25,28 @@ enum class FileKind(val page: String) {
     /** A 3D model, drawn with WebGL by a page of Gander's own. STL for now. */
     MODEL("model.html"),
 
+    /**
+     * A book: a zip of web pages, read a chapter at a time by a page of Gander's own over
+     * the zip and sanitising libraries the app already carried. Issue #50.
+     */
+    EPUB("epub.html"),
+
     /** A .zip, which is listed rather than drawn: see ArchiveBrowser. Issue #30. */
     ARCHIVE(""),
     UNSUPPORTED("unsupported.html");
 
     /**
-     * Drawn as pages: its page says which one is on screen, goes to one when asked, and
-     * turns over for night mode. A PDF, and a Word document since issue #47.
+     * Counted in pages: its page says which one is on screen and goes to one when asked. A
+     * PDF, a Word document since issue #47, and a book, which has no pages of its own and
+     * counts equal stretches of its text instead.
      */
-    val paged: Boolean get() = this == PDF || this == DOCX
+    val paged: Boolean get() = this == PDF || this == DOCX || this == EPUB
+
+    /**
+     * Turns its pages over for night mode. Not a book: its page is prose and follows the
+     * phone's theme, as a Markdown file's does.
+     */
+    val turnsOver: Boolean get() = this == PDF || this == DOCX
 
     companion object {
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
@@ -49,6 +62,7 @@ enum class FileKind(val page: String) {
         private val slideExt = setOf("pptx", "ppsx", "pptm", "potx")
         private val mdExt = setOf("md", "markdown")
         private val modelExt = setOf("stl")
+        private val bookExt = setOf("epub")
         private val archiveExt = setOf("zip")
         private val videoExt = setOf(
             "mp4", "m4v", "mov", "mkv", "webm", "3gp", "3g2", "m2ts", "mts", "avi", "flv"
@@ -82,6 +96,7 @@ enum class FileKind(val page: String) {
         private const val MIME_DOC = "application/msword"
         private val proseMimes = setOf(MIME_ODT, MIME_OTT, MIME_DOC, "application/rtf", "text/rtf")
         private const val MIME_ZIP = "application/zip"
+        private const val MIME_EPUB = "application/epub+zip"
 
         /** What Windows calls a zip, and so what one attached on Windows often arrives as. */
         private const val MIME_ZIP_WINDOWS = "application/x-zip-compressed"
@@ -160,6 +175,7 @@ enum class FileKind(val page: String) {
             ext in mdExt -> MD
             ext in textExt -> TEXT
             ext in modelExt -> MODEL
+            ext in bookExt -> EPUB
             ext in archiveExt -> ARCHIVE
             mime == "application/pdf" -> PDF
             // Ahead of the audio branch, which would otherwise take it
@@ -170,6 +186,7 @@ enum class FileKind(val page: String) {
             mime in sheetMimes -> XLSX
             mime in slideMimes -> PPTX
             mime in modelMimes -> MODEL
+            mime == MIME_EPUB -> EPUB
             mime == MIME_ZIP || mime == MIME_ZIP_WINDOWS -> ARCHIVE
             mime?.startsWith("image/") == true -> IMAGE_WEB
             mime?.startsWith("text/") == true -> TEXT

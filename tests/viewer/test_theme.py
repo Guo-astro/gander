@@ -25,6 +25,7 @@ import pytest
 THEMED = [
     ("text.html", "plain.txt"),
     ("md.html", "notes.md"),
+    ("epub.html", "harbour.epub"),
     ("docx.html", "report.docx"),
     ("xlsx.html", "budget.xlsx"),
     ("unsupported.html", "unknown.xyz"),
@@ -44,6 +45,7 @@ FIXED_GROUND = [
 PROSE = [
     ("text.html", "plain.txt", "#content"),
     ("md.html", "notes.md", "#content"),
+    ("epub.html", "harbour.epub", "#book"),
     ("unsupported.html", "unknown.xyz", ".card"),
 ]
 
