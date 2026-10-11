@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4 (2026-10-12)
 
 - An animated WebP or PNG plays, as a GIF does (#49, reported in a Play review). Gander showed
   only its first frame.
