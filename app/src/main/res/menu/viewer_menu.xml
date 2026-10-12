@@ -7,6 +7,19 @@
         android:title="@string/search_in_document"
         android:visible="false"
         app:showAsAction="ifRoom" />
+    <!-- A book's two, hidden until epub.html says the book has opened. Its contents list has a
+         button of its own on the page, at the top of a chapter, which is seldom where a
+         reader is. Issue #50. -->
+    <item
+        android:id="@+id/action_contents"
+        android:title="@string/contents"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_text_size"
+        android:title="@string/text_size"
+        android:visible="false"
+        app:showAsAction="never" />
     <!-- Hidden until pdf.html says how many pages there are, the way the search item
          waits for something searchable. It is also the route a screen reader takes to
          this, since the pill it sits beside can be faded out. -->

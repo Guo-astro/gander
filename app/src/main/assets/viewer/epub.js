@@ -20,15 +20,16 @@
  * reach the page around it and the page's cannot reach the book. Inside it the chapter gets
  * an html and a body element of its own, which is what its stylesheets expect to find.
  *
- * A book has no pages, since its text is laid out afresh on every screen, so it is counted
- * in equal stretches of its files instead: see VW_EPUB_PAGE_BYTES. Those are what the page
- * counter, Go to page and the place a book reopens at all speak in.
+ * A book has no pages, since its text is laid out afresh on every screen and at every size
+ * of type. How far through it the reader is, which the app shows as a percentage, is counted
+ * in equal stretches of its files: see VW_EPUB_PAGE_BYTES. The place it reopens at is finer
+ * than that, the first letter that was on the screen: see firstShowing().
  */
 
 /*
- * How much of a chapter's file counts as a page. A novel's files come to about this much for
- * each page of the printed book, so the count lands near the number a reader expects, and it
- * does not change with the size of the screen or of the type.
+ * How much of a chapter's file counts as one stretch of the book, which the code below calls
+ * a page: about what a printed page of a novel comes to. Counted from the files, since their
+ * sizes are known without reading them, and so the same on every screen.
  */
 var VW_EPUB_PAGE_BYTES = 2048;
 
@@ -146,6 +147,16 @@ var vwEpub = (function () {
     "}"
   ].join("\n");
 
+  /*
+   * What a place in a chapter is counted in besides the letters of its text: each of these
+   * is one. See firstShowing().
+   */
+  var COUNTED = /^(img|svg|video)$/;
+
+  /* The addresses outside a book that a reader is shown, the ones vwDisarmLinks() leaves a
+     Word document: a web page, somebody to write to and a number to ring */
+  var OUTSIDE = /^(https?|mailto|tel):/i;
+
   /* The least room, in ems of the chapter's text, that a picture set beside the text may leave
      it: about three short words to a line. With less, the picture is set on its own. */
   var FLOAT_ROOM_EMS = 8;
@@ -184,6 +195,21 @@ var vwEpub = (function () {
   var turn = 0;
   /* The page last told to the app */
   var sent = 0;
+  /* How many letters and pictures of the chapter are above the screen: see firstShowing() */
+  var above = 0;
+  /* The place last told to the app, and whether the chapter is one that takes its text size */
+  var told = "";
+  var toldFlow = "";
+  /* Set while the page is still moving, and the place it stops at has yet to be worked out */
+  var settling = 0;
+  /* How far down the page relaid() left the screen, or -1 once the reader has moved it */
+  var heldAt = -1;
+  /* Whether the app has been told that something of the page's own is open over the book */
+  var toldOver = false;
+  /* What fit() and unfloat() have set on the chapter, each with what was there before */
+  var setToFit = [];
+  /* The width the chapter was last fitted to */
+  var across = window.innerWidth;
   var opened = false;
   /* Whether the reader has moved the page since the chapter went on it */
   var moved = false;
@@ -215,6 +241,10 @@ var vwEpub = (function () {
   var list = document.getElementById("epub-contents-list");
   var openContents = document.getElementById("epub-contents-open");
   var closeContents = document.getElementById("epub-contents-close");
+  var linkBox = document.getElementById("epub-link");
+  var linkAddress = document.getElementById("epub-link-address");
+  var linkCopy = document.getElementById("epub-link-copy");
+  var linkClose = document.getElementById("epub-link-close");
 
   (function () {
     var base = document.createElement("style");
@@ -1034,6 +1064,15 @@ var vwEpub = (function () {
     page.style.height = Math.ceil(drawn.h * by) + "px";
   }
 
+  /* Sets one thing on an element of the chapter over whatever its book said, and keeps what
+     was there: see refit() */
+  function setFor(el, name, value) {
+    setToFit.push({
+      el: el, name: name, value: el.style.getPropertyValue(name), priority: el.style.getPropertyPriority(name)
+    });
+    el.style.setProperty(name, value, "important");
+  }
+
   /* The selectors of every rule in [rules] that sets something beside the text, added to [into] */
   function floaters(rules, into) {
     for (var i = 0; i < rules.length; i++) {
@@ -1087,12 +1126,12 @@ var vwEpub = (function () {
       }
     });
     loose.forEach(function (b) {
-      b.el.style.setProperty("float", "none", "important");
+      setFor(b.el, "float", "none");
       // A picture is one of the words of its line again unless it is told otherwise
       if (!b.block) return;
-      b.el.style.setProperty("display", "block", "important");
-      b.el.style.setProperty("margin-left", "auto", "important");
-      b.el.style.setProperty("margin-right", "auto", "important");
+      setFor(b.el, "display", "block");
+      setFor(b.el, "margin-left", "auto");
+      setFor(b.el, "margin-right", "auto");
     });
   }
 
@@ -1166,11 +1205,26 @@ var vwEpub = (function () {
     if (!seek(onPage)) hold(onPage, getComputedStyle(onPage));
     wide.forEach(function (b) {
       // A table scrolls only as a block, with its rows and columns as they were inside it
-      if (b.table) b.el.style.setProperty("display", "block", "important");
-      b.el.style.setProperty("box-sizing", "border-box", "important");
-      b.el.style.setProperty("max-width", "calc(100% - " + b.margins + "px)", "important");
-      if (!b.scrolls) b.el.style.setProperty("overflow-x", "auto", "important");
+      if (b.table) setFor(b.el, "display", "block");
+      setFor(b.el, "box-sizing", "border-box");
+      setFor(b.el, "max-width", "calc(100% - " + b.margins + "px)");
+      if (!b.scrolls) setFor(b.el, "overflow-x", "auto");
     });
+  }
+
+  /*
+   * Fits the chapter again from the layout its book gave it, for a screen that has turned or
+   * text that has changed size. What was set for the old width is taken back first: a picture
+   * set alone because large type left no room beside it has that room again at a smaller size.
+   */
+  function refit() {
+    for (var i = setToFit.length - 1; i >= 0; i--) {
+      var was = setToFit[i];
+      if (was.value) was.el.style.setProperty(was.name, was.value, was.priority);
+      else was.el.style.removeProperty(was.name);
+    }
+    setToFit = [];
+    fit();
   }
 
   // ---------------------------------------------------------------------------------------
@@ -1194,20 +1248,144 @@ var vwEpub = (function () {
     return ch.start + Math.min(ch.pages - 1, Math.floor(fraction() * ch.pages + 1e-6)) + 1;
   }
 
-  /* Tells the app which page is on screen, in the words pdf.html uses: see PortMessage.kt */
+  /* Tells the app how far through the book the screen is, in the words pdf.html uses for its
+     pages: see PortMessage.kt */
   function report() {
     if (shown < 0 || !onPage) return;
     var n = pageNow();
     if (n !== sent && vwFind.post("page " + n + " " + total)) sent = n;
   }
 
-  /* The chapter a page is in and how far down it: the reverse of pageNow() */
-  function spot(n) {
-    var i = 0;
-    while (i < spine.length - 1 && spine[i].start + spine[i].pages < n) i++;
-    var ch = spine[i];
-    // A little past the line between two pages, so that rounding cannot land on the one before
-    return { at: i, to: { part: (n - ch.start - 1 + 0.02) / ch.pages } };
+  /* Tells the app whether the chapter is one whose text takes the size the reader chose. A
+     page of a fixed size is not: it was drawn around its type at the size the book gave it. */
+  function flow() {
+    var say = drawn ? "reflow 0" : "reflow 1";
+    if (say !== toldFlow && vwFind.post(say)) toldFlow = say;
+  }
+
+  /* Where on the screen a chapter comes out from under the title bar, or from under as much
+     of the bar as is still down */
+  function topEdge() {
+    return Math.max(0, vwTopPx - vwBarGonePx);
+  }
+
+  /*
+   * A place in a chapter is a count of what comes before it: every letter of its text, and
+   * one for each picture. Unlike a distance down the page, that is the same place at any
+   * size of type and whichever way the phone is held.
+   */
+  function counted() {
+    return document.createTreeWalker(onPage, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+      acceptNode: function (n) {
+        return n.nodeType === 3 || COUNTED.test(local(n))
+          ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      }
+    });
+  }
+
+  /* Whether enough of a box is below [top] for it to be what the reader is looking at: half
+     of a line of words, or two dozen pixels of anything taller */
+  function showing(box, top) {
+    return !!box && box.height > 0 && box.bottom - top >= Math.min(box.height / 2, 24);
+  }
+
+  /* The box of the line that letter [k] of a text is on, or of its last line for [last]. A
+     space a line was broken at has no box, so it is the line of the next letter that has
+     one, and null where none does. */
+  function lineOf(text, k, last) {
+    var range = document.createRange();
+    range.setStart(text, k);
+    range.setEnd(text, text.data.length);
+    var boxes = range.getClientRects();
+    for (var i = 0; i < boxes.length; i++) {
+      var box = boxes[last ? boxes.length - 1 - i : i];
+      if (box.height > 0) return box;
+    }
+    return null;
+  }
+
+  /*
+   * The first letter or picture in [el], in reading order, that is showing below [top]:
+   * { node, at }, at being the letter where the node is a text. A box wholly above the edge
+   * is passed over with all that is in it, so a long chapter costs a look at each of its
+   * paragraphs and at the letters of one.
+   */
+  function firstShowing(el, top) {
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) {
+        if (!/\S/.test(n.data)) continue;
+        var end = lineOf(n, 0, true);
+        if (!showing(end, top)) continue;
+        // Its lines run down the page, so the first of them showing is found by halving
+        var lo = 0;
+        var hi = n.data.length - 1;
+        while (lo < hi) {
+          var mid = (lo + hi) >> 1;
+          if (showing(lineOf(n, mid) || end, top)) hi = mid;
+          else lo = mid + 1;
+        }
+        return { node: n, at: lo };
+      }
+      if (n.nodeType !== 1) continue;
+      var box = n.getBoundingClientRect();
+      if (COUNTED.test(local(n))) {
+        if (showing(box, top)) return { node: n, at: 0 };
+        continue;
+      }
+      // Something with no height is not a box at all, and what is in it may be anywhere
+      if (box.height > 0 && box.bottom <= top) continue;
+      var found = firstShowing(n, top);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /* How many letters and pictures of the chapter come before letter [at] of [node] */
+  function countBefore(node, at) {
+    var walk = counted();
+    var sum = 0;
+    for (var n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (n === node) return sum + at;
+      sum += n.nodeType === 3 ? n.data.length : 1;
+    }
+    return 0;
+  }
+
+  /* The box of what comes after [past] letters and pictures of the chapter, or of the first
+     thing after that which has one, since words a book hides have none */
+  function boxAt(past) {
+    var walk = counted();
+    var left = past;
+    for (var n = walk.nextNode(); n; n = walk.nextNode()) {
+      var size = n.nodeType === 3 ? n.data.length : 1;
+      if (left >= size) {
+        left -= size;
+        continue;
+      }
+      var box = n.nodeType === 3 ? lineOf(n, left) : n.getBoundingClientRect();
+      if (box && box.height > 0) return box;
+      left = 0;
+    }
+    return null;
+  }
+
+  /*
+   * Works out the place the screen has come to rest at and tells the app, which keeps it for
+   * the next time the book is opened: see Positions.kt. Done once the page has stopped
+   * moving, since finding it costs more than there is to spend on each frame of a fling.
+   */
+  function rest() {
+    settling = 0;
+    if (shown < 0 || !onPage || page.style.opacity === "0") return;
+    // Where a change of type size left it, the place is still the letter that was kept on
+    // top. Worked out again it would be the start of that letter's line, a little earlier
+    // at each change, and the reader would be walked back up the chapter.
+    if (heldAt >= 0 && Math.abs(window.pageYOffset - heldAt) < 1) return;
+    heldAt = -1;
+    var first = window.pageYOffset > 0 ? firstShowing(onPage, topEdge()) : null;
+    above = first ? countBefore(first.node, first.at) : 0;
+    var say = "at " + shown + " " + above;
+    if (say !== told && vwFind.post(say)) told = say;
   }
 
   function named(frag) {
@@ -1216,15 +1394,15 @@ var vwEpub = (function () {
     return onPage.querySelector('[name="' + CSS.escape(frag) + '"]');
   }
 
-  /* Puts the screen at [to]: { frag } a place the book names, { part } a fraction of the way
-     down the chapter, or anything else its top, with the strip above it in view. */
+  /* Puts the screen at [to]: { frag } a place the book names, { past } that many letters and
+     pictures into the chapter, or anything else its top, with the strip above it in view. */
   function place(to) {
     var mark = to && to.frag ? named(to.frag) : null;
+    var box = !mark && to && to.past > 0 ? boxAt(to.past) : null;
     if (mark) {
       mark.scrollIntoView();
-    } else if (to && to.part > 0) {
-      var box = page.getBoundingClientRect();
-      window.scrollTo(0, window.pageYOffset + box.top - vwTopPx + to.part * box.height);
+    } else if (box) {
+      window.scrollTo(0, window.pageYOffset + box.top - topEdge());
     } else {
       window.scrollTo(0, 0);
     }
@@ -1276,6 +1454,9 @@ var vwEpub = (function () {
     release();
     shown = i;
     moved = false;
+    setToFit = [];
+    heldAt = -1;
+    above = to && to.past > 0 ? to.past : 0;
 
     var html = document.createElement("html");
     var body = made.body.cloneNode(true);
@@ -1283,6 +1464,7 @@ var vwEpub = (function () {
     dressLike(body, made.own);
     html.appendChild(body);
     drawn = made.drawn;
+    flow();
     page.className = drawn ? "vw-page vw-fixed" : "vw-page vw-flow";
     page.style.height = "";
     if (drawn) {
@@ -1339,6 +1521,8 @@ var vwEpub = (function () {
       report();
       if (!quiet) vwFind.changed();
       trim();
+      // Last, so that nothing above waits on it
+      rest();
     }).catch(function (e) {
       page.style.opacity = "";
       if (!opened) fail(e);
@@ -1356,12 +1540,6 @@ var vwEpub = (function () {
     return load(i).then(function () {
       if (mine === turn) show(i, to, false);
     });
-  }
-
-  function toPage(n) {
-    if (!(n >= 1 && n <= total)) return;
-    var at = spot(n);
-    go(at.at, n === 1 ? null : at.to);
   }
 
   // ---------------------------------------------------------------------------------------
@@ -1400,18 +1578,29 @@ var vwEpub = (function () {
     busy: function () { return reading; }
   };
 
-  /* What the app sends besides search: "g<n>" to go to a page */
+  /* What the app sends besides search: "o" for the contents, from its menu, and "x" for
+     Back while something of the page's own is open over the book */
   window.vwPageCommand = function (msg) {
-    if (msg.charAt(0) === "g") toPage(parseInt(msg.slice(1), 10));
+    var verb = msg.charAt(0);
+    if (verb === "o" && opened) showContents(true);
+    else if (verb === "x") closeOver();
   };
 
+  /* Everything the app is told is said again to a port that has only now opened */
   window.vwPortReady = function () {
     sent = 0;
+    told = "";
+    toldFlow = "";
+    toldOver = false;
+    if (shown < 0 || !onPage) return;
+    flow();
     report();
+    rest();
+    over();
   };
 
   // ---------------------------------------------------------------------------------------
-  // The page's own parts: the two buttons, the contents and links between chapters
+  // The page's own parts: the two buttons, the contents, and links in a chapter
   // ---------------------------------------------------------------------------------------
 
   function buildContents() {
@@ -1446,6 +1635,7 @@ var vwEpub = (function () {
           buttons[i].removeAttribute("aria-current");
         }
       }
+      showLink("");
       panel.hidden = false;
       if (current) current.scrollIntoView({ block: "center" });
       closeContents.focus({ preventScroll: true });
@@ -1453,12 +1643,77 @@ var vwEpub = (function () {
       panel.hidden = true;
       openContents.focus({ preventScroll: true });
     }
+    over();
+  }
+
+  /* Tells the app whether something of the page's own is open over the book, which is what
+     Back closes before it leaves: see PortMessage.kt */
+  function over() {
+    var is = !panel.hidden || !linkBox.hidden;
+    if (is !== toldOver && vwFind.post(is ? "cover 1" : "cover 0")) toldOver = is;
+  }
+
+  function closeOver() {
+    if (!linkBox.hidden) showLink("");
+    else if (!panel.hidden) showContents(false);
+  }
+
+  /* An address outside the book that a reader is shown, or nothing for any other */
+  function outside(href) {
+    href = String(href || "").trim();
+    if (href.indexOf("//") === 0) return "https:" + href;
+    return OUTSIDE.test(href) ? href : "";
+  }
+
+  /* Shows [address] with a way to copy it, or puts that away for no address */
+  function showLink(address) {
+    if (address) {
+      linkAddress.textContent = address;
+      linkCopy.textContent = "Copy address";
+      linkBox.hidden = false;
+      linkCopy.focus({ preventScroll: true });
+    } else {
+      linkBox.hidden = true;
+    }
+    over();
+  }
+
+  /*
+   * Puts the address on the clipboard. The engine's newer way is asked first, and where it
+   * is missing or refuses, the older one, which copies what is selected on the page. Where
+   * neither will, the address is left selected for the reader's own Copy.
+   */
+  function copyLink() {
+    function done() {
+      linkCopy.textContent = "Copied";
+    }
+    function bySelecting() {
+      var range = document.createRange();
+      range.selectNodeContents(linkAddress);
+      var chosen = window.getSelection();
+      chosen.removeAllRanges();
+      chosen.addRange(range);
+      var did = false;
+      try { did = document.execCommand("copy"); } catch (e) { /* not this way either */ }
+      if (!did) return;
+      chosen.removeAllRanges();
+      done();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(linkAddress.textContent).then(done, bySelecting);
+    } else {
+      bySelecting();
+    }
   }
 
   openContents.addEventListener("click", function () { showContents(true); });
   closeContents.addEventListener("click", function () { showContents(false); });
   prev.addEventListener("click", function () { go(shown - 1, null); });
   next.addEventListener("click", function () { go(shown + 1, null); });
+  linkCopy.addEventListener("click", copyLink);
+  linkClose.addEventListener("click", function () { showLink(""); });
+  // A tap beside the box, on the book behind it, puts it away as well
+  linkBox.addEventListener("click", function (e) { if (e.target === linkBox) showLink(""); });
 
   list.addEventListener("click", function (e) {
     var el = e.target;
@@ -1469,9 +1724,9 @@ var vwEpub = (function () {
   });
 
   /*
-   * A link in a chapter. One to somewhere else in the book goes there. Any other does
-   * nothing, as in every viewer here: Gander opens no web address, and the page has no
-   * network to open one with.
+   * A link in a chapter. One to somewhere else in the book goes there. One to a web address
+   * shows the address, for the reader to copy: Gander opens no web address, here or in any
+   * other viewer, and nothing a document says is handed on to a browser.
    */
   shadow.addEventListener("click", function (e) {
     var a = e.target;
@@ -1481,12 +1736,22 @@ var vwEpub = (function () {
     if (!href) return;
     e.preventDefault();
     var at = resolve(spine[shown].path, href);
-    if (!at || index[at.path] === undefined) return;
+    if (!at) {
+      var address = outside(href);
+      if (address) showLink(address);
+      return;
+    }
+    if (index[at.path] === undefined) return;
     go(index[at.path], at.frag ? { frag: at.frag } : null);
   });
 
   var reporting = false;
   window.addEventListener("scroll", function () {
+    if (settling) clearTimeout(settling);
+    // Nothing thrown in a timer may reach the page, which would put a card over the book
+    settling = setTimeout(function () {
+      try { rest(); } catch (e) { settling = 0; }
+    }, 150);
     if (reporting) return;
     reporting = true;
     requestAnimationFrame(function () {
@@ -1495,8 +1760,52 @@ var vwEpub = (function () {
     });
   }, { passive: true });
 
-  // A phone turned on its side has a different width for things to be too wide for
-  window.addEventListener("resize", fit);
+  /*
+   * The type has changed size, or the phone has turned. The chapter is fitted to that
+   * afresh, and the line the reader was on is brought back to the top of the screen, unless
+   * the page is on the move and the place that was kept is no longer where they are.
+   */
+  function relaid() {
+    if (shown < 0 || !onPage) return;
+    refit();
+    if (!settling) {
+      place(above > 0 ? { past: above } : null);
+      heldAt = window.pageYOffset;
+    }
+    report();
+  }
+
+  // The keyboard coming up changes the height alone, which moves nothing in a chapter
+  window.addEventListener("resize", function () {
+    if (window.innerWidth === across) return;
+    across = window.innerWidth;
+    relaid();
+  });
+
+  /*
+   * A letter off the page, at a size no book can reach. The size of the type here is the
+   * app's to set, through the WebView, and the engine then lays the page out again without
+   * a word to anything on it. This letter's box changing is how the page hears of it.
+   */
+  (function () {
+    if (!window.ResizeObserver) return;
+    var gauge = document.createElement("span");
+    var first = true;
+    gauge.id = "epub-gauge";
+    gauge.textContent = "M";
+    gauge.setAttribute("aria-hidden", "true");
+    gauge.style.cssText = "position:absolute;top:0;left:0;visibility:hidden;" +
+      "pointer-events:none;white-space:nowrap;font:100px/1 serif";
+    document.body.appendChild(gauge);
+    new ResizeObserver(function () {
+      // The first word is of the size the letter starts at
+      if (first) {
+        first = false;
+        return;
+      }
+      try { relaid(); } catch (e) { /* the chapter is still there, as it was */ }
+    }).observe(gauge);
+  })();
 
   ["touchstart", "wheel", "keydown"].forEach(function (name) {
     window.addEventListener(name, function () { moved = true; }, { passive: true });
@@ -1508,14 +1817,14 @@ var vwEpub = (function () {
 
   vwFetchDoc("buffer").then(open).then(function () {
     buildContents();
-    // The page the book was left at, which the app sends as it does a PDF's
-    var resume = parseInt(vwParams.get("resume"), 10);
-    if (resume >= 2 && resume <= total) {
-      var at = spot(resume);
-      return go(at.at, at.to);
+    // The place the book was left at, which the app keeps and sends back: the chapter by
+    // its number in the reading order, and how much of it was above the screen
+    var left = /^(\d+)\.(\d+)$/.exec(vwParams.get("at") || "");
+    if (left && Number(left[1]) < spine.length) {
+      return go(Number(left[1]), { past: Number(left[2]) });
     }
     return go(0, null);
   }).catch(fail);
 
-  return { go: go, toPage: toPage };
+  return { go: go };
 })();

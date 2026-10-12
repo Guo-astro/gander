@@ -21,7 +21,9 @@ import android.print.PrintManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.text.InputType
+import android.view.Gravity
 import android.view.KeyEvent
+import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
@@ -52,6 +54,7 @@ import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -75,6 +78,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 open class ViewerActivity : AppCompatActivity() {
@@ -312,6 +316,8 @@ open class ViewerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_viewer)
         applySystemBarInsets(findViewById(R.id.root))
         onBackPressedDispatcher.addCallback(this, searchBackCallback)
+        // After the search bar's, so it is asked first: what it closes is over the whole page
+        onBackPressedDispatcher.addCallback(this, coverBackCallback)
         pageIndicator.setOnClickListener { askForPage() }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
@@ -389,6 +395,12 @@ open class ViewerActivity : AppCompatActivity() {
         setUpNightMode(toolbar, kind)
         goToPageItem = toolbar.menu.findItem(R.id.action_go_to_page).apply {
             setOnMenuItemClickListener { askForPage(); true }
+        }
+        contentsItem = toolbar.menu.findItem(R.id.action_contents).apply {
+            setOnMenuItemClickListener { tellPage(PortCommand.contents()); true }
+        }
+        textSizeItem = toolbar.menu.findItem(R.id.action_text_size).apply {
+            setOnMenuItemClickListener { askForTextSize(); true }
         }
         toolbar.menu.findItem(R.id.action_share).setOnMenuItemClickListener {
             shareFile(uri, ext, mime)
@@ -606,6 +618,20 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
+     * Back while a book has its contents list or a link's address open over it, which closes
+     * that and stays in the book. The page says when one is open: see [PortMessage.Covered].
+     *
+     * Switched off as it fires rather than on the page's word that the thing has closed, so
+     * a page that never answers cannot hold on to Back.
+     */
+    private val coverBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            isEnabled = false
+            tellPage(PortCommand.closeOver())
+        }
+    }
+
+    /**
      * Last page the document reported, and how many there are. Zero until it says, which under
      * Robolectric it never does, so tests set the count themselves.
      */
@@ -613,8 +639,23 @@ open class ViewerActivity : AppCompatActivity() {
     @androidx.annotation.VisibleForTesting
     internal var pageTotal = 0
 
-    /** What this PDF's page is saved under; see [Positions]. Null for every other format. */
+    /** What a PDF's page or a book's place is saved under; see [Positions]. Null for any other format. */
     private var positionKey: String? = null
+
+    /**
+     * Whether the document is a book, whose readout is how far through it the reader is and
+     * which has no page to go to.
+     */
+    private var book = false
+
+    /** Where in a book the top of the screen is; see [Positions.Place]. Null until its page says. */
+    private var bookPlace: Positions.Place? = null
+
+    /** Whether the chapter on screen takes the reader's text size. See [applyTextSize]. */
+    private var bookReflows = true
+
+    /** The text zoom the WebView came with, which is the phone's own font size setting. */
+    private var phoneTextZoom = 100
 
     /**
      * Where a document's length and a PDF's page are looked up before the page loads, which
@@ -721,6 +762,10 @@ open class ViewerActivity : AppCompatActivity() {
     /** Bound once the toolbar exists, shown once pdf.html has said how long the file is. */
     private var goToPageItem: MenuItem? = null
 
+    /** A book's two, shown once epub.html has said the book is open. */
+    private var contentsItem: MenuItem? = null
+    private var textSizeItem: MenuItem? = null
+
     /**
      * Put the page readout on screen, or keep it there.
      *
@@ -750,6 +795,14 @@ open class ViewerActivity : AppCompatActivity() {
         // Description before text, as the search counter does it: anything already
         // reading this node has to find the spoken form in place by the time the
         // visible one changes under it.
+        if (book) {
+            // What a book's page counts is a stretch of its files and not a page anybody
+            // could turn to, so the reader is told how far through it they are
+            val percent = bookPercent(pageAt, pageTotal)
+            pill.contentDescription = getString(R.string.book_position_spoken, percent)
+            pill.text = getString(R.string.scroll_position, percent)
+            return
+        }
         pill.contentDescription =
             getString(R.string.page_indicator_spoken, pageAt, pageTotal)
         pill.text = getString(R.string.page_indicator, pageAt, pageTotal)
@@ -776,7 +829,7 @@ open class ViewerActivity : AppCompatActivity() {
      */
     private fun askForPage() {
         val total = pageTotal
-        if (total < 2) return
+        if (total < 2 || book) return
 
         // Dark over a document in night mode, like the rest of the viewer. See NightChrome.
         val themed = nightChrome.dialogs
@@ -837,6 +890,65 @@ open class ViewerActivity : AppCompatActivity() {
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { go() }
         entry.setOnEditorActionListener { _, _, _ -> go(); true }
+    }
+
+    /**
+     * Sets the size of a book's text by the WebView's own text zoom, which scales every letter
+     * and its line whatever unit the book gave the size in. A rule laid over the book's
+     * stylesheets would leave a book that sets its type in points where it was. The choice
+     * multiplies the zoom the WebView came with, so the phone's font size is where it starts.
+     *
+     * A page of a fixed size gets neither: it was drawn around its type at the size its book
+     * gave it, and larger letters run out of the boxes they were placed in.
+     */
+    private fun applyTextSize() {
+        val web = webView ?: return
+        web.settings.textZoom =
+            bookTextZoom(phoneTextZoom, Settings.bookTextSize(this), bookReflows)
+    }
+
+    /**
+     * A book's text size: a button either side of the size, each tap showing on the page at
+     * once. At the foot of the screen and with nothing dimmed, so the text being sized can be
+     * read above it. The same size for every book, since it is the reader's eyes that it
+     * suits and not the book. See [Settings.BOOK_TEXT_SIZES].
+     */
+    private fun askForTextSize() {
+        val themed = nightChrome.dialogs
+        val row = LayoutInflater.from(themed).inflate(R.layout.dialog_text_size, null)
+        val smaller = row.findViewById<View>(R.id.textSmaller)
+        val larger = row.findViewById<View>(R.id.textLarger)
+        val now = row.findViewById<TextView>(R.id.textSizeNow)
+        val sizes = Settings.BOOK_TEXT_SIZES
+
+        fun show() {
+            val percent = Settings.bookTextSize(this)
+            // Description before text, as the page readout does it
+            now.contentDescription = getString(R.string.text_size_spoken, percent)
+            now.text = getString(R.string.scroll_position, percent)
+            smaller.isEnabled = percent > sizes.first()
+            larger.isEnabled = percent < sizes.last()
+        }
+        fun step(by: Int) {
+            val to = sizes.getOrNull(sizes.indexOf(Settings.bookTextSize(this)) + by) ?: return
+            Settings.setBookTextSize(this, to)
+            applyTextSize()
+            show()
+        }
+        smaller.setOnClickListener { step(-1) }
+        larger.setOnClickListener { step(1) }
+        show()
+
+        val dialog = DialogBuilder(themed)
+            .setTitle(R.string.text_size)
+            .setView(row)
+            .setPositiveButton(R.string.done, null)
+            .create()
+        dialog.window?.apply {
+            setGravity(Gravity.BOTTOM)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dialog.show()
     }
 
     private val accessibility: AccessibilityManager? by lazy {
@@ -1291,7 +1403,11 @@ open class ViewerActivity : AppCompatActivity() {
                         // page saying so is its document talking, and is not given a
                         // readout to write in.
                         is PortMessage.Page -> if (kind.paged) {
-                            if (pageTotal == 0) goToPageItem?.isVisible = true
+                            if (pageTotal == 0) {
+                                goToPageItem?.isVisible = !book
+                                contentsItem?.isVisible = book
+                                textSizeItem?.isVisible = book
+                            }
                             pageAt = said.n
                             pageTotal = said.of
                             setPageIndicatorText()
@@ -1300,6 +1416,19 @@ open class ViewerActivity : AppCompatActivity() {
                         is PortMessage.SearchCount ->
                             onSearchCount?.invoke(said.at, said.total, said.done)
                         PortMessage.Locked -> if (kind == FileKind.PDF) printLocked = true
+                        is PortMessage.Place -> if (book) {
+                            bookPlace = Positions.Place(said.chapter, said.past)
+                            // The page works its place out once it has stopped moving, and
+                            // that may be after the viewer has left the screen and saved
+                            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                                savePosition()
+                            }
+                        }
+                        is PortMessage.Covered -> if (book) coverBackCallback.isEnabled = said.on
+                        is PortMessage.Reflows -> if (book) {
+                            bookReflows = said.on
+                            applyTextSize()
+                        }
                         // Anything else came from the document rather than from
                         // the renderer, and is dropped without a word.
                         null -> Unit
@@ -1660,6 +1789,13 @@ open class ViewerActivity : AppCompatActivity() {
              * than to change five viewers on the strength of one.
              */
             if (kind == FileKind.PDF) minimumFontSize = 1
+            phoneTextZoom = textZoom
+        }
+        book = kind == FileKind.EPUB
+        if (book) {
+            applyTextSize()
+            // Its readout is no page number, so a tap on it has no page to ask for
+            pageIndicator.isClickable = false
         }
 
         // Cookies go for the same reason as DOM storage. Nothing here ever sets one, since
@@ -1796,7 +1932,9 @@ open class ViewerActivity : AppCompatActivity() {
         worker.execute {
             val total = documentLength(app, uri)
             val key = if (keepsPosition) Positions.keyFor(app.contentResolver, uri, total) else null
-            val resumeAt = key?.let { Positions.page(app, it) } ?: 0
+            // A book reopens at its place, which is finer than the page it also files
+            val placeAt = if (kind == FileKind.EPUB) key?.let { Positions.place(app, it) } else null
+            val resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0
             main.post {
                 if (isDestroyed || webView !== web) return@post
                 documentTotal = total
@@ -1817,6 +1955,7 @@ open class ViewerActivity : AppCompatActivity() {
                         (if (total > 0) "&length=$total" else "") +
                         "&night=$night" +
                         (if (resumeAt > 1) "&resume=$resumeAt" else "") +
+                        (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
                         // The room to leave at the top for the title bar floating over it
                         (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
                         floor
@@ -2077,12 +2216,15 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Keeps the page a PDF is on for the next time it is opened. See [Positions].
+     * Keeps the page a PDF is on, or the place a book is at, for the next time it is opened.
+     * See [Positions].
      *
      * On stop, rather than every time the readout changes, since a fling across three
      * hundred pages would otherwise be three hundred writes of a number of which only the
      * last matters. Stop arrives for Back, Home, a switch to another app and the screen
-     * going off alike, and Android does not reclaim the process for memory before it.
+     * going off alike, and Android does not reclaim the process for memory before it. A
+     * book's page works its place out a moment after it stops moving, so one that arrives
+     * after the stop is saved as it arrives.
      *
      * Nothing until the page has reported, so a document closed before it finished
      * opening keeps the page it had from last time.
@@ -2090,7 +2232,9 @@ open class ViewerActivity : AppCompatActivity() {
     private fun savePosition() {
         val key = positionKey ?: return
         if (pageAt < 1 || pageTotal < 2) return
-        Positions.save(this, key, pageAt, pageTotal)
+        // A book that has said how far through it is but not yet where keeps the place it had
+        if (book && bookPlace == null) return
+        Positions.save(this, key, pageAt, pageTotal, bookPlace)
     }
 
     override fun onDestroy() {
@@ -2103,3 +2247,18 @@ open class ViewerActivity : AppCompatActivity() {
         super.onDestroy()
     }
 }
+
+/**
+ * The text zoom a book's WebView is given: [phone] is the zoom it came with, [chosen] the
+ * reader's size as a percentage of that, and [reflows] whether the chapter on screen is one
+ * that takes either. See [ViewerActivity.applyTextSize].
+ */
+internal fun bookTextZoom(phone: Int, chosen: Int, reflows: Boolean): Int =
+    if (reflows) phone * chosen / 100 else 100
+
+/**
+ * How far through a book the reader is, from the stretch of it on screen and how many there
+ * are: nothing at the first, all of it at the last, which is the foot of its last chapter.
+ */
+internal fun bookPercent(at: Int, total: Int): Int =
+    if (total < 2) 100 else ((at - 1) * 100f / (total - 1)).roundToInt().coerceIn(0, 100)

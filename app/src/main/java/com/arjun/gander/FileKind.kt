@@ -36,9 +36,10 @@ enum class FileKind(val page: String) {
     UNSUPPORTED("unsupported.html");
 
     /**
-     * Counted in pages: its page says which one is on screen and goes to one when asked. A
-     * PDF, a Word document since issue #47, and a book, which has no pages of its own and
-     * counts equal stretches of its text instead.
+     * Counted in pages: its page says which one is on screen. A PDF and a Word document,
+     * since issue #47, also go to one when asked. A book has no pages of its own and counts
+     * equal stretches of its files instead, which the viewer shows as how far through it the
+     * reader is.
      */
     val paged: Boolean get() = this == PDF || this == DOCX || this == EPUB
 

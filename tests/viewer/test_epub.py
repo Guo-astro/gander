@@ -447,6 +447,128 @@ def test_opening_and_closing_the_contents_does_not_move_the_page(viewer, page):
     assert "The Long" in page.text_content("#book h1")
 
 
+def test_the_apps_menu_opens_the_contents_and_back_closes_them(viewer, page, port):
+    """
+    The strip with the Contents button is at the top of a chapter and a reader is seldom
+    there, so the app's menu asks for the list too, and Back is the page's to answer while
+    the list is up: it tells the app when that is.
+    """
+    open_book(viewer, page)
+    channel = port()
+    channel.wait_for(rf"page 1 {TOTAL}")
+    turn_to(page, "The Long")
+    page.evaluate("() => window.scrollTo(0, 900)")
+
+    channel.contents()
+    page.wait_for_selector("#epub-contents", state="visible")
+    channel.wait_for(r"cover 1")
+    assert page.get_attribute("#epub-contents-list button[aria-current]", "data-n") == "3"
+
+    channel.clear_inbox()
+    channel.close_over()
+    page.wait_for_selector("#epub-contents", state="hidden")
+    channel.wait_for(r"cover 0")
+    assert page.evaluate("() => window.pageYOffset") == 900
+
+    # Closed by its own button, the app hears of it the same
+    channel.contents()
+    channel.wait_for(r"cover 1")
+    channel.clear_inbox()
+    page.click("#epub-contents-close")
+    channel.wait_for(r"cover 0")
+
+
+def test_the_menu_asks_for_no_contents_before_there_is_a_book(viewer, page, port, made):
+    viewer("epub.html", made("notes.epub", b"Plain words in a file named like a book."))
+    page.wait_for_selector(".vw-error", timeout=15000)
+    channel = port()
+    channel.contents()
+    page.wait_for_timeout(200)
+    assert not page.is_visible("#epub-contents")
+
+
+def test_a_web_link_shows_its_address_and_goes_nowhere(viewer, page, port):
+    """
+    Gander opens no web address, so the link says where it goes and offers to copy that.
+    Nothing is asked of the network and the chapter stays where it is.
+    """
+    asked = []
+    page.on("request", lambda r: asked.append(r.url))
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    open_book(viewer, page)
+    channel = port()
+    turn_to(page, "The Lamp Room")
+    here = page.url
+
+    page.click("#book #web-link")
+    page.wait_for_selector("#epub-link", state="visible")
+    channel.wait_for(r"cover 1")
+    assert page.text_content("#epub-link-address") == "https://example.invalid/"
+
+    page.click("#epub-link-copy")
+    page.wait_for_function("() => document.querySelector('#epub-link-copy').textContent === 'Copied'")
+    assert page.evaluate("() => navigator.clipboard.readText()") == "https://example.invalid/"
+
+    channel.clear_inbox()
+    channel.close_over()
+    page.wait_for_selector("#epub-link", state="hidden")
+    channel.wait_for(r"cover 0")
+    assert page.url == here
+    assert not [u for u in asked if "example.invalid" in u]
+    assert "The Lamp Room" in page.text_content("#book h1")
+
+
+def test_an_address_is_copied_where_the_engine_refuses_the_newer_way(viewer, page):
+    """
+    The newer way is taken off the engine here, where the page would find it, and the test
+    looks that it was asked and refused: left alone, this browser's own would do the copying
+    and the older way would never be tried.
+    """
+    page.context.grant_permissions(["clipboard-read"])
+    page.add_init_script(
+        """Object.defineProperty(Clipboard.prototype, 'writeText', { value: function () {
+             window.__refusedCopy = (window.__refusedCopy || 0) + 1;
+             return Promise.reject(new Error('not allowed'));
+           } });"""
+    )
+    open_book(viewer, page)
+    turn_to(page, "The Lamp Room")
+    page.click("#book #web-link")
+    page.click("#epub-link-copy")
+    page.wait_for_function("() => document.querySelector('#epub-link-copy').textContent === 'Copied'")
+    assert page.evaluate("() => window.__refusedCopy") == 1
+    assert page.evaluate("() => navigator.clipboard.readText()") == "https://example.invalid/"
+    # Nothing is left selected on the page once it is copied
+    assert page.evaluate("() => String(window.getSelection())") == ""
+
+
+@pytest.mark.parametrize("href,shown", [
+    ("https://example.invalid/a?b=c#d", "https://example.invalid/a?b=c#d"),
+    ("mailto:keeper@example.invalid", "mailto:keeper@example.invalid"),
+    ("tel:+15550100", "tel:+15550100"),
+    ("//example.invalid/page", "https://example.invalid/page"),
+    ("ftp://example.invalid/file", None),
+    ("intent://example.invalid#Intent;end", None),
+    ("missing.xhtml", None),
+], ids=["web", "mail", "telephone", "no scheme", "ftp", "intent", "a file the book has not got"])
+def test_which_links_out_of_the_book_show_an_address(viewer, page, made, href, shown):
+    book = little_book(made, "links.epub", [(
+        "", "", f'<body><h1>Links</h1><p><a id="out" href="{href}">A link</a></p></body>',
+    )])
+    open_book(viewer, page, fixture=book)
+    page.click("#book #out")
+    page.wait_for_timeout(200)
+    if shown is None:
+        assert not page.is_visible("#epub-link")
+    else:
+        assert page.is_visible("#epub-link")
+        assert page.text_content("#epub-link-address") == shown
+        # A tap on the book behind the box puts it away
+        page.mouse.click(20, 20)
+        assert not page.is_visible("#epub-link")
+    assert "Links" in page.text_content("#book h1")
+
+
 def test_a_link_goes_to_its_place_in_another_chapter(viewer, page):
     open_book(viewer, page)
     page.set_viewport_size({"width": 390, "height": 160})
@@ -457,10 +579,11 @@ def test_a_link_goes_to_its_place_in_another_chapter(viewer, page):
 
 
 # ---------------------------------------------------------------------------
-# Pages: the counter, Go to page and the place a book reopens at
+# How far through the book the reader is, and the place it reopens at
 # ---------------------------------------------------------------------------
 
 def test_the_page_is_reported_and_counts_the_whole_book(viewer, page, port):
+    """The app shows this as a percentage: see ViewerActivity.setPageIndicatorText."""
     open_book(viewer, page)
     channel = port()
     channel.wait_for(rf"page 1 {TOTAL}")
@@ -472,37 +595,305 @@ def test_the_page_is_reported_and_counts_the_whole_book(viewer, page, port):
     channel.wait_for(rf"page 8 {TOTAL}")
 
 
-def test_go_to_page_lands_in_the_right_chapter_and_part_of_it(viewer, page, port):
+def first_line(page, top=0):
+    """
+    The first line of the chapter wholly below [top], found the slow way, by asking every
+    letter where it is: how far down the screen it sits, the words it starts with, and how
+    many letters of the chapter's text come before it. The book says the same things over
+    in many places, so it is that count which says which line this is.
+    """
+    return page.evaluate(
+        r"""(top) => {
+          const body = document.querySelector('#book').shadowRoot.querySelector('body');
+          const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          let before = 0;
+          for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+            for (let k = 0; k < n.data.length; k++) {
+              if (/\s/.test(n.data[k])) continue;
+              const range = document.createRange();
+              range.setStart(n, k);
+              range.setEnd(n, k + 1);
+              const box = range.getBoundingClientRect();
+              if (box.height > 0 && box.top >= top - 1) {
+                return { top: box.top, words: n.data.slice(k, k + 24), letter: before + k };
+              }
+            }
+            before += n.data.length;
+          }
+          return null;
+        }""",
+        top,
+    )
+
+
+def top_of_letter(page, letter):
+    """How far down the screen the line is that has the chapter's letter number [letter]."""
+    return page.evaluate(
+        """(letter) => {
+          const body = document.querySelector('#book').shadowRoot.querySelector('body');
+          const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          let before = 0;
+          for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+            if (letter < before + n.data.length) {
+              const range = document.createRange();
+              range.setStart(n, letter - before);
+              range.setEnd(n, letter - before + 1);
+              return range.getBoundingClientRect().top;
+            }
+            before += n.data.length;
+          }
+          return null;
+        }""",
+        letter,
+    )
+
+
+def rest_on_a_line(page, channel, down, top=0):
+    """
+    Scrolls [down] the chapter and then on to where the second line of a paragraph starts
+    exactly at [top], so the place is inside a text and not at the start of one. Answers
+    that line with the place the page told the app once it had come to rest.
+    """
+    page.evaluate("(y) => window.scrollTo(0, y)", down)
+    by = page.evaluate(
+        """(top) => {
+          const body = document.querySelector('#book').shadowRoot.querySelector('body');
+          const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+          for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            const lines = range.getClientRects();
+            if (lines.length < 2 || lines[1].top < top) continue;
+            if (lines[1].top > lines[0].top + 1) return lines[1].top - top;
+          }
+          return null;
+        }""",
+        top,
+    )
+    assert by is not None, "no paragraph of two lines below the top of the screen"
+    channel.clear_inbox()
+    page.evaluate("(by) => window.scrollBy(0, by)", by)
+    told = channel.wait_for(r"at \d+ \d+")
+    return first_line(page, top), told.split(" ")[1] + "." + told.split(" ")[2]
+
+
+def test_the_place_is_told_once_the_page_comes_to_rest(viewer, page, port):
     open_book(viewer, page)
     channel = port()
-    channel.wait_for(rf"page 1 {TOTAL}")
+    # At the top of the first chapter nothing is above the screen
+    channel.wait_for(r"at 0 0")
 
-    channel.go_to_page(5)
-    wait_for_heading(page, "The Long")
-    channel.wait_for(rf"page 5 {TOTAL}")
-    assert page.evaluate("() => window.pageYOffset") > 0
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    line, at = rest_on_a_line(page, channel, 1200)
+    chapter, past = at.split(".")
+    assert chapter == "2"
+    # Some of the chapter's eleven thousand letters are above the screen, and not all of them
+    assert 500 < int(past) < 10000
 
-    channel.go_to_page(TOTAL)
-    wait_for_heading(page, "The Tide Table")
-    channel.wait_for(rf"page {TOTAL} {TOTAL}")
-
-    # Out of range is not a page, and the book stays where it is
-    channel.go_to_page(TOTAL + 1)
-    channel.go_to_page(0)
-    page.wait_for_timeout(300)
-    assert "The Tide Table" in page.text_content("#book h1")
+    # Further down the chapter is further into it
+    _, later = rest_on_a_line(page, channel, 2400)
+    assert int(later.split(".")[1]) > int(past)
 
 
-def test_a_book_reopens_at_the_page_it_was_left_on(viewer, page, port):
-    open_book(viewer, page, resume=6)
-    wait_for_heading(page, "The Long")
+@pytest.mark.parametrize("width", [980, 412], ids=["as it was left", "on a narrower screen"])
+def test_a_book_reopens_at_the_line_it_was_left_on(viewer, page, port, width):
+    """
+    The same line at the top of the screen, and not the start of the stretch of the book it
+    was in, which was up to a screenful above it. On a screen of another width the chapter
+    is laid out afresh and the line is somewhere else down it, and still the one on top.
+    """
+    open_book(viewer, page)
     channel = port()
-    channel.wait_for(rf"page 6 {TOTAL}")
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    line, at = rest_on_a_line(page, channel, 1234)
+    assert page.evaluate("() => window.pageYOffset") > 1000
+
+    page.set_viewport_size({"width": width, "height": 1600})
+    open_book(viewer, page, at=at)
+    wait_for_heading(page, "The Long")
+    page.wait_for_function("() => window.pageYOffset > 0")
+    # The letter that began the line is on the top one, wherever in it that now falls
+    assert abs(top_of_letter(page, line["letter"])) <= 1
+    assert abs(first_line(page)["top"]) <= 1
 
 
-def test_a_page_past_the_end_opens_the_book_at_the_start(viewer, page):
-    open_book(viewer, page, resume=TOTAL + 5)
-    assert "The Harbour at Low Tide" in page.text_content("#book h1")
+def test_a_line_more_than_half_gone_is_not_the_place(viewer, page, port):
+    """What reopens on top is a line the reader could still read when they left."""
+    open_book(viewer, page)
+    channel = port()
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    line, at = rest_on_a_line(page, channel, 1234)
+    tall = page.evaluate(
+        """() => {
+          const body = document.querySelector('#book').shadowRoot.querySelector('body');
+          return parseFloat(getComputedStyle(body.querySelector('p')).lineHeight);
+        }"""
+    )
+
+    # A third of it gone, and it is still the place
+    channel.clear_inbox()
+    page.evaluate("(by) => window.scrollBy(0, by)", tall * 0.3)
+    page.wait_for_timeout(400)
+    assert channel.messages() == []
+
+    # Two thirds gone, and the place is the line under it
+    page.evaluate("(by) => window.scrollBy(0, by)", tall * 0.4)
+    told = channel.wait_for(r"at 2 \d+")
+    assert int(told.split(" ")[2]) > int(at.split(".")[1])
+    under = first_line(page)
+    assert under["letter"] > line["letter"]
+
+    open_book(viewer, page, at="2." + told.split(" ")[2])
+    wait_for_heading(page, "The Long")
+    page.wait_for_function("() => window.pageYOffset > 0")
+    assert first_line(page)["letter"] == under["letter"]
+
+
+def test_a_picture_is_a_place_as_a_letter_is(viewer, page, port, made):
+    """
+    A chapter of plates with no words between them, as a picture book's is. Counted in
+    letters alone every plate would be the same place, and the book would reopen at the first.
+    """
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (600, 500), (140, 60, 30)).save(buf, format="PNG")
+    plates = "".join(
+        f'<img id="plate{n}" src="plate.png" alt="" style="display: block; margin: 8px 0"/>'
+        for n in range(12)
+    )
+    book = little_book(made, "plates.epub", [(
+        "", "", f"<body><h1>Plates</h1>{plates}<p>The end.</p></body>",
+    )], extra={"plate.png": buf.getvalue()})
+    open_book(viewer, page, fixture=book)
+    channel = port()
+    channel.wait_for(r"at 0 0")
+    page.wait_for_function(
+        "() => document.querySelector('#book').shadowRoot.querySelector('#plate7').complete"
+    )
+
+    channel.clear_inbox()
+    page.evaluate("(by) => window.scrollBy(0, by)", top_of(page, "#plate7"))
+    told = channel.wait_for(r"at 0 [1-9]\d*")
+
+    open_book(viewer, page, fixture=book, at="0." + told.split(" ")[2])
+    page.wait_for_function("() => window.pageYOffset > 0")
+    page.wait_for_function(
+        """() => Math.abs(document.querySelector('#book').shadowRoot.querySelector('#plate7')
+          .getBoundingClientRect().top) <= 1"""
+    )
+
+
+def test_the_line_reopens_under_the_title_bar(viewer, page, port):
+    """The bar floats over the top of the page, so the top of the screen is its lower edge."""
+    open_book(viewer, page, top=64)
+    channel = port()
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    edge = page.evaluate("() => vwTopPx")
+    assert edge > 0
+    line, at = rest_on_a_line(page, channel, 1234, top=edge)
+
+    open_book(viewer, page, at=at, top=64)
+    wait_for_heading(page, "The Long")
+    page.wait_for_function("() => window.pageYOffset > 0")
+    again = first_line(page, top=edge)
+    assert again["letter"] == line["letter"]
+    assert abs(again["top"] - edge) <= 1
+
+
+@pytest.mark.parametrize("at,heading", [
+    ("99.5", "The Harbour at Low Tide"),
+    ("2.99999999", "The Long"),
+    ("nowhere", "The Harbour at Low Tide"),
+], ids=["no such chapter", "past the chapter's end", "not a place"])
+def test_a_place_the_book_does_not_have_opens_it_at_a_top(viewer, page, at, heading):
+    open_book(viewer, page, at=at)
+    wait_for_heading(page, heading)
+    assert page.evaluate("() => window.pageYOffset") == 0
+
+
+def set_type(page, percent):
+    """
+    What the app's text size does to the page, as near as a browser comes to it. The app
+    asks the WebView for larger type and the engine lays the page out again; here the
+    chapter's own size is set, and the letter the page watches for that is set with it.
+    """
+    page.evaluate(
+        """(by) => {
+          document.querySelector('#book').shadowRoot.querySelector('.vw-page')
+            .style.fontSize = (17 * by) + 'px';
+          document.querySelector('#epub-gauge').style.fontSize = (100 * by) + 'px';
+        }""",
+        percent / 100,
+    )
+
+
+def test_the_line_stays_on_top_when_the_type_changes_size(viewer, page, port):
+    """Larger type moves every line below the first further down the chapter."""
+    page.set_viewport_size({"width": 412, "height": 915})
+    open_book(viewer, page)
+    channel = port()
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    line, _ = rest_on_a_line(page, channel, 1500)
+    before = page.evaluate("() => window.pageYOffset")
+
+    for percent in (150, 80, 100):
+        set_type(page, percent)
+        page.wait_for_function(
+            """(words) => {
+              const body = document.querySelector('#book').shadowRoot.querySelector('body');
+              return Math.abs(parseFloat(getComputedStyle(body).fontSize) - words) < 0.1;
+            }""",
+            arg=17 * percent / 100,
+        )
+        page.wait_for_timeout(250)
+        # On the top line, wherever in it the letter now falls
+        assert abs(top_of_letter(page, line["letter"])) <= 1, percent
+        assert abs(first_line(page)["top"]) <= 1, percent
+    # Larger type had put the line further down the chapter than it was
+    assert abs(page.evaluate("() => window.pageYOffset") - before) <= 1
+
+
+def test_a_picture_set_alone_for_large_type_goes_back_beside_the_text(viewer, page, made):
+    """
+    The room a picture must leave the text is counted in letters, so larger type sets alone
+    a picture that had room beside it. At the old size it has that room again.
+    """
+    page.set_viewport_size({"width": 700, "height": 900})
+    book = beside_the_text(
+        made, "detail.epub", '<style>img.detail { float: right; }</style>',
+        '<img id="plate" class="detail" src="plate.png" alt="A detail"/>', (500, 200),
+    )
+    open_book(viewer, page, fixture=book)
+    floats = ("(how) => getComputedStyle(document.querySelector('#book').shadowRoot"
+              ".querySelector('#plate')).cssFloat === how")
+    page.wait_for_timeout(300)
+    assert style_of(page, "#plate", "cssFloat") == "right"
+
+    set_type(page, 160)
+    page.wait_for_function(floats, arg="none")
+    set_type(page, 100)
+    page.wait_for_function(floats, arg="right")
+    # With the words beside it again, and not under it
+    assert box_of(page, "#words")["top"] < box_of(page, "#plate")["bottom"] - 1
+
+
+def test_a_fixed_page_does_not_take_the_readers_text_size(viewer, page, port):
+    """The app is told which kind of chapter is up, and sets the type back for a fixed one."""
+    open_book(viewer, page, fixture=GAZETTEER)
+    channel = port()
+    channel.wait_for(r"reflow 1")
+    channel.clear_inbox()
+    go_to(page, 2)
+    channel.wait_for(r"reflow 0")
+    channel.clear_inbox()
+    go_to(page, 0)
+    channel.wait_for(r"reflow 1")
 
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,20 @@
   <ol id="epub-contents-list" class="epub-contents-list"></ol>
 </div>
 
+<!-- A web address a link in the book points to, shown and never opened: see epub.js -->
+<div id="epub-link" class="epub-link" role="dialog" aria-modal="true"
+     aria-labelledby="epub-link-title" hidden>
+  <div class="epub-link-box">
+    <h1 id="epub-link-title">This link leaves the book</h1>
+    <p id="epub-link-address" class="epub-link-address"></p>
+    <p class="epub-link-note">Gander opens no web address. Copy it to open it in a browser.</p>
+    <div class="epub-link-buttons">
+      <button type="button" id="epub-link-close">Close</button>
+      <button type="button" id="epub-link-copy">Copy address</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 <script src="find.js"></script>
 <script src="epub.js"></script>

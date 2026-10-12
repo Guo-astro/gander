@@ -48,7 +48,7 @@ body { background: #ffffff; background: var(--epub-paper); }
 .epub-turn { border-top: 1px solid var(--epub-line); padding-bottom: 24px; }
 
 /* 48 px, the least Android asks of anything tapped, and this page is laid out in dp */
-.epub-bar button, .epub-turn button, .epub-contents button {
+.epub-bar button, .epub-turn button, .epub-contents button, .epub-link button {
   min-height: 48px;
   padding: 0 12px;
   border: 0;
@@ -135,8 +135,69 @@ body { background: #ffffff; background: var(--epub-paper); }
 .epub-contents-list span { color: var(--epub-quiet); }
 .epub-contents-list button[aria-current] { font-weight: 600; color: var(--vw-accent); }
 
+/*
+ * A link's address, in a box at the foot of the screen with the book dimmed behind it. Over
+ * the contents and under the status card. The address breaks anywhere, since one long word
+ * is what it is, and scrolls in its own box where it is longer than a few lines.
+ */
+.epub-link {
+  position: fixed;
+  z-index: 950;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.epub-link-box {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 42em;
+  padding: 16px 20px 12px;
+  border-radius: 16px 16px 0 0;
+  background: #ffffff;
+  background: var(--epub-paper);
+  color: #1E1B15;
+  color: var(--epub-ink);
+}
+
+.epub-link-box h1 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.epub-link-address {
+  max-height: 7.5em;
+  margin: 0 0 8px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.epub-link-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--epub-quiet);
+}
+
+.epub-link-buttons {
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px -12px 0;
+}
+
 /* A book printed from here would be the one chapter on screen, so nothing offers it; this
    only keeps the page's own parts off any paper that does come out. */
 @media print {
-  .epub-bar, .epub-turn, .epub-contents { display: none !important; }
+  .epub-bar, .epub-turn, .epub-contents, .epub-link { display: none !important; }
 }

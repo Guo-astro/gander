@@ -32,7 +32,7 @@ class Port:
     def send(self, command):
         self.page.evaluate("(c) => window.__vwPort.postMessage(c)", command)
 
-    # The six commands PortCommand.kt builds
+    # The commands PortCommand.kt builds, but for the title bar's two
     def query(self, q):
         self.send(f"q{q}")
 
@@ -50,6 +50,12 @@ class Port:
 
     def night_mode(self, on):
         self.send("i1" if on else "i0")
+
+    def contents(self):
+        self.send("o")
+
+    def close_over(self):
+        self.send("x")
 
     def messages(self):
         return self.page.evaluate("() => window.__vwInbox.slice()")

@@ -106,6 +106,18 @@
          a PDF, where nothing else knows how far in you are -->
     <string name="scroll_position">%1$d%%</string>
     <string name="scroll_position_spoken">%1$d percent through the document</string>
+    <!-- A book has no pages, so its readout says how far through it the reader is, in the
+         same figures as the line above. A screen reader says the sign as "percent". -->
+    <string name="book_position_spoken">%1$d%% through the book</string>
+    <string name="contents">Contents</string>
+    <string name="text_size">Text size</string>
+    <!-- The two buttons show a small and a large letter. A screen reader says these. -->
+    <string name="text_smaller">Smaller text</string>
+    <string name="text_larger">Larger text</string>
+    <string name="text_smaller_label" translatable="false">A\u2212</string>
+    <string name="text_larger_label" translatable="false">A+</string>
+    <string name="text_size_spoken">Text size %1$d%%</string>
+    <string name="done">Done</string>
     <!-- The one kind of notification Gander posts, named in the phone's settings for the app:
          play and pause on the lock screen while a track plays on with the screen off -->
     <string name="audio_controls_channel">Audio controls</string>

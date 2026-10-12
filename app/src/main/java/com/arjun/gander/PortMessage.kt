@@ -51,6 +51,12 @@ internal object PortCommand {
      * it is on screen.
      */
     fun barGone(dp: String) = "b$dp"
+
+    /** Show a book's contents list, which its own button for is at the top of a chapter. */
+    fun contents() = "o"
+
+    /** Close whatever of the page's own is open over the document. See [PortMessage.Covered]. */
+    fun closeOver() = "x"
 }
 
 /** What pdf.html sends back, once it has been read and found sound. */
@@ -72,6 +78,25 @@ internal sealed interface PortMessage {
 
     /** The PDF asked for a password, which Android's printing has no way to give it. */
     data object Locked : PortMessage
+
+    /**
+     * Where in a book the top of the screen is: the chapter by its number in the reading
+     * order, from nought, and how many of its letters and pictures are [past]. Finer than
+     * [Page], and what the book reopens at. See [Positions.Place].
+     */
+    data class Place(val chapter: Int, val past: Int) : PortMessage
+
+    /**
+     * Something of the page's own is open over the document, a book's contents list or the
+     * address of a link, or no longer is. Back closes it before it leaves the viewer.
+     */
+    data class Covered(val on: Boolean) : PortMessage
+
+    /**
+     * Whether the chapter on screen is laid out afresh for the screen, and so takes the
+     * reader's text size. A page of a fixed size does not: see [ViewerActivity.applyTextSize].
+     */
+    data class Reflows(val on: Boolean) : PortMessage
 }
 
 /**
@@ -79,13 +104,27 @@ internal sealed interface PortMessage {
  *
  * Null covers a message of the wrong length, a field that is not an integer,
  * and a set of integers that could not describe a real document: a page before
- * the first or after the last, or a negative count. The caller drops those
- * silently.
+ * the first or after the last, a place before a book's first chapter, or a
+ * negative count. The caller drops those silently.
  */
 internal fun parsePortMessage(data: String?): PortMessage? {
-    if (data == "locked") return PortMessage.Locked
+    // Whole messages, each one exact, so nothing a page says by accident reads as one
+    when (data) {
+        "locked" -> return PortMessage.Locked
+        "cover 1" -> return PortMessage.Covered(true)
+        "cover 0" -> return PortMessage.Covered(false)
+        "reflow 1" -> return PortMessage.Reflows(true)
+        "reflow 0" -> return PortMessage.Reflows(false)
+    }
     val said = data?.split(" ") ?: return null
     if (said.size != 3) return null
+
+    if (said[0] == "at") {
+        val chapter = said[1].toIntOrNull() ?: return null
+        val past = said[2].toIntOrNull() ?: return null
+        if (chapter < 0 || past < 0) return null
+        return PortMessage.Place(chapter, past)
+    }
 
     // Read first, because "page" is not an integer and so was already being
     // dropped by the search branch before this one existed.
