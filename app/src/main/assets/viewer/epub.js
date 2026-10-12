@@ -146,11 +146,17 @@ var vwEpub = (function () {
     "}"
   ].join("\n");
 
+  /* The least room, in ems of the chapter's text, that a picture set beside the text may leave
+     it: about three short words to a line. With less, the picture is set on its own. */
+  var FLOAT_ROOM_EMS = 8;
+
   var zip = null;
   /* Every file in the zip by its name in lower case, for a book that spells one differently */
   var names = {};
   /* The type the package gives each file, by path */
   var types = {};
+  /* The file the package names to show where another cannot be, by that other's path */
+  var stead = {};
   /* Files under a real lock, which is what DRM is and nothing here can read */
   var locked = {};
   /* Fonts the book scrambled, by path, each with the entry of SCRAMBLES for how */
@@ -352,8 +358,47 @@ var vwEpub = (function () {
     }).catch(function () { /* a list that cannot be read locks nothing */ });
   }
 
+  /*
+   * What a file in the reading order is shown as: "page", "picture", or "other" for what is
+   * neither. A chapter the package gives the wrong type, or none, is still a chapter, so
+   * anything that is text or XML by its type is read as a page, and only a type that says
+   * the file is something else is believed.
+   */
+  function kindOf(path) {
+    var type = (types[path] || "").split(";")[0].trim();
+    if (isPage(path) || !type || /^text\/|[/+]xml$/.test(type)) return "page";
+    return isPicture(path) ? "picture" : "other";
+  }
+
+  /* Whether the package calls a file a picture of a kind the engine draws */
+  function isPicture(path) {
+    return /^image\/(png|jpeg|gif|webp|avif|bmp)$/.test((types[path] || "").split(";")[0].trim());
+  }
+
+  /*
+   * The file a picture in a chapter is drawn from: the one the chapter names, or, where the
+   * package says that is something the engine does not draw, the first it does among those
+   * the package names to show in its stead.
+   */
+  function drawnFrom(path) {
+    if (!stead[path] || !/^image\//.test(types[path] || "") || isPicture(path) || isPage(path)) return path;
+    var seen = {};
+    for (var at = path; at && !seen[at]; at = stead[at]) {
+      seen[at] = true;
+      if ((isPicture(at) || isPage(at)) && entry(at)) return at;
+    }
+    return path;
+  }
+
+  /* Whether the package calls a file a page: a chapter in XHTML, or a drawing */
+  function isPage(path) {
+    var type = (types[path] || "").split(";")[0].trim();
+    return type === "application/xhtml+xml" || type === "image/svg+xml";
+  }
+
   function readPackage(doc, path) {
     var byId = {};
+    var insteadOf = {};
     var nav = null;
     var ncx = null;
     var items = all(doc, "item");
@@ -363,8 +408,12 @@ var vwEpub = (function () {
       var type = (items[i].getAttribute("media-type") || "").toLowerCase();
       types[at.path] = type;
       byId[items[i].getAttribute("id")] = at.path;
+      insteadOf[items[i].getAttribute("id")] = items[i].getAttribute("fallback");
       if (/(^|\s)nav(\s|$)/.test(items[i].getAttribute("properties") || "")) nav = at.path;
       if (type === "application/x-dtbncx+xml" && !ncx) ncx = at.path;
+    }
+    for (var id in insteadOf) {
+      if (byId[insteadOf[id]]) stead[byId[id]] = byId[insteadOf[id]];
     }
 
     // Whether the book's pages are of a fixed size, which one chapter may say otherwise about
@@ -376,21 +425,37 @@ var vwEpub = (function () {
       }
     }
 
+    /*
+     * The file a place in the reading order is read from. A book may put a picture there, or
+     * a file of any other kind, and name what to show where that cannot be shown: the first
+     * page or picture among those is taken, and the file itself where there is none.
+     */
+    function readFrom(id) {
+      var seen = {};
+      for (var at = id; at && byId[at] && !seen[at]; at = insteadOf[at]) {
+        seen[at] = true;
+        if ((isPage(byId[at]) || isPicture(byId[at])) && entry(byId[at])) return byId[at];
+      }
+      return byId[id];
+    }
+
     var refs = all(doc, "itemref");
     for (var r = 0; r < refs.length; r++) {
-      var file = byId[refs[r].getAttribute("idref")];
+      var file = readFrom(refs[r].getAttribute("idref"));
       if (!file || !entry(file) || index[file] !== undefined) continue;
       if (locked[file]) {
         throw problem("This book is locked",
           "It is protected against copying (DRM), so only the app of the shop or library " +
           "it came from can open it.");
       }
-      var pages = Math.max(1, Math.ceil(sizeOf(file) / VW_EPUB_PAGE_BYTES));
+      var kind = kindOf(file);
+      // A picture is one page however large its file is
+      var pages = kind === "page" ? Math.max(1, Math.ceil(sizeOf(file) / VW_EPUB_PAGE_BYTES)) : 1;
       index[file] = spine.length;
       var says = " " + (refs[r].getAttribute("properties") || "") + " ";
       var fixed = says.indexOf(" rendition:layout-pre-paginated ") >= 0 ||
         (fixedBook && says.indexOf(" rendition:layout-reflowable ") < 0);
-      spine.push({ path: file, pages: pages, start: total, fixed: fixed, wait: null, ready: null });
+      spine.push({ path: file, kind: kind, pages: pages, start: total, fixed: fixed, wait: null, ready: null });
       total += pages;
     }
     if (!spine.length) throw new Error("The book lists no chapters.");
@@ -438,11 +503,16 @@ var vwEpub = (function () {
         if (name === "ol") under = c;
         else if (!named && (name === "a" || name === "span")) named = c;
       }
-      if (named && clean(named.textContent)) {
-        out.push(listed(clean(named.textContent), depth, base, named.getAttribute("href")));
-      }
+      var label = named ? clean(named.textContent) || calledBy(named) : "";
+      if (label) out.push(listed(label, depth, base, named.getAttribute("href")));
       if (under) navList(under, depth + 1, base, out);
     }
+  }
+
+  /* What an entry with no words goes by: its own title, or what the picture in it is described as */
+  function calledBy(el) {
+    var img = el.querySelector("img");
+    return clean(el.getAttribute("title") || (img && (img.getAttribute("alt") || img.getAttribute("title"))) || "");
   }
 
   function readNav(path) {
@@ -667,10 +737,21 @@ var vwEpub = (function () {
     };
   }
 
+  /* A page with nothing on it but the picture at [path], for a picture in the reading order */
+  function pictured(path) {
+    var name = encodeURIComponent(path.slice(path.lastIndexOf("/") + 1));
+    return '<html xmlns="http://www.w3.org/1999/xhtml"><head><title></title></head>' +
+      '<body><img src="' + name + '" alt=""/></body></html>';
+  }
+
   function load(i) {
     var ch = spine[i];
     if (ch.wait) return ch.wait;
-    ch.wait = text(ch.path).then(function (source) {
+    var read = ch.kind === "picture" ? Promise.resolve(pictured(ch.path))
+      // A file that is neither a page nor a picture has nothing in it to read as one
+      : ch.kind === "other" ? Promise.reject(new Error("Not a page."))
+        : text(ch.path);
+    ch.wait = read.then(function (source) {
       return chapter(source, ch.path, ch.fixed);
     }).catch(function () {
       // One chapter that cannot be read leaves the rest of the book readable
@@ -849,8 +930,18 @@ var vwEpub = (function () {
         if (/url\("(blob:|data:[^,])/i.test(rule)) fonts += rule + "\n";
         return "";
       });
-      return { css: rest.replace(/:root\b/g, "html"), faces: fonts };
+      return { css: unprefixed(rest.replace(/:root\b/g, "html")), faces: fonts };
     });
+  }
+
+  /*
+   * A stylesheet with the properties EPUB once had names of its own for under the names the
+   * engine knows them by. It still answers to some of the old ones, -epub-writing-mode among
+   * them, and these are the ones it does not, so a book that hyphenates by -epub-hyphens
+   * would otherwise go unhyphenated.
+   */
+  function unprefixed(css) {
+    return css.replace(/-epub-(hyphens|line-break|text-align-last|text-underline-position)(\s*:)/gi, "$1$2");
   }
 
   function sheet(path) {
@@ -881,7 +972,7 @@ var vwEpub = (function () {
         return;
       }
       var at = resolve(base, value);
-      jobs.push((at ? objectUrl(at.path, held) : Promise.resolve(null)).then(function (url) {
+      jobs.push((at ? objectUrl(drawnFrom(at.path), held) : Promise.resolve(null)).then(function (url) {
         return function () { if (url) put(el, url); };
       }));
     }
@@ -943,6 +1034,68 @@ var vwEpub = (function () {
     page.style.height = Math.ceil(drawn.h * by) + "px";
   }
 
+  /* The selectors of every rule in [rules] that sets something beside the text, added to [into] */
+  function floaters(rules, into) {
+    for (var i = 0; i < rules.length; i++) {
+      var rule = rules[i];
+      if (rule.cssRules) floaters(rule.cssRules, into);
+      if (rule.selectorText && rule.style && rule.style.cssFloat && rule.style.cssFloat !== "none") {
+        into.push(rule.selectorText);
+      }
+    }
+  }
+
+  /*
+   * Sets a picture or a box in the middle of the page, with the text above and below it,
+   * where the book set it beside the text and a phone leaves the text no room there: a plate
+   * 320 pixels wide has a column one letter wide down its side. A drop capital, or anything
+   * else that leaves the text room, stays where the book put it.
+   *
+   * What a book sets beside its text is found from its stylesheets, since asking every
+   * element of a long chapter would cost more than the few there are.
+   */
+  function unfloat() {
+    var found = ["[style*=float]", "img[align]", "table[align]"];
+    for (var s = bookSheets.firstChild; s; s = s.nextSibling) {
+      // A sheet the engine will not show the rules of sets nothing aside that can be found
+      try { floaters(s.sheet.cssRules, found); } catch (e) { /* as above */ }
+    }
+    var narrow = FLOAT_ROOM_EMS * (parseFloat(getComputedStyle(onPage).fontSize) || 17);
+    var loose = [];
+    found.forEach(function (selector) {
+      var els;
+      // One written for an engine newer than this one finds nothing here
+      try { els = onPage.querySelectorAll(selector); } catch (e) { return; }
+      for (var i = 0; i < els.length; i++) {
+        var style = getComputedStyle(els[i]);
+        if (style.cssFloat === "none") continue;
+        // The block its text is set in, which is what it takes its room from
+        var within = els[i].parentNode;
+        var around = getComputedStyle(within);
+        while (within !== onPage && /^(inline|contents)$/.test(around.display)) {
+          within = within.parentNode;
+          around = getComputedStyle(within);
+        }
+        var room = within.clientWidth - (parseFloat(around.paddingLeft) || 0) - (parseFloat(around.paddingRight) || 0);
+        var taken = els[i].getBoundingClientRect().width +
+          Math.max(0, parseFloat(style.marginLeft) || 0) + Math.max(0, parseFloat(style.marginRight) || 0);
+        var left = room - taken;
+        // Something small in a narrow box is left alone: the box is what is narrow there. So is
+        // what fills its box from side to side, as a heading may to sit on the box's edge: no
+        // text can stand beside that
+        if (taken * 2 > room && left >= 1 && left < narrow) loose.push({ el: els[i], block: style.display === "block" });
+      }
+    });
+    loose.forEach(function (b) {
+      b.el.style.setProperty("float", "none", "important");
+      // A picture is one of the words of its line again unless it is told otherwise
+      if (!b.block) return;
+      b.el.style.setProperty("display", "block", "important");
+      b.el.style.setProperty("margin-left", "auto", "important");
+      b.el.style.setProperty("margin-right", "auto", "important");
+    });
+  }
+
   /*
    * Gives whatever is wider than the screen a way to be seen whole: a box the book gave a
    * width in pixels is held to the page, which brings the picture in it down with it, and a
@@ -957,7 +1110,9 @@ var vwEpub = (function () {
    */
   function fit() {
     if (drawn) return scale();
-    if (!onPage || onPage.scrollWidth <= onPage.clientWidth + 1) return;
+    if (!onPage) return;
+    unfloat();
+    if (onPage.scrollWidth <= onPage.clientWidth + 1) return;
     if (getComputedStyle(onPage).overflowX !== "visible") return;
     var edge = document.documentElement.clientWidth;
     var wide = [];

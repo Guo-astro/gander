@@ -112,11 +112,12 @@ def box_of(page, selector):
 
 
 def little_book(made, name, chapters, metadata="", contents="", extra=None,
-                identifier="urn:uuid:00000000-0000-4000-8000-000000000054"):
+                identifier="urn:uuid:00000000-0000-4000-8000-000000000054", listed="", order=None):
     """
     A book written for one test, for what no committed one has: [chapters] is a list of
     (what its place in the reading order says of it, what goes in its head, its body), and
-    [extra] any other files by name.
+    [extra] any other files by name. [listed] is what the package lists beside the chapters,
+    and [order] the reading order by id where it is not simply the chapters, c0 onward.
     """
     import io
     import zipfile
@@ -133,6 +134,8 @@ def little_book(made, name, chapters, metadata="", contents="", extra=None,
         for n in range(len(chapters))
     )
     refs = "".join(f'<itemref idref="c{n}" {says}/>' for n, (says, _, _) in enumerate(chapters))
+    if order is not None:
+        refs = "".join(f'<itemref idref="{i}"/>' for i in order)
     package = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">'
@@ -141,7 +144,7 @@ def little_book(made, name, chapters, metadata="", contents="", extra=None,
         f'<dc:identifier id="uid">{identifier}</dc:identifier>'
         f'<dc:title>A Little Book</dc:title><dc:language>en</dc:language>{metadata}</metadata>'
         '<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'
-        f'{items}</manifest><spine>{refs}</spine></package>\n'
+        f'{items}{listed}</manifest><spine>{refs}</spine></package>\n'
     )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -689,6 +692,215 @@ def test_what_fits_is_left_as_the_book_set_it(viewer, page):
     assert style_of(page, "table", "overflowX") == "visible"
     # Nor the chapter itself, which would then scroll sideways with nothing to scroll to
     assert style_of(page, "body", "overflowX") == "visible"
+
+
+def beside_the_text(made, name, head, picture, size, para=""):
+    """A chapter with one picture in a paragraph, set beside its words however [head] and [picture] say."""
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, (140, 60, 30)).save(buf, format="PNG")
+    return little_book(made, name, [(
+        "", head,
+        f'<body><p id="p" {para}>{picture}<span id="words">To the youth</span>, the calm river seems to '
+        'lead straight to the castle in the sky.</p></body>',
+    )], extra={"plate.png": buf.getvalue()})
+
+
+@pytest.mark.parametrize("head, picture, size", [
+    ('<style>img.detail { float: right; margin: 0 0 1em 2em; }</style>',
+     '<img id="plate" class="detail" src="plate.png" alt="A detail"/>', (600, 200)),
+    ('<style>@media screen { img.detail { float: left; } }</style>',
+     '<img id="plate" class="detail" src="plate.png" alt="A detail"/>', (600, 200)),
+    ('', '<img id="plate" style="float: right" src="plate.png" alt="A detail"/>', (600, 200)),
+    ('', '<img id="plate" align="right" src="plate.png" alt="A detail"/>', (600, 200)),
+    ('<style>.side { float: right; width: 600px; }</style>',
+     '<span id="plate" class="side"><img src="plate.png" alt="A detail"/></span>', (600, 200)),
+    # Narrower, and it is the margin the book gives it that takes the room
+    ('<style>img.detail { float: right; margin-left: 6em; }</style>',
+     '<img id="plate" class="detail" src="plate.png" alt="A detail"/>', (500, 200)),
+], ids=["rule", "media", "inline", "align", "box", "margin"])
+def test_a_picture_that_leaves_the_text_no_room_beside_it_is_set_alone(viewer, page, made, head, picture, size):
+    """
+    A plate nearly as wide as the page, set beside the text as Cole's Voyage of Life sets its
+    details: the column left down its side takes a letter to a line. It goes in the middle of
+    the page instead, and the words start under it on one line.
+    """
+    book = beside_the_text(made, "detail.epub", head, picture, size)
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        "() => getComputedStyle(document.querySelector('#book').shadowRoot.querySelector('#plate')).cssFloat === 'none'"
+    )
+    plate, words, para = box_of(page, "#plate"), box_of(page, "#words"), box_of(page, "#p")
+    assert words["top"] >= plate["bottom"] - 1
+    assert words["height"] < 40
+    assert abs((plate["left"] - para["left"]) - (para["right"] - plate["right"])) <= 1
+
+
+def test_a_picture_that_fills_a_narrow_box_is_set_alone_in_it(viewer, page, made):
+    """The room is what the box it stands in has, which may be far less than the page."""
+    book = beside_the_text(
+        made, "boxed.epub", '<style>img.detail { float: left; }</style>',
+        '<img id="plate" class="detail" src="plate.png" alt="A detail"/>', (200, 100), para='style="width: 240px"')
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        "() => getComputedStyle(document.querySelector('#book').shadowRoot.querySelector('#plate')).cssFloat === 'none'"
+    )
+    assert box_of(page, "#words")["top"] >= box_of(page, "#plate")["bottom"] - 1
+
+
+def test_a_heading_set_across_its_whole_box_stays_as_the_book_set_it(viewer, page, made):
+    """
+    Pro Git sets the heading of a note this way, so that it sits on the note's upper edge. It
+    takes the whole width, so there is no text beside it to squeeze.
+    """
+    book = little_book(made, "note.epub", [(
+        "", '<style>aside > h2 { float: left; width: 100%; margin-top: -1.25em; } aside { padding: 1em 2em; }</style>',
+        '<body><aside><h2 id="plate">Note</h2><p id="p">Words enough to fill a line of the page.</p></aside></body>',
+    )])
+    open_book(viewer, page, fixture=book)
+    page.wait_for_timeout(300)
+    assert style_of(page, "#plate", "cssFloat") == "left"
+    assert page.get_attribute("#book #plate", "style") is None
+
+
+def test_a_picture_that_leaves_the_text_room_stays_beside_it(viewer, page, made):
+    """A drop capital, as Project Gutenberg sets them: the words run down its side."""
+    book = beside_the_text(
+        made, "capital.epub", '<style>img.letra { float: left; margin-right: 4px; }</style>',
+        '<img id="plate" class="letra" src="plate.png" alt="T"/>', (90, 90))
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        "() => document.querySelector('#book').shadowRoot.querySelector('#plate').naturalWidth > 0"
+    )
+    page.wait_for_timeout(300)
+    assert style_of(page, "#plate", "cssFloat") == "left"
+    assert page.get_attribute("#book #plate", "style") is None
+    plate, words = box_of(page, "#plate"), box_of(page, "#words")
+    assert words["left"] >= plate["right"]
+    assert words["top"] < plate["bottom"]
+
+
+def test_a_small_picture_in_a_narrow_box_stays_beside_its_text(viewer, page, made):
+    """The box is what is narrow there, and setting the picture alone would not widen it."""
+    book = beside_the_text(
+        made, "narrow.epub", '<style>img.mark { float: left; margin-right: 4px; }</style>',
+        '<img id="plate" class="mark" src="plate.png" alt="A mark"/>', (40, 40), para='style="width: 150px"')
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        "() => document.querySelector('#book').shadowRoot.querySelector('#plate').naturalWidth > 0"
+    )
+    page.wait_for_timeout(300)
+    assert style_of(page, "#plate", "cssFloat") == "left"
+
+
+def a_plate(size=(300, 200)):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, (140, 60, 30)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def chapter_text(page):
+    return " ".join(page.evaluate(
+        "document.querySelector('#book').shadowRoot.querySelector('.vw-page body').textContent"
+    ).split())
+
+
+def test_a_picture_in_the_reading_order_is_drawn(viewer, page, made, port):
+    """
+    A book of plates may list the plates themselves to be read, each with a page of words to
+    show where a picture cannot be. Here it can, so the plate is what is shown, as one page
+    however large its file is.
+    """
+    import os
+    plate = a_plate() + os.urandom(9000)
+    book = little_book(
+        made, "plates-in-order.epub",
+        [("", "", "<body><h1>Words for the plate</h1></body>"), ("", "", "<body><h1>After the plate</h1></body>")],
+        listed='<item id="plate" href="plate.png" media-type="image/png" fallback="c0"/>',
+        order=["plate", "c1"], extra={"plate.png": plate})
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        """() => { const im = document.querySelector('#book').shadowRoot.querySelector('img');
+          return im && im.naturalWidth === 300; }"""
+    )
+    assert chapter_text(page) == ""
+    port().wait_for(r"page 1 2")
+    page.click("#epub-next")
+    wait_for_heading(page, "After the plate")
+
+
+@pytest.mark.parametrize("kind", ["application/json", "application/xml", "application/octet-stream"])
+def test_a_file_that_is_no_page_gives_way_to_the_page_named_in_its_stead(viewer, page, made, kind):
+    book = little_book(
+        made, "stead.epub", [("", "", "<body><h1>The page in its stead</h1></body>")],
+        listed=f'<item id="data" href="data.bin" media-type="{kind}" fallback="c0"/>',
+        order=["data"], extra={"data.bin": "<novel><para>Not these words.</para></novel>"})
+    open_book(viewer, page, fixture=book)
+    assert chapter_text(page) == "The page in its stead"
+
+
+def test_a_file_that_is_no_page_with_nothing_in_its_stead_is_not_read_as_one(viewer, page, made):
+    """A disk image in the reading order, say: its bytes are not words, and the book goes on after it."""
+    book = little_book(
+        made, "bytes.epub", [("", "", "<body><h1>After the file</h1></body>")],
+        listed='<item id="blob" href="blob.bin" media-type="application/octet-stream"/>',
+        order=["blob", "c0"], extra={"blob.bin": b"\x00\x01EFI PART\xff\xfe words that are not words"})
+    open_book(viewer, page, fixture=book)
+    assert chapter_text(page) == "This part of the book could not be read."
+    page.click("#epub-next")
+    wait_for_heading(page, "After the file")
+
+
+def test_a_chapter_the_package_gives_the_wrong_type_is_still_read(viewer, page, made):
+    """Only a type that says a file is something else is believed: text of any kind is a chapter."""
+    odd = ('<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml">'
+           '<head><title>Odd</title></head><body><h1>Called plain text</h1></body></html>')
+    book = little_book(
+        made, "mislabelled.epub", [("", "", "<body><h1>Unused</h1></body>")],
+        listed='<item id="odd" href="odd.xhtml" media-type="text/html"/>',
+        order=["odd"], extra={"odd.xhtml": odd})
+    open_book(viewer, page, fixture=book)
+    assert chapter_text(page) == "Called plain text"
+
+
+def test_a_picture_the_engine_cannot_draw_gives_way_to_the_one_named_in_its_stead(viewer, page, made):
+    book = little_book(
+        made, "photoshop.epub",
+        [("", "", '<body><p><img id="plate" src="plate.psd" alt="A plate"/></p></body>')],
+        listed='<item id="psd" href="plate.psd" media-type="image/vnd.adobe.photoshop" fallback="png"/>'
+               '<item id="png" href="plate.png" media-type="image/png"/>',
+        extra={"plate.psd": b"8BPS not a picture a browser draws", "plate.png": a_plate()})
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        "() => document.querySelector('#book').shadowRoot.querySelector('#plate').naturalWidth === 300"
+    )
+
+
+def test_a_contents_entry_that_is_a_picture_goes_by_what_the_picture_is_called(viewer, page, made):
+    book = little_book(
+        made, "pictured-contents.epub", [("", "", "<body><h1>The Light</h1></body>")],
+        contents='<li><a href="c0.xhtml">Start</a></li>'
+                 '<li><a href="c0.xhtml"><img src="light.png" alt="The harbour light"/></a></li>',
+        extra={"light.png": a_plate()})
+    open_book(viewer, page, fixture=book)
+    labels = page.eval_on_selector_all("#epub-contents-list li", "els => els.map(e => e.textContent)")
+    assert labels == ["Start", "The harbour light"]
+
+
+def test_properties_under_epubs_old_names_apply(viewer, page, made):
+    """The first EPUB 3 books hyphenate by -epub-hyphens, which the engine knows as hyphens only."""
+    book = little_book(made, "prefixed.epub", [(
+        "", "<style>#p { -epub-hyphens: auto; -epub-text-align-last: center; }</style>",
+        '<body><p id="p">Words enough to fill a line of the page.</p></body>',
+    )])
+    open_book(viewer, page, fixture=book)
+    page.wait_for_function(
+        "() => getComputedStyle(document.querySelector('#book').shadowRoot.querySelector('#p')).hyphens === 'auto'"
+    )
+    assert style_of(page, "#p", "textAlignLast") == "center"
 
 
 def test_an_id_the_document_has_a_property_by_is_kept(viewer, page):
