@@ -34,10 +34,23 @@ var VW_EPUB_PAGE_BYTES = 2048;
 
 var vwEpub = (function () {
   var XLINK = "http://www.w3.org/1999/xlink";
+  var OPS = "http://www.idpf.org/2007/ops";
+  var MATHML = "http://www.w3.org/1998/Math/MathML";
 
-  /* The two ways a book's fonts are scrambled so they cannot be lifted out of it. Not a lock on
-     the book: the text reads without them, in the phone's own faces. */
-  var FONT_SCRAMBLES = /^(http:\/\/www\.idpf\.org\/2008\/embedding|http:\/\/ns\.adobe\.com\/pdf\/enc#RC)$/;
+  /*
+   * The two ways a book's fonts are scrambled, each with how much of the file's start it
+   * covers. Neither is a lock on the book. Both are published, and are there so that a font
+   * does not come out of the zip whole when someone unzips it: see unscrambled().
+   */
+  var SCRAMBLES = {
+    "http://www.idpf.org/2008/embedding": { key: "idpf", length: 1040 },
+    "http://ns.adobe.com/pdf/enc#RC": { key: "adobe", length: 1024 }
+  };
+
+  /* How a font file begins: TrueType, OpenType, a collection, and the two web wrappings */
+  var FONT_START = /^(\x00\x01\x00\x00|OTTO|true|typ1|ttcf|wOFF|wOF2)$/;
+
+  var UUID = /[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/i;
 
   /* Elements with no end tag in HTML, which is what tells them from one written as <p/> */
   var VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
@@ -46,9 +59,17 @@ var vwEpub = (function () {
    * What DOMPurify takes out beyond its own list. A chapter's stylesheets are read and
    * rewritten on their own, see sheet(). Forms and frames have no place in a book. The
    * attributes are the ones that fetch something or act by themselves.
+   *
+   * SANITIZE_DOM is the one thing switched off. It removes an id that is also the name of
+   * something the document has, and "title" is both: a book that marks its heading that way
+   * would lose the rule its stylesheet has for it and the place its contents point to. Such
+   * an id is a danger where it can stand in for document.title, which takes an element in
+   * the document itself. A chapter is only ever in the shadow tree, where no id does that,
+   * and must stay there for this to hold.
    */
   var PURIFY = {
     RETURN_DOM_FRAGMENT: true,
+    SANITIZE_DOM: false,
     FORBID_TAGS: ["style", "link", "meta", "base", "form", "input", "button", "select",
       "option", "textarea", "iframe", "frame", "object", "embed", "dialog"],
     FORBID_ATTR: ["srcset", "sizes", "background", "autoplay", "ping", "action", "formaction"],
@@ -68,29 +89,60 @@ var vwEpub = (function () {
   var IMPORT_IN_CSS = /@import\s*(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;]*;/gi;
 
   /*
-   * The chapter's surroundings inside the shadow tree. The plain rules come before the
-   * book's stylesheets, which may overrule them; the ones marked important are what keeps a
-   * chapter inside the screen and readable on a dark one. A dark phone gets the book's words
-   * in light ink on the page's dark ground, whatever colours the book set, and its pictures
-   * as they are.
+   * What a chapter starts from inside the shadow tree. These come before the book's
+   * stylesheets, which may overrule any of them.
    */
   var BOOK_CSS = [
     ":host { display: block; }",
     ".vw-page { contain: layout; box-sizing: border-box; max-width: 42em; margin: 0 auto;",
-    "  padding: 8px 20px 24px; font-family: serif; font-size: 17px; line-height: 1.55;",
+    "  font-family: serif; font-size: 17px; line-height: 1.55;",
     "  overflow-wrap: break-word; word-wrap: break-word; }",
-    "html, body { display: block; margin: 0; padding: 0; }",
-    "img, svg, video { max-width: 100% !important; }",
     "img, video { height: auto; }",
     "svg { max-height: 100vh; }",
     "pre { white-space: pre-wrap; }",
     "table { max-width: 100%; }",
+    ".vw-fixed > html { background-color: #ffffff; color: #000000; }",
     "::highlight(vw-find) { background-color: rgba(255, 213, 79, 0.45); }",
-    "::highlight(vw-find-active) { background-color: rgba(255, 145, 0, 0.62); }",
+    "::highlight(vw-find-active) { background-color: rgba(255, 145, 0, 0.62); }"
+  ].join("\n");
+
+  /*
+   * What a book's stylesheets may not overrule, so these come after them and are all marked
+   * important. They keep a chapter inside the screen and readable on a dark one.
+   *
+   * A book's margins are set for a sheet of paper or a desktop window: six ems on one side and
+   * sixteen on the other leave a phone no room for a single letter. So the chapter's html and
+   * body are a plain block the width of the page, with this page's margins as the body's
+   * padding, which also takes a paper colour the book gives its body out to the edges.
+   *
+   * Text set in columns running down the page, as Japanese and Chinese books may be, is laid
+   * out in rows: a page that scrolls downward has no way to turn to the next column.
+   *
+   * A dark phone gets the book's words in light ink on the page's dark ground, whatever
+   * colours the book set, and its pictures as they are.
+   *
+   * None of that is for a page of a fixed size (.vw-fixed, see scale()), which is a drawing
+   * more than it is text: its html is the sheet it was drawn on, white unless the book says
+   * otherwise, and everything on it stays where and what colour the book put it.
+   */
+  var GUARD_CSS = [
+    ".vw-flow > html, .vw-flow > html > body { display: block !important; float: none !important;",
+    "  position: static !important; margin: 0 !important; columns: auto !important;",
+    "  width: auto !important; min-width: 0 !important; max-width: none !important;",
+    "  height: auto !important; min-height: 0 !important; max-height: none !important;",
+    "  overflow: visible !important; }",
+    ".vw-flow > html { padding: 0 !important; }",
+    ".vw-flow > html > body { padding: 8px 20px 24px !important; }",
+    ".vw-flow html, .vw-flow body, .vw-flow body * { writing-mode: horizontal-tb !important; }",
+    ".vw-flow img, .vw-flow svg, .vw-flow video { max-width: 100% !important; }",
+    ".vw-fixed > html { display: block !important; position: relative !important;",
+    "  margin: 0 !important; padding: 0 !important; overflow: hidden !important;",
+    "  transform-origin: 0 0 !important; }",
     "@media (prefers-color-scheme: dark) {",
-    "  html, body, body * { color: #E7E2D9 !important; background-color: transparent !important; }",
-    "  a, a * { color: #FFB39E !important; }",
-    "  svg text, svg tspan { fill: #E7E2D9 !important; }",
+    "  .vw-flow html, .vw-flow body, .vw-flow body * { color: #E7E2D9 !important;",
+    "    background-color: transparent !important; }",
+    "  .vw-flow a, .vw-flow a * { color: #FFB39E !important; }",
+    "  .vw-flow svg text, .vw-flow svg tspan { fill: #E7E2D9 !important; }",
     "}"
   ].join("\n");
 
@@ -99,11 +151,16 @@ var vwEpub = (function () {
   var names = {};
   /* The type the package gives each file, by path */
   var types = {};
-  /* Files that are encrypted or scrambled, which nothing here can read */
-  var sealed = {};
-  /* Of those, the ones under a real lock, which is what DRM is */
+  /* Files under a real lock, which is what DRM is and nothing here can read */
   var locked = {};
-  /* The chapters in reading order: { path, pages, start, wait, ready } */
+  /* Fonts the book scrambled, by path, each with the entry of SCRAMBLES for how */
+  var scrambled = {};
+  /* The name the book goes by, which is what its fonts are scrambled with, and its UUID */
+  var bookId = "";
+  var bookUuid = "";
+  /* The key for each kind of scrambling, once it has been asked for */
+  var keys = {};
+  /* The chapters in reading order: { path, pages, start, fixed, wait, ready } */
   var spine = [];
   /* A chapter's place in the spine, by path */
   var index = {};
@@ -115,6 +172,8 @@ var vwEpub = (function () {
   var shown = -1;
   /* The body of the chapter on the page */
   var onPage = null;
+  /* The size that chapter was drawn at, where it is a page of a fixed-layout book */
+  var drawn = null;
   /* Counts chapters asked for, so that work for one the reader has left is dropped */
   var turn = 0;
   /* The page last told to the app */
@@ -153,10 +212,13 @@ var vwEpub = (function () {
 
   (function () {
     var base = document.createElement("style");
+    var guard = document.createElement("style");
     base.textContent = BOOK_CSS;
-    page.className = "vw-page";
+    guard.textContent = GUARD_CSS;
+    page.className = "vw-page vw-flow";
     shadow.appendChild(base);
     shadow.appendChild(bookSheets);
+    shadow.appendChild(guard);
     shadow.appendChild(page);
     document.head.appendChild(faces);
   })();
@@ -283,10 +345,9 @@ var vwEpub = (function () {
         var ref = all(data[i], "CipherReference")[0];
         var at = ref && resolve("", ref.getAttribute("URI"));
         if (!at) continue;
-        sealed[at.path] = true;
-        if (!FONT_SCRAMBLES.test(method ? method.getAttribute("Algorithm") || "" : "")) {
-          locked[at.path] = true;
-        }
+        var how = SCRAMBLES[method ? method.getAttribute("Algorithm") || "" : ""];
+        if (how) scrambled[at.path] = how;
+        else locked[at.path] = true;
       }
     }).catch(function () { /* a list that cannot be read locks nothing */ });
   }
@@ -306,6 +367,15 @@ var vwEpub = (function () {
       if (type === "application/x-dtbncx+xml" && !ncx) ncx = at.path;
     }
 
+    // Whether the book's pages are of a fixed size, which one chapter may say otherwise about
+    var fixedBook = false;
+    var metas = all(doc, "meta");
+    for (var m = 0; m < metas.length; m++) {
+      if (metas[m].getAttribute("property") === "rendition:layout") {
+        fixedBook = clean(metas[m].textContent) === "pre-paginated";
+      }
+    }
+
     var refs = all(doc, "itemref");
     for (var r = 0; r < refs.length; r++) {
       var file = byId[refs[r].getAttribute("idref")];
@@ -317,13 +387,29 @@ var vwEpub = (function () {
       }
       var pages = Math.max(1, Math.ceil(sizeOf(file) / VW_EPUB_PAGE_BYTES));
       index[file] = spine.length;
-      spine.push({ path: file, pages: pages, start: total, wait: null, ready: null });
+      var says = " " + (refs[r].getAttribute("properties") || "") + " ";
+      var fixed = says.indexOf(" rendition:layout-pre-paginated ") >= 0 ||
+        (fixedBook && says.indexOf(" rendition:layout-reflowable ") < 0);
+      spine.push({ path: file, pages: pages, start: total, fixed: fixed, wait: null, ready: null });
       total += pages;
     }
     if (!spine.length) throw new Error("The book lists no chapters.");
 
     var named = all(doc, "title")[0];
     bookTitle = named ? clean(named.textContent) : "";
+
+    // The identifier the package calls its own, or failing that its first
+    var own = doc.documentElement.getAttribute("unique-identifier");
+    var ids = all(doc, "identifier");
+    for (var n = ids.length - 1; n >= 0; n--) {
+      if (n === 0 || ids[n].getAttribute("id") === own) {
+        bookId = ids[n].textContent;
+        break;
+      }
+    }
+    for (var u = -1; u < ids.length && !bookUuid; u++) {
+      bookUuid = (UUID.exec(u < 0 ? bookId : ids[u].textContent) || [""])[0];
+    }
     var tongue = all(doc, "language")[0];
     if (tongue && clean(tongue.textContent)) host.lang = clean(tongue.textContent);
 
@@ -488,6 +574,27 @@ var vwEpub = (function () {
     }
   }
 
+  /*
+   * A switch offers one piece of markup to a reader that knows it and a default to every
+   * other, and its default is what is kept here. Left alone the whole of it would go, default
+   * and all, since DOMPurify drops an element that is neither HTML, a drawing nor mathematics
+   * together with everything in it. Older books wrap each formula in one.
+   */
+  function unswitch(doc) {
+    var found = [].slice.call(doc.getElementsByTagNameNS(OPS, "switch"))
+      .concat([].slice.call(doc.getElementsByTagName("epub:switch")));
+    found.forEach(function (sw) {
+      // In both lists when the chapter was read as XML, and gone by the second time
+      if (!sw.parentNode) return;
+      var keep = null;
+      for (var c = sw.firstElementChild; c && !keep; c = c.nextElementSibling) {
+        if (/(^|:)default$/.test(local(c))) keep = c;
+      }
+      while (keep && keep.firstChild) sw.parentNode.insertBefore(keep.firstChild, sw);
+      sw.parentNode.removeChild(sw);
+    });
+  }
+
   /* The few attributes of a book's html or body that its stylesheets go by */
   function kept(el) {
     var out = {};
@@ -502,7 +609,20 @@ var vwEpub = (function () {
     return out;
   }
 
-  function chapter(source, path) {
+  /*
+   * The size a page of a fixed-layout book was drawn at, { w, h }, or null. Such a page says
+   * it in the line a web page uses to tell a phone how wide it is, and the rule for these
+   * books is that it must. A width in words, such as device-width, is not a size.
+   */
+  function drawnAt(doc) {
+    var meta = doc.querySelector('meta[name="viewport"]');
+    var said = meta ? meta.getAttribute("content") || "" : "";
+    var w = /(?:^|[\s,;])width\s*=\s*([\d.]+)/i.exec(said);
+    var h = /(?:^|[\s,;])height\s*=\s*([\d.]+)/i.exec(said);
+    return w && h && w[1] > 0 && h[1] > 0 ? { w: Number(w[1]), h: Number(h[1]) } : null;
+  }
+
+  function chapter(source, path, fixed) {
     var doc = markup(source);
     var body = doc.body;
     if (!body) {
@@ -513,6 +633,14 @@ var vwEpub = (function () {
       body = around.body;
     }
 
+    /*
+     * A book set in columns that run down the page may bring a second stylesheet for rows,
+     * each marked by "vertical" or "horizontal" in its class and the second as an alternative
+     * to the first. Rows are how this page lays text out, so where a chapter offers the pair
+     * the one for rows is taken and the one for columns left, whose margins are on the sides
+     * that suit columns.
+     */
+    var rows = doc.querySelector('link[rel~="stylesheet"][class~="horizontal"]') !== null;
     var styles = [];
     var marks = doc.querySelectorAll("link, style");
     for (var i = 0; i < marks.length; i++) {
@@ -521,29 +649,36 @@ var vwEpub = (function () {
         continue;
       }
       var rel = marks[i].getAttribute("rel") || "";
-      if (!/(^|\s)stylesheet(\s|$)/i.test(rel) || /(^|\s)alternate(\s|$)/i.test(rel)) continue;
+      var made = " " + (marks[i].getAttribute("class") || "") + " ";
+      if (!/(^|\s)stylesheet(\s|$)/i.test(rel)) continue;
+      if (rows && made.indexOf(" vertical ") >= 0) continue;
+      if (/(^|\s)alternate(\s|$)/i.test(rel) && !(rows && made.indexOf(" horizontal ") >= 0)) continue;
       var at = resolve(path, marks[i].getAttribute("href"));
       if (at && entry(at.path)) styles.push({ path: at.path });
     }
 
+    unswitch(doc);
     disarm(doc);
     var holder = document.createElement("body");
     holder.appendChild(DOMPurify.sanitize(body, PURIFY));
-    return { body: holder, html: kept(doc.documentElement), own: kept(body), styles: styles };
+    return {
+      body: holder, html: kept(doc.documentElement), own: kept(body), styles: styles,
+      drawn: fixed ? drawnAt(doc) : null
+    };
   }
 
   function load(i) {
     var ch = spine[i];
     if (ch.wait) return ch.wait;
     ch.wait = text(ch.path).then(function (source) {
-      return chapter(source, ch.path);
+      return chapter(source, ch.path, ch.fixed);
     }).catch(function () {
       // One chapter that cannot be read leaves the rest of the book readable
       var holder = document.createElement("body");
       var said = document.createElement("p");
       said.textContent = "This part of the book could not be read.";
       holder.appendChild(said);
-      return { body: holder, html: {}, own: {}, styles: [] };
+      return { body: holder, html: {}, own: {}, styles: [], drawn: null };
     }).then(function (made) {
       ch.ready = made;
       return made;
@@ -579,13 +714,57 @@ var vwEpub = (function () {
     return TYPES[path.slice(path.lastIndexOf(".") + 1).toLowerCase()] || null;
   }
 
+  /*
+   * The key a kind of scrambling uses, as bytes, or null where it cannot be had. One kind
+   * takes the SHA-1 of the book's identifier with its spaces and line ends out, and the
+   * other the sixteen bytes of the book's UUID.
+   */
+  function key(kind) {
+    if (keys[kind]) return keys[kind];
+    if (kind === "adobe") {
+      var hex = bookUuid.replace(/-/g, "");
+      var made = hex ? new Uint8Array(16) : null;
+      for (var i = 0; made && i < 16; i++) made[i] = parseInt(hex.substr(i * 2, 2), 16);
+      keys[kind] = Promise.resolve(made);
+    } else if (window.crypto && crypto.subtle && window.TextEncoder) {
+      var name = new TextEncoder().encode(bookId.replace(/[\u0020\u0009\u000D\u000A]/g, ""));
+      keys[kind] = crypto.subtle.digest("SHA-1", name).then(function (digest) {
+        return new Uint8Array(digest);
+      }, function () {
+        return null;
+      });
+    } else {
+      keys[kind] = Promise.resolve(null);
+    }
+    return keys[kind];
+  }
+
+  /*
+   * A font the book scrambled, put right, or null. The start of the file was combined with
+   * the key a byte at a time, and combining it again undoes that. What comes out is a font
+   * or the key was not the one, so a file that does not begin as a font does is left out,
+   * and the engine is not handed noise to complain of.
+   */
+  function unscrambled(b, how) {
+    return key(how.key).then(function (k) {
+      if (!k) return null;
+      // A copy, since the bytes may be the zip's own
+      var out = new Uint8Array(b);
+      var n = Math.min(out.length, how.length);
+      for (var i = 0; i < n; i++) out[i] ^= k[i % k.length];
+      return FONT_START.test(String.fromCharCode(out[0], out[1], out[2], out[3])) ? out : null;
+    });
+  }
+
   /* An object URL for a file in the book, kept in [store], or null */
   function objectUrl(path, store) {
     if (store[path]) return store[path];
     var type = typeOf(path);
-    if (!type || sealed[path] || !entry(path)) return Promise.resolve(null);
+    if (!type || locked[path] || !entry(path)) return Promise.resolve(null);
     store[path] = bytes(path).then(function (b) {
-      return URL.createObjectURL(new Blob([b], { type: type }));
+      return scrambled[path] ? unscrambled(b, scrambled[path]) : b;
+    }).then(function (b) {
+      return b ? URL.createObjectURL(new Blob([b], { type: type })) : null;
     }, function () {
       return null;
     });
@@ -658,9 +837,10 @@ var vwEpub = (function () {
   /*
    * A stylesheet as the shadow tree can use it: { css, faces }. Its @font-face rules are
    * taken out, since a shadow tree ignores them, and put in the page's own head by show().
-   * One left with no font behind it is dropped: a scrambled font, or one the book does not
-   * hold, would only be a rule the engine complains it cannot decode. :root is the page's
-   * root and not the book's, so it is written as the html element the chapter is given.
+   * One left with no font behind it is dropped: a font that did not unscramble, or one the
+   * book does not hold, would only be a rule the engine complains it cannot decode. :root is
+   * the page's root and not the book's, so it is written as the html element the chapter is
+   * given.
    */
   function fitted(css, base) {
     return gathered(css, base, [base]).then(function (whole) {
@@ -748,6 +928,93 @@ var vwEpub = (function () {
       }
       if (!waiting) finish();
       else setTimeout(finish, 1500);
+    });
+  }
+
+  /*
+   * Brings a page of a fixed size down, or up, to the width of the screen. It is laid out at
+   * the size its book drew it for, since everything on it is placed by measurements from its
+   * corner, and then shown smaller as a picture of itself would be. Scaling takes up no room
+   * on the page, so the room is given by hand.
+   */
+  function scale() {
+    var by = page.clientWidth / drawn.w;
+    onPage.parentNode.style.transform = "scale(" + by + ")";
+    page.style.height = Math.ceil(drawn.h * by) + "px";
+  }
+
+  /*
+   * Gives whatever is wider than the screen a way to be seen whole: a box the book gave a
+   * width in pixels is held to the page, which brings the picture in it down with it, and a
+   * table or a line of code that still does not fit scrolls sideways where it stands. The
+   * page itself never moves sideways, so the rest of such a thing has no other way into view.
+   *
+   * Measured rather than ruled for every table and box in every book, so that the ones that
+   * fit, which is nearly all of them, are laid out exactly as the book says. Only what runs
+   * over is looked into, from the chapter down, so a chapter where nothing does costs one
+   * comparison. Everything is measured first and changed afterwards, since a change between
+   * two measurements would lay the chapter out again each time.
+   */
+  function fit() {
+    if (drawn) return scale();
+    if (!onPage || onPage.scrollWidth <= onPage.clientWidth + 1) return;
+    if (getComputedStyle(onPage).overflowX !== "visible") return;
+    var edge = document.documentElement.clientWidth;
+    var wide = [];
+
+    function hold(box, style) {
+      // Something set in a line of words cannot scroll, nor can any part of a formula, so
+      // the block that the line or the formula is in does
+      while (box !== onPage && (box.namespaceURI === MATHML || /^(inline|contents)/.test(style.display))) {
+        box = box.parentNode;
+        style = getComputedStyle(box);
+      }
+      if (wide.length && wide[wide.length - 1].el === box) return;
+      wide.push({
+        el: box,
+        table: /^table/.test(style.display),
+        scrolls: style.overflowX !== "visible",
+        // Its margins are outside the width it is held to, so they come off that width
+        margins: Math.max(0, parseFloat(style.marginLeft) || 0) + Math.max(0, parseFloat(style.marginRight) || 0)
+      });
+    }
+
+    /* Looks through what is in [parent], which runs over, for what in it does. Says whether
+       anything was found, since where nothing is, it is the parent's own words that run over. */
+    function seek(parent) {
+      // A chapter read right to left runs over to the left, and nowhere else
+      var rtl = getComputedStyle(parent).direction === "rtl";
+      var found = false;
+      for (var el = parent.firstElementChild; el; el = el.nextElementSibling) {
+        var rect = el.getBoundingClientRect();
+        if (!rect.width) continue;
+        var over = el.scrollWidth - el.clientWidth;
+        var out = rtl ? rect.left < -1 : rect.right > edge + 1;
+        // Within the screen itself, with something in it that is not
+        var spills = !out && over > 1 &&
+          (rtl ? rect.left + el.clientLeft - over < -1 : rect.left + el.clientLeft + el.scrollWidth > edge + 1);
+        if (!out && !spills) continue;
+        var style = getComputedStyle(el);
+        // Put where it is by the book, off the screen as often as not, on purpose
+        if (style.position === "absolute" || style.position === "fixed") continue;
+        found = true;
+        if (spills) {
+          // Scrolls sideways already, or cuts off what runs over, by the book's own word
+          if (style.overflowX !== "visible") continue;
+          if (seek(el)) continue;
+        }
+        hold(el, style);
+      }
+      return found;
+    }
+
+    if (!seek(onPage)) hold(onPage, getComputedStyle(onPage));
+    wide.forEach(function (b) {
+      // A table scrolls only as a block, with its rows and columns as they were inside it
+      if (b.table) b.el.style.setProperty("display", "block", "important");
+      b.el.style.setProperty("box-sizing", "border-box", "important");
+      b.el.style.setProperty("max-width", "calc(100% - " + b.margins + "px)", "important");
+      if (!b.scrolls) b.el.style.setProperty("overflow-x", "auto", "important");
     });
   }
 
@@ -860,6 +1127,13 @@ var vwEpub = (function () {
     dressLike(html, made.html);
     dressLike(body, made.own);
     html.appendChild(body);
+    drawn = made.drawn;
+    page.className = drawn ? "vw-page vw-fixed" : "vw-page vw-flow";
+    page.style.height = "";
+    if (drawn) {
+      html.style.width = drawn.w + "px";
+      html.style.height = drawn.h + "px";
+    }
     bookSheets.textContent = "";
     faces.textContent = "";
     page.textContent = "";
@@ -889,11 +1163,14 @@ var vwEpub = (function () {
       faces.textContent = fonts;
       got[1]();
       page.style.opacity = "";
+      fit();
       if (keep) keep.scrollIntoView({ block: "center" });
       else if (!quiet) place(to);
       return settled(body).then(function () { return keep; });
     }).then(function (keep) {
       if (mine !== turn) return;
+      // Again now that the pictures have their sizes
+      fit();
       if (!moved) {
         if (keep) keep.scrollIntoView({ block: "center" });
         else if (!quiet) place(to);
@@ -984,7 +1261,8 @@ var vwEpub = (function () {
 
   function buildContents() {
     document.getElementById("epub-title").textContent = bookTitle;
-    for (var i = 0; i < contents.length && i < 2000; i++) {
+    // An epic in two thousand short chapters lists every one, so the limit is well past that
+    for (var i = 0; i < contents.length && i < 20000; i++) {
       var li = document.createElement("li");
       var el = document.createElement(contents[i].at < 0 ? "span" : "button");
       if (contents[i].at >= 0) {
@@ -1061,6 +1339,9 @@ var vwEpub = (function () {
       report();
     });
   }, { passive: true });
+
+  // A phone turned on its side has a different width for things to be too wide for
+  window.addEventListener("resize", fit);
 
   ["touchstart", "wheel", "keydown"].forEach(function (name) {
     window.addEventListener(name, function () { moved = true; }, { passive: true });

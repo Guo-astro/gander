@@ -4,11 +4,13 @@
 
 - An EPUB book opens (#50, asked for by @0xlne). Gander reads it a chapter at a time, with
   the book's own contents list, Previous and Next under each chapter, the links between
-  chapters, and the book's pictures and styles. A book has no pages of its own, so the page
-  counter and Go to page count it in even stretches of its text, and a book reopens at the one
-  it was left on. Find searches the whole book. On a dark phone the page is dark, whatever
-  colours the book set. A book locked with DRM says so: only the app of the shop or library
-  it came from can open one.
+  chapters, and the book's pictures, fonts and styles. A book has no pages of its own, so the
+  page counter and Go to page count it in even stretches of its text, and a book reopens at
+  the one it was left on. Find searches the whole book. A table or a line of code too wide
+  for the screen scrolls sideways by itself. The fixed pages of a picture book or a comic are
+  fitted to the width of the screen, and a book set in vertical columns is laid out in rows.
+  On a dark phone the page is dark, whatever colours the book set. A book locked with DRM
+  says so: only the app of the shop or library it came from can open one.
 
 ## 2.4 (2026-10-12)
 

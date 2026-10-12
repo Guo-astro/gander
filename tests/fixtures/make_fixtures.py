@@ -3413,10 +3413,167 @@ def epub_locked() -> None:
     written(OUT / "locked.epub")
 
 
+def epub_gazetteer() -> None:
+    """
+    gazetteer.epub: what real books did to the reader that harbour.epub does not. Each part
+    is the shape of something met in a book from Project Gutenberg, Standard Ebooks or the
+    EPUB 3 samples.
+
+    Its pages are of a fixed size, as a picture book's are, and its first two chapters say
+    they are not. The first has the margins a book sets for a desktop window and a heading
+    whose id is "title". Then what is wider than any phone: a box given a width in pixels,
+    with a margin, a border and a picture in it; a table and a line of code inside a section
+    that is not too wide itself; a formula and a run of code set in a line of words; and a
+    table in a box that already scrolls sideways. A note is placed far off to the right, as a
+    book hides one. Two switches offer markup no reader here knows and a default, written the
+    two ways books write them. The second chapter is set in columns that run down the page
+    and offers a stylesheet for rows beside the one for columns. The third is the fixed page,
+    600 by 800, with a caption placed by measurements from its corner.
+    """
+    buf = io.BytesIO()
+    from PIL import Image
+    Image.new("RGB", (1400, 40), (30, 90, 140)).save(buf, format="PNG")
+    chart = buf.getvalue()
+
+    def page(title: str, head: str, body: str, attrs: str = "") -> bytes:
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE html>\n'
+            '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">\n'
+            f'<head><title>{title}</title>{head}</head>\n'
+            f'<body{attrs}>\n{body}\n</body>\n</html>\n'
+        ).encode("utf-8")
+
+    opf = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" '
+        'prefix="rendition: http://www.idpf.org/vocab/rendition/#">\n'
+        ' <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">\n'
+        '  <dc:identifier id="uid">urn:uuid:00000000-0000-4000-8000-000000000053</dc:identifier>\n'
+        '  <dc:title>A Heronsgate Gazetteer</dc:title>\n'
+        '  <dc:language>en</dc:language>\n'
+        f'  <meta property="dcterms:modified">{ISO_EPOCH}</meta>\n'
+        '  <meta property="rendition:layout">pre-paginated</meta>\n'
+        ' </metadata>\n'
+        ' <manifest>\n'
+        '  <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>\n'
+        '  <item id="fares" href="fares.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="columns" href="columns.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="plate" href="plate.xhtml" media-type="application/xhtml+xml"/>\n'
+        '  <item id="desk" href="desk.css" media-type="text/css"/>\n'
+        '  <item id="down" href="down.css" media-type="text/css"/>\n'
+        '  <item id="across" href="across.css" media-type="text/css"/>\n'
+        '  <item id="chart" href="chart.png" media-type="image/png"/>\n'
+        ' </manifest>\n'
+        ' <spine>\n'
+        '  <itemref idref="fares" properties="rendition:layout-reflowable"/>\n'
+        '  <itemref idref="columns" properties="rendition:layout-reflowable"/>\n'
+        '  <itemref idref="plate"/>\n'
+        ' </spine>\n'
+        '</package>\n'
+    )
+    nav = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE html>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">\n'
+        '<head><title>Contents</title></head>\n<body>\n'
+        '<nav epub:type="toc"><ol>\n'
+        ' <li><a href="fares.xhtml#title">Fares</a></li>\n'
+        ' <li><a href="columns.xhtml">Columns</a></li>\n'
+        ' <li><a href="plate.xhtml">The plate</a></li>\n'
+        '</ol></nav>\n</body>\n</html>\n'
+    )
+    stops = ["Heronsgate", "Willowmere", "Saltmarsh", "Underhill", "Fenwick", "Marrow Cross",
+             "Long Ashby", "Tithe Barn", "Coldwater", "Ferry Lane", "Quay Street", "Lantern Row",
+             "North Mole", "South Mole"]
+    table = (
+        '<table id="fares-table"><tr>' + "".join(f"<th>{name}</th>" for name in stops) + "</tr>\n<tr>"
+        + "".join(f'<td>{n} shillings and sixpence</td>' for n in range(1, len(stops) + 1)) + "</tr></table>"
+    )
+    fares = page(
+        "Fares",
+        '<link rel="stylesheet" type="text/css" href="desk.css"/>',
+        # A paragraph long enough to fill a line, so its width is the room the page gave it
+        '<p id="first">' + "The ferry leaves the quay on the hour and the half hour. " * 6 + '</p>\n'
+        '<h2 id="title">Fares between the stops</h2>\n'
+        '<div id="plate" style="width: 1400px; margin-left: 30px; padding: 0 10px; border: 1px solid gray">'
+        '<img id="chart" src="chart.png" alt="The fares as a chart"/></div>\n'
+        '<section id="tables">\n' + table + '\n'
+        '<pre id="log">' + " ".join(f"{n:03d}-crossing" for n in range(60)) + '</pre>\n</section>\n'
+        '<p id="sum">The whole run: <code style="white-space: nowrap">'
+        + " + ".join(f"fare[{n}]" for n in range(60)) + '</code></p>\n'
+        '<p id="eq"><math xmlns="http://www.w3.org/1998/Math/MathML" display="block"><mrow>'
+        + "<mo>+</mo>".join(f"<msub><mi>fare</mi><mn>{n}</mn></msub>" for n in range(60)) + '</mrow></math></p>\n'
+        '<div id="own" style="overflow-x: auto"><table id="kept"><tr>'
+        + "".join(f"<td>{name}</td>" for name in stops * 2) + '</tr></table></div>\n'
+        '<span id="far" style="position: absolute; left: 2000px; width: 300px">A note put out of sight.</span>\n'
+        # As the EPUB 3 samples write one, in a namespace of its own and no prefix. DOMPurify
+        # knows "switch" as part of a drawing, which this is not, and drops all of it.
+        '<switch xmlns="http://www.idpf.org/2007/ops" id="formula">'
+        '<case required-namespace="http://www.xml-cml.org/schema">'
+        '<chem xmlns="http://www.xml-cml.org/schema"><atom>markup no reader here knows</atom></chem>'
+        '</case>'
+        '<default><p xmlns="http://www.w3.org/1999/xhtml" id="fallback">Salt and water, written out in words.</p></default>'
+        '</switch>\n'
+        # And with a prefix, where the words of the unknown markup would be shown as well
+        '<epub:switch>'
+        '<epub:case required-namespace="http://www.xml-cml.org/schema">'
+        '<chem xmlns="http://www.xml-cml.org/schema"><atom>more of what no reader here knows</atom></chem>'
+        '</epub:case>'
+        '<epub:default><p id="fallback-2">A second default, in words.</p></epub:default>'
+        '</epub:switch>\n'
+        '<p id="after">The last line of the chapter.</p>',
+    )
+    columns = page(
+        "Columns",
+        '<link rel="stylesheet" type="text/css" href="down.css" class="vertical" title="Columns"/>'
+        '<link rel="alternate stylesheet" type="text/css" href="across.css" class="horizontal" title="Rows"/>'
+        '<style>p.aside { writing-mode: vertical-rl; }</style>',
+        '<h1>Columns</h1>\n'
+        '<div class="main"><p>Set in columns that run down the page, where the book has its way.</p></div>\n'
+        '<p class="aside">A note set sideways by the chapter itself.</p>',
+    )
+    plate = page(
+        "The plate",
+        '<meta name="viewport" content="width=600, height=800"/>'
+        '<style>body { margin: 0; width: 600px; height: 800px; background-color: rgb(20, 40, 60); }\n'
+        '#caption { position: absolute; left: 300px; top: 400px; width: 200px; margin: 0; '
+        'font-size: 20px; color: rgb(255, 255, 255); }</style>',
+        '<p id="caption">Heronsgate from the north mole</p>',
+    )
+    desk = (
+        'body { margin-left: 6em; margin-right: 16em; background-color: rgb(255, 255, 240); }\n'
+        '#title { letter-spacing: 3px; }\n'
+        'th, td { white-space: nowrap; padding: 4px 12px; }\n'
+        'pre { white-space: pre; }\n'
+    )
+    down = (
+        'html { writing-mode: vertical-rl; }\n'
+        '.main { margin-left: 12em; }\n'
+    )
+    across = '.main { letter-spacing: 2px; }\n'
+    members = [
+        Member(b"mimetype", b"application/epub+zip", method=STORED),
+        Member(b"META-INF/container.xml", EPUB_CONTAINER.format(path="EPUB/package.opf").encode()),
+        Member(b"EPUB/package.opf", opf.encode()),
+        Member(b"EPUB/nav.xhtml", nav.encode()),
+        Member(b"EPUB/fares.xhtml", fares),
+        Member(b"EPUB/columns.xhtml", columns),
+        Member(b"EPUB/plate.xhtml", plate),
+        Member(b"EPUB/desk.css", desk.encode()),
+        Member(b"EPUB/down.css", down.encode()),
+        Member(b"EPUB/across.css", across.encode()),
+        Member(b"EPUB/chart.png", chart, method=STORED),
+    ]
+    (OUT / "gazetteer.epub").write_bytes(zip_bytes(members))
+    written(OUT / "gazetteer.epub")
+
+
 def epubs() -> None:
     epub3()
     epub2()
     epub_locked()
+    epub_gazetteer()
 
 
 def main() -> int:
