@@ -249,12 +249,43 @@ var vwEpub = (function () {
   var linkCopy = document.getElementById("epub-link-copy");
   var linkClose = document.getElementById("epub-link-close");
 
+  /*
+   * Whether what runs past a box widens the page around it on this engine, layout
+   * containment or not. WebView 66 lets it, for what is in the flow and for what a book has
+   * positioned alike, and a page wider than the screen moves sideways under the finger.
+   */
+  function widens() {
+    var outer = document.createElement("div");
+    var box = document.createElement("div");
+    var inFlow = document.createElement("div");
+    var placed = document.createElement("div");
+    outer.style.cssText = "position:absolute;top:0;left:0;width:10px;height:10px;" +
+      "overflow:hidden;visibility:hidden";
+    box.style.cssText = "contain:layout;width:10px;height:10px";
+    inFlow.style.cssText = "width:50px;height:1px";
+    placed.style.cssText = "position:absolute;left:50px;width:10px;height:1px";
+    box.appendChild(inFlow);
+    box.appendChild(placed);
+    outer.appendChild(box);
+    document.body.appendChild(outer);
+    var is = outer.scrollWidth > outer.clientWidth;
+    document.body.removeChild(outer);
+    return is;
+  }
+
   (function () {
     var base = document.createElement("style");
     var guard = document.createElement("style");
     base.textContent = BOOK_CSS;
     guard.textContent = GUARD_CSS;
     page.className = "vw-page vw-flow";
+    // On such an engine the book's box cuts off what runs past it, and the page is what a
+    // positioned thing is placed against, as containment makes it everywhere else. Only
+    // there, since a box that cuts off is also what position: sticky in a book sticks to.
+    if (widens()) {
+      host.style.overflowX = "hidden";
+      page.style.position = "relative";
+    }
     shadow.appendChild(base);
     shadow.appendChild(bookSheets);
     shadow.appendChild(guard);
@@ -1690,30 +1721,28 @@ var vwEpub = (function () {
   }
 
   /*
-   * Puts the address on the clipboard. The engine's newer way is asked first, and where it
-   * is missing or refuses, the older one, which copies what is selected on the page. Where
-   * neither will, the address is left selected for the reader's own Copy.
+   * Puts the address on the clipboard. The older way goes first, which copies what is
+   * selected on the page, because an old engine allows it only while the tap is still being
+   * handled: WebView 66 refuses the newer way a moment later, and by then refuses the older
+   * one too. Where the older way will not, the newer is asked, and where neither will, the
+   * address is left selected for the reader's own Copy.
    */
   function copyLink() {
+    var range = document.createRange();
+    range.selectNodeContents(linkAddress);
+    var chosen = window.getSelection();
+    chosen.removeAllRanges();
+    chosen.addRange(range);
     function done() {
+      chosen.removeAllRanges();
       linkCopy.textContent = "Copied";
     }
-    function bySelecting() {
-      var range = document.createRange();
-      range.selectNodeContents(linkAddress);
-      var chosen = window.getSelection();
-      chosen.removeAllRanges();
-      chosen.addRange(range);
-      var did = false;
-      try { did = document.execCommand("copy"); } catch (e) { /* not this way either */ }
-      if (!did) return;
-      chosen.removeAllRanges();
+    var did = false;
+    try { did = document.execCommand("copy"); } catch (e) { /* the newer way, then */ }
+    if (did) {
       done();
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(linkAddress.textContent).then(done, bySelecting);
-    } else {
-      bySelecting();
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(linkAddress.textContent).then(done, function () { /* left selected */ });
     }
   }
 

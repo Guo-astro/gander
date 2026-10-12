@@ -518,28 +518,76 @@ def test_a_web_link_shows_its_address_and_goes_nowhere(viewer, page, port):
     assert "The Lamp Room" in page.text_content("#book h1")
 
 
-def test_an_address_is_copied_where_the_engine_refuses_the_newer_way(viewer, page):
-    """
-    The newer way is taken off the engine here, where the page would find it, and the test
-    looks that it was asked and refused: left alone, this browser's own would do the copying
-    and the older way would never be tried.
-    """
-    page.context.grant_permissions(["clipboard-read"])
-    page.add_init_script(
-        """Object.defineProperty(Clipboard.prototype, 'writeText', { value: function () {
-             window.__refusedCopy = (window.__refusedCopy || 0) + 1;
-             return Promise.reject(new Error('not allowed'));
-           } });"""
-    )
+# Copying as WebView 66 allows it: the older way only while the tap is still being handled,
+# and the newer way refused a moment after it was asked. This browser allows both at any
+# time, so each is put in the page's way where the page would find it.
+OLDER_COPY_ONLY_IN_THE_TAP = """
+(function () {
+  var real = Document.prototype.execCommand, inTap = false;
+  document.addEventListener('click', function () {
+    inTap = true;
+    setTimeout(function () { inTap = false; }, 0);
+  }, true);
+  Document.prototype.execCommand = function () {
+    window.__olderCopy = (window.__olderCopy || []).concat(inTap);
+    return inTap && real.apply(this, arguments);
+  };
+})();
+"""
+OLDER_COPY_REFUSED = """
+Document.prototype.execCommand = function () {
+  window.__olderCopy = (window.__olderCopy || []).concat(false);
+  return false;
+};
+"""
+NEWER_COPY_REFUSED = """
+Object.defineProperty(Clipboard.prototype, 'writeText', { value: function () {
+  window.__refusedCopy = (window.__refusedCopy || 0) + 1;
+  return new Promise(function (yes, no) { setTimeout(function () { no(new Error('not allowed')); }, 0); });
+} });
+"""
+
+
+def copy_the_lamp_rooms_link(viewer, page):
     open_book(viewer, page)
     turn_to(page, "The Lamp Room")
     page.click("#book #web-link")
     page.click("#epub-link-copy")
+
+
+def test_an_address_is_copied_while_the_tap_is_still_being_handled(viewer, page):
+    """
+    On WebView 66 the newer way is refused, and by the time it has said so the older way is
+    refused as well, so Copy address did nothing there. The older way is asked first.
+    """
+    page.context.grant_permissions(["clipboard-read"])
+    page.add_init_script(OLDER_COPY_ONLY_IN_THE_TAP + NEWER_COPY_REFUSED)
+    copy_the_lamp_rooms_link(viewer, page)
     page.wait_for_function("() => document.querySelector('#epub-link-copy').textContent === 'Copied'")
-    assert page.evaluate("() => window.__refusedCopy") == 1
+    assert page.evaluate("() => window.__olderCopy") == [True]
     assert page.evaluate("() => navigator.clipboard.readText()") == "https://example.invalid/"
     # Nothing is left selected on the page once it is copied
     assert page.evaluate("() => String(window.getSelection())") == ""
+
+
+def test_an_address_is_copied_the_newer_way_where_the_older_is_refused(viewer, page):
+    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    page.add_init_script(OLDER_COPY_REFUSED)
+    copy_the_lamp_rooms_link(viewer, page)
+    page.wait_for_function("() => document.querySelector('#epub-link-copy').textContent === 'Copied'")
+    assert page.evaluate("() => window.__olderCopy") == [False]
+    assert page.evaluate("() => navigator.clipboard.readText()") == "https://example.invalid/"
+    assert page.evaluate("() => String(window.getSelection())") == ""
+
+
+def test_an_address_no_way_will_copy_is_left_selected(viewer, page):
+    """The reader's own Copy, from a long press on what is selected, still has it."""
+    page.add_init_script(OLDER_COPY_REFUSED + NEWER_COPY_REFUSED)
+    copy_the_lamp_rooms_link(viewer, page)
+    page.wait_for_function("() => window.__refusedCopy === 1")
+    page.wait_for_timeout(100)
+    assert page.text_content("#epub-link-copy") == "Copy address"
+    assert page.evaluate("() => String(window.getSelection())") == "https://example.invalid/"
 
 
 @pytest.mark.parametrize("href,shown", [
@@ -1124,6 +1172,55 @@ def test_what_the_book_already_dealt_with_is_left_alone(viewer, page):
     assert style_of(page, "#kept", "display") == "table"
     assert page.get_attribute("#book #kept", "style") is None
     assert page.get_attribute("#book #far", "style") == "position: absolute; left: 2000px; width: 300px"
+
+
+def without_layout_containment(page):
+    """
+    Serves the reader as WebView 66 runs it, where layout containment keeps nothing that
+    runs past a box from widening the page around it: the two places the reader asks for
+    containment are taken out. Gives back a list that takes how many were.
+    """
+    taken = []
+
+    def serve(route):
+        response = route.fetch()
+        body, n = re.subn(r"contain:\s*layout;?\s*", "", response.text())
+        taken.append(n)
+        route.fulfill(response=response, body=body)
+    page.route("**/assets/viewer/epub.js", serve)
+    return taken
+
+
+def test_the_page_keeps_to_the_screen_on_an_engine_that_lets_a_chapter_widen_it(viewer, page):
+    """
+    On WebView 66 the note this book puts 2,000 pixels to the right made the page that wide:
+    it moved sideways under the finger, and the contents list, which covers the page, opened
+    out of sight. There the book's box cuts off what runs past it, and the note is still
+    placed against the page.
+    """
+    taken = without_layout_containment(page)
+    open_book(viewer, page, fixture=GAZETTEER)
+    edge = box_of(page, "#first")["right"]
+    page.wait_for_function(
+        """(edge) => document.querySelector('#book').shadowRoot.querySelector('#fares-table')
+          .getBoundingClientRect().right <= edge + 1""",
+        arg=edge,
+    )
+    assert taken == [2]
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    assert box_of(page, "#far")["left"] == box_of(page, ".vw-page")["left"] + 2000
+    page.click("#epub-contents-open")
+    assert page.evaluate("document.querySelector('#epub-contents').getBoundingClientRect().width") \
+        == page.evaluate("window.innerWidth")
+
+
+def test_the_books_box_cuts_nothing_off_where_the_engine_keeps_a_chapter_to_its_page(viewer, page):
+    """A box that cuts off is what position: sticky in a book would stick to, so only where it must."""
+    open_book(viewer, page, fixture=GAZETTEER)
+    assert page.evaluate("getComputedStyle(document.querySelector('#book')).overflowX") == "visible"
+    assert style_of(page, ".vw-page", "position") == "static"
+    # What the engine was tried with is gone from the page again
+    assert page.evaluate("document.querySelectorAll('body > div[style*=\"overflow\"]').length") == 0
 
 
 def test_pictures_too_wide_together_once_they_have_loaded(viewer, page, made):
