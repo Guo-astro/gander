@@ -208,8 +208,11 @@ var vwEpub = (function () {
   var toldOver = false;
   /* What fit() and unfloat() have set on the chapter, each with what was there before */
   var setToFit = [];
-  /* The width the chapter was last fitted to */
+  /* The width the chapter was last fitted to, and the height of the letter that tells the
+     size of the type: see relaid() */
   var across = window.innerWidth;
+  var gauge = null;
+  var gaugeTall = 0;
   var opened = false;
   /* Whether the reader has moved the page since the chapter went on it */
   var moved = false;
@@ -1384,6 +1387,10 @@ var vwEpub = (function () {
     heldAt = -1;
     var first = window.pageYOffset > 0 ? firstShowing(onPage, topEdge()) : null;
     above = first ? countBefore(first.node, first.at) : 0;
+    tell();
+  }
+
+  function tell() {
     var say = "at " + shown + " " + above;
     if (say !== told && vwFind.post(say)) told = say;
   }
@@ -1457,6 +1464,10 @@ var vwEpub = (function () {
     setToFit = [];
     heldAt = -1;
     above = to && to.past > 0 ? to.past : 0;
+    // Said at once, and the line they come to rest on when the chapter is dressed: the app
+    // hears how far through the book this chapter is as soon as it is up, and kept with the
+    // place it had, a book left in that moment would reopen in the chapter before
+    tell();
 
     var html = document.createElement("html");
     var body = made.body.cloneNode(true);
@@ -1747,11 +1758,18 @@ var vwEpub = (function () {
 
   var reporting = false;
   window.addEventListener("scroll", function () {
-    if (settling) clearTimeout(settling);
-    // Nothing thrown in a timer may reach the page, which would put a card over the book
-    settling = setTimeout(function () {
-      try { rest(); } catch (e) { settling = 0; }
-    }, 150);
+    // Where relaid() put the screen is the page's doing and not the reader's, and so is
+    // where the engine lets it fall as the type changes size, which is heard of here before
+    // relaid() has run. Counted as theirs, a second change of size close on the first would
+    // find the page on the move and leave the line there.
+    var own = relaying() || (heldAt >= 0 && Math.abs(window.pageYOffset - heldAt) < 1);
+    if (!own) {
+      if (settling) clearTimeout(settling);
+      // Nothing thrown in a timer may reach the page, which would put a card over the book
+      settling = setTimeout(function () {
+        try { rest(); } catch (e) { settling = 0; }
+      }, 150);
+    }
     if (reporting) return;
     reporting = true;
     requestAnimationFrame(function () {
@@ -1766,6 +1784,8 @@ var vwEpub = (function () {
    * the page is on the move and the place that was kept is no longer where they are.
    */
   function relaid() {
+    across = window.innerWidth;
+    gaugeTall = typeTall();
     if (shown < 0 || !onPage) return;
     refit();
     if (!settling) {
@@ -1777,10 +1797,17 @@ var vwEpub = (function () {
 
   // The keyboard coming up changes the height alone, which moves nothing in a chapter
   window.addEventListener("resize", function () {
-    if (window.innerWidth === across) return;
-    across = window.innerWidth;
-    relaid();
+    if (window.innerWidth !== across) relaid();
   });
+
+  function typeTall() {
+    return gauge ? gauge.getBoundingClientRect().height : 0;
+  }
+
+  /* Whether the type has changed size, or the screen its width, and relaid() has yet to run */
+  function relaying() {
+    return typeTall() !== gaugeTall || window.innerWidth !== across;
+  }
 
   /*
    * A letter off the page, at a size no book can reach. The size of the type here is the
@@ -1789,18 +1816,20 @@ var vwEpub = (function () {
    */
   (function () {
     if (!window.ResizeObserver) return;
-    var gauge = document.createElement("span");
     var first = true;
+    gauge = document.createElement("span");
     gauge.id = "epub-gauge";
     gauge.textContent = "M";
     gauge.setAttribute("aria-hidden", "true");
     gauge.style.cssText = "position:absolute;top:0;left:0;visibility:hidden;" +
       "pointer-events:none;white-space:nowrap;font:100px/1 serif";
     document.body.appendChild(gauge);
+    gaugeTall = typeTall();
     new ResizeObserver(function () {
       // The first word is of the size the letter starts at
       if (first) {
         first = false;
+        gaugeTall = typeTall();
         return;
       }
       try { relaid(); } catch (e) { /* the chapter is still there, as it was */ }

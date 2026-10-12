@@ -1,11 +1,15 @@
 package com.arjun.gander
 
+import android.content.Context
+import android.view.View
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.Espresso.pressBack
-import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.UiController
+import androidx.test.espresso.ViewAction
 import androidx.test.espresso.matcher.RootMatchers.isDialog
+import androidx.test.espresso.matcher.ViewMatchers.isEnabled
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
@@ -32,15 +36,25 @@ class BookDeviceTest {
 
     private val target get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    /** The size the phone's owner reads at, which these tests change and must give back. */
+    private var theirs = 100
+
     @Before
     fun setUp() {
         DeviceFixtures.clear()
+        theirs = Settings.bookTextSize(target)
         Settings.setBookTextSize(target, 100)
     }
 
+    /**
+     * Given back, and written through before this returns. Settings writes in the background,
+     * and the process is killed as the last test ends, which left the size a test had set
+     * as the owner's own.
+     */
     @After
     fun tearDown() {
-        Settings.setBookTextSize(target, 100)
+        Settings.setBookTextSize(target, theirs)
+        target.getSharedPreferences("viewer", Context.MODE_PRIVATE).edit().commit()
     }
 
     private fun open(fixture: String) =
@@ -59,6 +73,22 @@ class BookDeviceTest {
         scenario.onActivity {
             it.findViewById<MaterialToolbar>(R.id.toolbar).menu.performIdentifierAction(item, 0)
         }
+    }
+
+    /**
+     * A button of the text size box, clicked as the view and not by a tap aimed at it. Of two
+     * of Espresso's taps on these, one after the other on a phone with its animations on, one
+     * was seen not to land, and what is under test here is the size and not the tap.
+     */
+    private fun press(button: Int) {
+        onView(withId(button)).inRoot(isDialog()).perform(object : ViewAction {
+            override fun getConstraints() = isEnabled()
+            override fun getDescription() = "click the view itself"
+            override fun perform(uiController: UiController, view: View) {
+                view.performClick()
+                uiController.loopMainThreadUntilIdle()
+            }
+        })
     }
 
     /** Chapter [index] on the page and dressed, as epub.js leaves it once its pictures are in. */
@@ -136,8 +166,8 @@ class BookDeviceTest {
             val before = number(scenario, gauge)
 
             chooseFromMenu(scenario, R.id.action_text_size)
-            onView(withId(R.id.textLarger)).inRoot(isDialog()).perform(click())
-            onView(withId(R.id.textLarger)).inRoot(isDialog()).perform(click())
+            press(R.id.textLarger)
+            press(R.id.textLarger)
             WebViewProbe.await(
                 scenario, "Math.abs($gauge / $before - 1.3) < 0.03", "the type to be 130% of what it was"
             )
@@ -145,9 +175,9 @@ class BookDeviceTest {
                 scenario, "Math.abs(${lineBelowTop(letter)}) < 2", "the line to be on top at the larger size"
             )
 
-            onView(withId(R.id.textSmaller)).inRoot(isDialog()).perform(click())
-            onView(withId(R.id.textSmaller)).inRoot(isDialog()).perform(click())
-            onView(withId(R.id.textSmaller)).inRoot(isDialog()).perform(click())
+            press(R.id.textSmaller)
+            press(R.id.textSmaller)
+            press(R.id.textSmaller)
             WebViewProbe.await(
                 scenario, "Math.abs($gauge / $before - 0.9) < 0.03", "the type to be 90% of what it was"
             )

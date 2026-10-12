@@ -719,6 +719,28 @@ def test_a_book_reopens_at_the_line_it_was_left_on(viewer, page, port, width):
     assert abs(first_line(page)["top"]) <= 1
 
 
+def test_a_chapter_turned_to_is_the_place_before_its_page_is_told(viewer, page, port):
+    """
+    The app keeps the last page and the last place it heard of when the reader leaves. Told
+    the new chapter's page first, it would file that with the old chapter's place for as long
+    as the new one takes to dress, and a book left then would reopen in the chapter before.
+    """
+    open_book(viewer, page)
+    channel = port()
+    channel.wait_for(r"at 0 0")
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    page.evaluate("() => window.scrollTo(0, 1500)")
+    channel.wait_for(r"at 2 [1-9]\d*")
+
+    channel.clear_inbox()
+    page.click("#epub-next")
+    wait_for_heading(page, "The Tide Table")
+    channel.wait_for(rf"page {TOTAL} {TOTAL}")
+    said = channel.messages()
+    assert said.index("at 3 0") < said.index(f"page {TOTAL} {TOTAL}")
+
+
 def test_a_line_more_than_half_gone_is_not_the_place(viewer, page, port):
     """What reopens on top is a line the reader could still read when they left."""
     open_book(viewer, page)
@@ -857,6 +879,60 @@ def test_the_line_stays_on_top_when_the_type_changes_size(viewer, page, port):
         assert abs(first_line(page)["top"]) <= 1, percent
     # Larger type had put the line further down the chapter than it was
     assert abs(page.evaluate("() => window.pageYOffset") - before) <= 1
+
+
+@pytest.mark.parametrize("asked", [False, True], ids=["left alone", "asked where things are"])
+def test_the_line_stays_on_top_through_two_sizes_one_close_on_the_other(viewer, page, port, asked):
+    """
+    Two taps on the larger button close together, as a reader who knows what they want makes
+    them. The engine moves the screen itself when the type changes, and the page hears of
+    that move as it hears of the reader scrolling. Asked where something is before it has
+    been told of the new size, which is what the phone's own tests do to it, it hears of the
+    move first. It must not take either for the reader's doing and leave the line there.
+    """
+    page.set_viewport_size({"width": 412, "height": 915})
+    open_book(viewer, page)
+    channel = port()
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    line, _ = rest_on_a_line(page, channel, 1500)
+
+    for first, second in ((115, 130), (150, 100), (250, 80)):
+        set_type(page, first)
+        if asked:
+            page.evaluate("() => document.documentElement.scrollHeight")
+        page.wait_for_timeout(60)
+        set_type(page, second)
+        if asked:
+            page.evaluate("() => document.documentElement.scrollHeight")
+        page.wait_for_timeout(500)
+        assert abs(top_of_letter(page, line["letter"])) <= 1, (first, second)
+
+
+@pytest.mark.parametrize("change", ["type", "width"], ids=["the type changes size", "the phone turns"])
+def test_the_place_is_still_told_after_the_page_is_laid_out_afresh(viewer, page, port, change):
+    """
+    While the page is being laid out afresh a move of the screen is its own and not the
+    reader's. Once it has been, the reader scrolling is the reader scrolling again, and where
+    they come to rest is told as before.
+    """
+    page.set_viewport_size({"width": 412, "height": 915})
+    open_book(viewer, page)
+    channel = port()
+    turn_to(page, "The Long")
+    channel.wait_for(r"at 2 0")
+    _, at = rest_on_a_line(page, channel, 1500)
+
+    if change == "type":
+        set_type(page, 130)
+    else:
+        page.set_viewport_size({"width": 700, "height": 915})
+    page.wait_for_timeout(400)
+
+    channel.clear_inbox()
+    page.mouse.wheel(0, 600)
+    told = channel.wait_for(r"at 2 \d+")
+    assert int(told.split(" ")[2]) > int(at.split(".")[1])
 
 
 def test_a_picture_set_alone_for_large_type_goes_back_beside_the_text(viewer, page, made):
