@@ -102,7 +102,11 @@ object Positions {
      * finished it is more likely to be starting again than looking for the back cover.
      *
      * A book gives its [place] as well, and its start is the top of its first chapter rather
-     * than the whole of its first page, so a book left a screenful in reopens there.
+     * than the whole of its first page, so a book left a screenful in reopens there. Its end
+     * is kept like any other place. What a book counts as its last page is the last two
+     * kilobytes of its last file, a screen or two of the story's close or the whole of a
+     * short note after it, and a reader put down there who came back to the title page would
+     * have the place to find again.
      *
      * The whole file is written again each time, through AtomicFile, so a process that dies
      * part-way through a write leaves the last good copy rather than half of a new one.
@@ -111,7 +115,7 @@ object Positions {
         val all = load(context)
         val others = all.filter { it.key != key }
         val keep = if (place == null) page in 2 until total
-        else page < total && (place.chapter > 0 || place.past > 0)
+        else place.chapter > 0 || place.past > 0
         // Nothing stored for this document and nothing to store now: leave the file alone.
         if (!keep && others.size == all.size) return
         val entries =

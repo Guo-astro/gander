@@ -161,14 +161,13 @@ class PositionsTest {
         assertThat(Positions.place(context, key)).isEqualTo(Positions.Place(2, 0))
     }
 
-    /** A book read to the end opens at the beginning again, as a PDF does. */
+    /** A book left on its last page opens there, where a PDF read to the end opens at its first. */
     @Test
-    fun aBookLeftAtItsEndIsNotKept() {
+    fun aBookLeftAtItsEndIsKeptThere() {
         val key = keyOf("harbour.epub")
         Positions.save(context, key, 4, 9, Positions.Place(2, 2968))
         Positions.save(context, key, 9, 9, Positions.Place(3, 600))
-        assertThat(Positions.place(context, key)).isNull()
-        assertThat(Positions.page(context, key)).isEqualTo(0)
+        assertThat(Positions.place(context, key)).isEqualTo(Positions.Place(3, 600))
     }
 
     /** A line with a place that is not two counts is passed over whole, page and all. */

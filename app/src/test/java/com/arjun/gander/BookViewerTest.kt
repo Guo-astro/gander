@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Looper
 import android.view.View
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebMessage
 import android.webkit.WebView
 import android.widget.FrameLayout
@@ -148,6 +149,29 @@ class BookViewerTest {
         val before = viewer.said().size
         viewer.onBackPressedDispatcher.onBackPressed()
         assertThat(viewer.said()).hasSize(before)
+        assertThat(viewer.isFinishing).isTrue()
+    }
+
+    /**
+     * Over the card for a renderer that has gone there is no page to list a book's contents,
+     * to take a text size or to answer Back.
+     */
+    @Test
+    fun aBookWhoseRendererHasGoneOffersNothingThatNeedsItsPage() {
+        val viewer = book().get()
+        viewer.pageSays("page 1 9", "cover 1")
+        assertThat(viewer.menu.findItem(R.id.action_contents).isVisible).isTrue()
+
+        val web = viewer.web
+        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
+            override fun didCrash() = false
+            override fun rendererPriorityAtExit() = 0
+        })
+        settle()
+
+        assertThat(viewer.menu.findItem(R.id.action_contents).isVisible).isFalse()
+        assertThat(viewer.menu.findItem(R.id.action_text_size).isVisible).isFalse()
+        viewer.onBackPressedDispatcher.onBackPressed()
         assertThat(viewer.isFinishing).isTrue()
     }
 
@@ -330,6 +354,19 @@ class BookViewerTest {
     fun aSizeThatIsNotOneOfTheStepsIsTheBooksOwn() {
         Settings.setBookTextSize(context, 123)
         assertThat(Settings.bookTextSize(context)).isEqualTo(100)
+    }
+
+    /**
+     * The page keeps its own words at the phone's size, so it is told what that is, and may
+     * write them smaller than the engine's floor of 8 px, which large type needs it to.
+     */
+    @Test
+    fun aBooksPageIsToldTheSizeThePhoneAsksFor() {
+        val viewer = book().get()
+        assertThat(shadowOf(viewer.web).lastLoadedUrl).contains("&type=${viewer.web.settings.textZoom}")
+        assertThat(viewer.web.settings.minimumFontSize).isEqualTo(1)
+        assertThat(viewer.web.settings.minimumLogicalFontSize).isEqualTo(8)
+        assertThat(shadowOf(open("six-pages.pdf").get().web).lastLoadedUrl).doesNotContain("&type=")
     }
 
     /** With the phone's font size turned up the WebView starts above 100, and the choice multiplies that. */

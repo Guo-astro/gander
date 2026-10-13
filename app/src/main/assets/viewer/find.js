@@ -40,6 +40,8 @@ var vwFind = (function () {
   var rerunTimer = 0;
   /* Set while this file itself is changing the page, so it does not answer its own change. */
   var moving = false;
+  /* Set while a search has yet to choose the match it starts on: see begin() */
+  var waiting = false;
 
   /*
    * The document as parts: one, the element marked data-vw-find, unless the page says otherwise
@@ -54,6 +56,10 @@ var vwFind = (function () {
    * does its chapters,
    *   busy()   whether it is still fetching them, in which case a count is a not-yet. It
    *            calls vwFind.reread() when it has them.
+   * and, for a page whose reader may be anywhere in a long document when they search it, as
+   * a book's is,
+   *   top()    how far down the screen the part on the page comes out from under whatever is
+   *            over it, which is where a search then starts from: see begin()
    */
   function parts() {
     if (window.vwFindParts) return window.vwFindParts;
@@ -293,10 +299,45 @@ var vwFind = (function () {
     report();
   }
 
+  /*
+   * Goes to the match a new search starts on. That is the first, but for a page that says
+   * where its reader is: there it is the first at or below the top of what they are looking
+   * at, or in a part after that one, so a search begun deep in a book does not take its
+   * reader back to the title page. From the last match the next is the first, as ever. A
+   * page still fetching its parts has not yet got the ones ahead to look in, and the search
+   * waits there for it to say it has: see reread().
+   */
+  function begin() {
+    var p = parts();
+    waiting = !!(p.top && p.busy && p.busy());
+    if (!waiting) {
+      stepTo(ahead());
+      return;
+    }
+    active = -1;
+    paint();
+    report();
+  }
+
+  function ahead() {
+    var p = parts();
+    if (!p.top) return 0;
+    var shown = p.shown();
+    var top = p.top();
+    for (var i = 0; i < matches.length; i++) {
+      if (matches[i].part < shown) continue;
+      if (matches[i].part > shown) return i;
+      var range = rangeFor(flattened(shown), matches[i]);
+      if (range && range.getBoundingClientRect().bottom > top) return i;
+    }
+    return 0;
+  }
+
   function clear() {
     query = "";
     matches = [];
     active = -1;
+    waiting = false;
     if (window.CSS && CSS.highlights) {
       CSS.highlights.delete("vw-find");
       CSS.highlights.delete("vw-find-active");
@@ -317,7 +358,8 @@ var vwFind = (function () {
   function changed(records) {
     if (moving) return;
     forget(records);
-    if (!query || rerunTimer) return;
+    // A search that has yet to start is run from the beginning when its page is ready
+    if (!query || rerunTimer || waiting) return;
     rerunTimer = setTimeout(function () {
       rerunTimer = 0;
       var was = matches[active];
@@ -357,7 +399,7 @@ var vwFind = (function () {
       query = q;
       if (!q) { clear(); return; }
       search();
-      stepTo(0);
+      begin();
     } else if (verb === "n") {
       if (matches.length) stepTo(active + 1);
     } else if (verb === "p") {
@@ -401,14 +443,16 @@ var vwFind = (function () {
   /*
    * The parts a search could not read are there now. A search that had found something is run
    * again as for any other change, staying where it was. One that had found nothing has no
-   * place to stay, so it goes to its first match, as it would have had the parts been there
-   * when the query came.
+   * place to stay, and one that was waiting for these parts has yet to take one, so either
+   * goes to the match it starts on, as it would have had the parts been there when the query
+   * came.
    */
   function reread() {
-    if (!query || matches.length) { changed(); return; }
+    if (!query || (matches.length && !waiting)) { changed(); return; }
+    waiting = false;
     cache = [];
     search();
-    stepTo(0);
+    stepTo(ahead());
   }
 
   /* Says something to the app over the same port, answering whether there was one to say it on */

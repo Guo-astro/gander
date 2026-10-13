@@ -618,8 +618,9 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Back while a book has its contents list or a link's address open over it, which closes
-     * that and stays in the book. The page says when one is open: see [PortMessage.Covered].
+     * Back while a book's page has something for it to do first: its contents list or a
+     * link's address to close, or the place the reader was at before a link took them to a
+     * note. The page says when there is: see [PortMessage.Covered].
      *
      * Switched off as it fires rather than on the page's word that the thing has closed, so
      * a page that never answers cannot hold on to Back.
@@ -1789,6 +1790,19 @@ open class ViewerActivity : AppCompatActivity() {
              * than to change five viewers on the strength of one.
              */
             if (kind == FileKind.PDF) minimumFontSize = 1
+            /*
+             * A book for another reason, and measured too. Its page writes its own words
+             * smaller as the reader's text size goes up, so that the zoom brings them back
+             * to the size the phone asks for: 15 px is written as 6 at 250%. The floor made
+             * that 8, and the strip over a chapter came out at 20 px where 15 was meant.
+             * Only this floor is lowered. The other still holds at 8 every size a book
+             * gives in ems or percent, which is how books give them, and is set here to
+             * what it starts at so that the two can be read side by side.
+             */
+            if (kind == FileKind.EPUB) {
+                minimumFontSize = 1
+                minimumLogicalFontSize = 8
+            }
             phoneTextZoom = textZoom
         }
         book = kind == FileKind.EPUB
@@ -1956,6 +1970,9 @@ open class ViewerActivity : AppCompatActivity() {
                         "&night=$night" +
                         (if (resumeAt > 1) "&resume=$resumeAt" else "") +
                         (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
+                        // The zoom the phone itself asks for, which a book's page keeps its
+                        // own words at whatever size the reader gives the book's
+                        (if (kind == FileKind.EPUB) "&type=$phoneTextZoom" else "") +
                         // The room to leave at the top for the title bar floating over it
                         (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
                         floor
@@ -1994,6 +2011,12 @@ open class ViewerActivity : AppCompatActivity() {
         goneMenu.findItem(R.id.action_night_mode)?.isVisible = false
         // And Print, which has no document to print until Reload brings it back
         goneMenu.findItem(R.id.action_print)?.isVisible = false
+        // A book's two speak to the page that has gone as well: Contents would do nothing,
+        // and Text size would change the stored size with nothing on screen to show for it.
+        // Its page can no longer answer Back either.
+        contentsItem?.isVisible = false
+        textSizeItem?.isVisible = false
+        coverBackCallback.isEnabled = false
         closeSearchChannel()
         // Back above the card, which has nothing to scroll that would bring back a bar gone out of sight
         documentChrome?.land()

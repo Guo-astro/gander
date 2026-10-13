@@ -1683,3 +1683,429 @@ def test_ink_a_book_insists_on_still_gives_way_on_a_dark_phone(viewer, page, mad
     open_book(viewer, page, fixture=book)
     assert style_of(page, "p", "color") == "rgb(231, 226, 217)"
     assert style_of(page, "p", "backgroundColor") == "rgba(0, 0, 0, 0)"
+
+
+# ---------------------------------------------------------------------------
+# What a dark page would swallow: pictures in dark ink on a clear ground, and black rules
+# ---------------------------------------------------------------------------
+
+def png(width, height, pixel):
+    """A PNG of [width] by [height], [pixel](x, y) answering each dot's (r, g, b, a)."""
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    rows = b"".join(
+        b"\x00" + bytes(c for x in range(width) for c in pixel(x, y)) for y in range(height)
+    )
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
+
+
+CLEAR = (0, 0, 0, 0)
+BLACK = (0, 0, 0, 255)
+OXBLOOD = (110, 20, 20, 255)
+CHALK = (235, 235, 235, 255)
+WHITE = (255, 255, 255, 255)
+PAGE_INK = "rgb(231, 226, 217)"
+
+
+def a_drawing(ink, ground=CLEAR):
+    """A cross in [ink] on [ground], four fifths of it ground."""
+    return png(40, 40, lambda x, y: ink if 18 <= x < 22 or 18 <= y < 22 else ground)
+
+
+def picture_book(made, name, picture, head=""):
+    return little_book(
+        made, name, [("", head, '<body><p>Before.</p><p><img id="mark" src="mark.png" alt=""/></p></body>')],
+        extra={"mark.png": picture}, listed='<item id="mark" href="mark.png" media-type="image/png"/>',
+    )
+
+
+def ground_of(page):
+    """What the page has told the picture to be, once it has had the time to weigh it."""
+    page.wait_for_function(
+        """() => {
+          const img = document.querySelector('#book').shadowRoot.querySelector('#mark');
+          return img && img.complete && img.naturalWidth > 0;
+        }"""
+    )
+    page.wait_for_timeout(400)
+    return page.get_attribute("#book #mark", "data-vw-ground")
+
+
+@pytest.mark.parametrize("ink,told", [(BLACK, "ink"), (OXBLOOD, "paper"), (CHALK, None)],
+                         ids=["black lines", "dark colours", "light lines"])
+def test_a_picture_in_dark_ink_on_a_clear_ground_is_not_lost_on_a_dark_phone(viewer, page, made, ink, told):
+    """
+    Black lines are drawn in the page's light ink, as the words are. Dark colours would come
+    out as a negative that way, so they are given paper to stand on. Light lines show as
+    they are.
+    """
+    page.emulate_media(color_scheme="dark")
+    open_book(viewer, page, fixture=picture_book(made, "inked.epub", a_drawing(ink)))
+    assert ground_of(page) == told
+    assert style_of(page, "#mark", "filter") == ("invert(0.9)" if told == "ink" else "none")
+    assert style_of(page, "#mark", "backgroundColor") == (PAGE_INK if told == "paper" else "rgba(0, 0, 0, 0)")
+
+
+@pytest.mark.parametrize("picture,head,ground,filtered", [
+    (a_drawing(BLACK, WHITE), "", "rgba(0, 0, 0, 0)", "none"),
+    (a_drawing(WHITE, BLACK), "", "rgba(0, 0, 0, 0)", "none"),
+    (a_drawing(BLACK), "<style>img { background-color: rgb(250, 250, 250); } p { background-color: rgb(250, 250, 250); }</style>",
+     "rgb(250, 250, 250)", "none"),
+    (a_drawing(BLACK), "<style>@media (prefers-color-scheme: dark) { img { filter: invert(100%); } }</style>",
+     "rgba(0, 0, 0, 0)", "invert(1)"),
+], ids=["drawn on white", "dark all over", "given a ground by its book", "turned over by its book"])
+def test_a_picture_that_shows_on_a_dark_phone_is_left_as_it_is(viewer, page, made, picture, head, ground, filtered):
+    """
+    One with a ground of its own needs nothing, a photograph taken at night least of all.
+    One its book has seen to for a dark page keeps what the book gave it: the ground used to
+    be taken off with every other colour.
+    """
+    page.emulate_media(color_scheme="dark")
+    open_book(viewer, page, fixture=picture_book(made, "seen-to.epub", picture, head))
+    assert ground_of(page) is None
+    assert style_of(page, "#mark", "backgroundColor") == ground
+    assert style_of(page, "#mark", "filter") == filtered
+    # The words beside it still stand on the page's own ground
+    assert style_of(page, "p", "backgroundColor") == "rgba(0, 0, 0, 0)"
+
+
+def test_no_picture_is_changed_on_a_light_phone(viewer, page, made):
+    page.emulate_media(color_scheme="light")
+    open_book(viewer, page, fixture=picture_book(made, "by-day.epub", a_drawing(BLACK)))
+    assert ground_of(page) is None
+    assert style_of(page, "#mark", "filter") == "none"
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_a_rule_drawn_in_black_takes_the_pages_ink_on_a_dark_phone(viewer, page, made, scheme):
+    """
+    A table's lines, the line under a heading and a rule an element gives itself. A grey one
+    shows on a dark page and stays the book's, and so does one left clear to hold a space open.
+    """
+    page.emulate_media(color_scheme=scheme)
+    book = little_book(made, "ruled.epub", [(
+        "",
+        "<style>td { border: 1px solid black; } .grey { border: 1px solid rgb(128, 128, 128); }"
+        " .clear { border: 2px solid transparent; }"
+        " @media screen { h2 { border-bottom: 1px solid #111; } }</style>",
+        '<body><h2 id="head">Tides</h2><table><tr><td id="cell">High</td></tr></table>'
+        '<p id="grey" class="grey">Grey</p><p id="clear" class="clear">Clear</p>'
+        '<p id="own" style="border-left: 3px solid #000000">Its own</p></body>',
+    )])
+    open_book(viewer, page, fixture=book)
+    dark = scheme == "dark"
+    assert style_of(page, "#cell", "borderTopColor") == (PAGE_INK if dark else "rgb(0, 0, 0)")
+    assert style_of(page, "#head", "borderBottomColor") == (PAGE_INK if dark else "rgb(17, 17, 17)")
+    assert style_of(page, "#own", "borderLeftColor") == (PAGE_INK if dark else "rgb(0, 0, 0)")
+    assert style_of(page, "#grey", "borderTopColor") == "rgb(128, 128, 128)"
+    assert style_of(page, "#clear", "borderTopColor") == "rgba(0, 0, 0, 0)"
+
+
+# ---------------------------------------------------------------------------
+# The page's own parts: their size, the contents' heading, and the strip at a chapter's foot
+# ---------------------------------------------------------------------------
+
+OWN_WORDS = [
+    ("#epub-contents-open", 15), ("#epub-where", 13), ("#epub-next", 15), ("#epub-contents-title", 17),
+    ("#epub-contents-close", 15), ("#epub-title", 13), ("#epub-contents-list button", 15),
+    ("#epub-link-title", 17), ("#epub-link-address", 15), (".epub-link-note", 13),
+]
+
+
+def own_sizes(page):
+    return page.evaluate(
+        "(all) => all.map(s => parseFloat(getComputedStyle(document.querySelector(s)).fontSize))",
+        [s for s, _ in OWN_WORDS],
+    )
+
+
+@pytest.mark.parametrize("phone,chosen", [(100, 250), (130, 200), (100, 80), (115, 100)])
+def test_the_pages_own_words_stay_the_size_the_phone_asks_for(viewer, page, phone, chosen):
+    """
+    The reader's text size is the WebView's zoom and reaches every letter on the page. The
+    page divides its own sizes by the reader's share of that zoom, so the zoom brings them
+    back to what the phone alone asks for: at 250% a size of 15 is written as 6.
+    """
+    open_book(viewer, page, type=phone)
+    set_type(page, phone * chosen / 100)
+    page.wait_for_function(
+        """(own) => Math.abs(parseFloat(getComputedStyle(document.documentElement)
+          .getPropertyValue('--epub-own')) - own) < 0.001""",
+        arg=100 / chosen,
+    )
+    for (selector, px), size in zip(OWN_WORDS, own_sizes(page)):
+        assert abs(size - px * 100 / chosen) < 0.05, selector
+
+
+def test_a_page_not_told_the_phones_size_leaves_its_own_words_alone(viewer, page):
+    open_book(viewer, page)
+    set_type(page, 250)
+    page.wait_for_timeout(250)
+    assert own_sizes(page) == [px for _, px in OWN_WORDS]
+
+
+def test_the_contents_heading_stays_in_sight_where_the_list_opens_deep_in_a_book(viewer, page, made, port):
+    """The list opens at the chapter being read, and its heading and Close used to scroll off with the top of it."""
+    entries = "".join(f'<li><a href="c{n}.xhtml">Chapter {n + 1}</a></li>' for n in range(60))
+    chapters = [("", "", f"<body><h1>Chapter {n + 1}</h1><p>Words.</p></body>") for n in range(60)]
+    page.set_viewport_size({"width": 390, "height": 600})
+    open_book(viewer, page, fixture=little_book(made, "sixty.epub", chapters, contents=entries), top=56)
+    go_to(page, 50)
+    port().contents()
+    page.wait_for_selector("#epub-contents", state="visible")
+    seen = page.evaluate(
+        """() => {
+          const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return [r.top, r.bottom]; };
+          return { bar: vwTopPx, down: document.querySelector('#epub-contents').scrollTop,
+                   close: box('#epub-contents-close'), now: box('#epub-contents-list button[aria-current]') };
+        }"""
+    )
+    assert seen["bar"] > 0 and seen["down"] > 1000
+    # Under the title bar, and the chapter being read below it and not behind it
+    assert seen["bar"] - 1 <= seen["close"][0] and seen["close"][1] <= seen["bar"] + 60
+    assert seen["close"][1] <= seen["now"][0] and seen["now"][1] <= 600
+
+
+def test_next_and_previous_take_a_tap_anywhere_on_their_half_of_the_strip(viewer, page):
+    open_book(viewer, page)
+
+    def tap(across):
+        page.evaluate("() => window.scrollTo(0, document.documentElement.scrollHeight)")
+        strip = page.evaluate(
+            "(() => { const r = document.querySelector('#epub-turn').getBoundingClientRect();"
+            " return [r.left, r.width, r.top + 24]; })()"
+        )
+        page.mouse.click(strip[0] + strip[1] * across, strip[2])
+
+    tap(0.55)
+    page.wait_for_function("() => vwFindParts.shown() === 1")
+    tap(0.45)
+    page.wait_for_function("() => vwFindParts.shown() === 0")
+
+
+# ---------------------------------------------------------------------------
+# Back, after a link to another place in the book
+# ---------------------------------------------------------------------------
+
+FILLER = "<p>" + "Words enough to fill a line of the page and run on to the next one. " * 2 + "</p>"
+
+
+def noted_book(made):
+    """A chapter with a note far below the line that points to it, and the note's own link back."""
+    return little_book(made, "noted.epub", [(
+        "", "",
+        "<body><h1>Noted</h1>" + FILLER * 12
+        + '<p>The line with the note<a id="ref" href="#note">1</a>.</p>' + FILLER * 60
+        + '<p id="note">The note. <a id="return" href="#ref">Back to the line</a></p>' + FILLER * 60
+        + "</body>",
+    ), ("", "", "<body><h1>After</h1><p>The next chapter.</p></body>")])
+
+
+def follow_the_note(viewer, page, made, port):
+    page.set_viewport_size({"width": 390, "height": 400})
+    open_book(viewer, page, fixture=noted_book(made))
+    channel = port()
+    page.evaluate(
+        "() => document.querySelector('#book').shadowRoot.querySelector('#ref').scrollIntoView({ block: 'center' })"
+    )
+    page.wait_for_timeout(300)
+    was = page.evaluate("() => window.pageYOffset")
+    page.click("#book #ref")
+    wait_until_on_screen(page, "#note")
+    channel.wait_for(r"cover 1")
+    channel.clear_inbox()
+    return channel, was
+
+
+def test_back_returns_to_where_a_link_was_followed_from(viewer, page, made, port):
+    """A note is read and come back from, and Back is how: the page keeps the place and tells the app it has one."""
+    channel, was = follow_the_note(viewer, page, made, port)
+    assert page.evaluate("() => window.pageYOffset") > was + 1000
+    channel.close_over()
+    # To the line that was at the top of the screen, which may have been part way off it
+    page.wait_for_function("(was) => Math.abs(window.pageYOffset - was) < 30", arg=was)
+    # Once, and then Back is for leaving: the app is told of nothing more to do here
+    page.wait_for_timeout(300)
+    assert "cover 1" not in channel.messages()
+    channel.close_over()
+    page.wait_for_timeout(200)
+    assert abs(page.evaluate("() => window.pageYOffset") - was) < 30
+
+
+def test_back_returns_across_chapters(viewer, page, port):
+    page.set_viewport_size({"width": 390, "height": 160})
+    open_book(viewer, page)
+    channel = port()
+    turn_to(page, "The Lamp Room")
+    page.click("#book #to-tide")
+    wait_for_heading(page, "The Tide Table")
+    channel.wait_for(r"cover 1")
+    channel.close_over()
+    wait_for_heading(page, "The Lamp Room")
+    # With the link it was followed from on the screen again
+    link = top_of(page, "#to-tide")
+    assert 0 <= link < 160
+
+
+def test_a_notes_own_link_back_leaves_nothing_for_back_to_do(viewer, page, made, port):
+    channel, was = follow_the_note(viewer, page, made, port)
+    page.click("#book #return")
+    wait_until_on_screen(page, "#ref")
+    channel.wait_for(r"cover 0")
+    at = page.evaluate("() => window.pageYOffset")
+    channel.close_over()
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => window.pageYOffset") == at
+
+
+def test_a_reader_who_reads_on_from_a_link_leaves_by_back(viewer, page, made, port):
+    """
+    A link in a book's own list of chapters is followed to read on from, not to come back
+    from. Two screens on from where it put them, Back is theirs to leave by.
+    """
+    channel, _ = follow_the_note(viewer, page, made, port)
+    page.evaluate("() => { window.dispatchEvent(new Event('touchstart')); window.scrollBy(0, 600); }")
+    page.wait_for_timeout(500)
+    assert "cover 0" not in channel.messages()
+    page.evaluate("() => { window.dispatchEvent(new Event('touchstart')); window.scrollBy(0, 400); }")
+    channel.wait_for(r"cover 0")
+
+
+def test_a_change_of_type_size_is_not_reading_on(viewer, page, made, port):
+    """Larger type puts the note many screens further down the chapter, with the reader still at it."""
+    channel, _ = follow_the_note(viewer, page, made, port)
+    # Once the page has come to rest at the note, which is when it knows the line it is on
+    page.wait_for_timeout(300)
+    before = page.evaluate("() => window.pageYOffset")
+    set_type(page, 200)
+    page.wait_for_function("(before) => window.pageYOffset > before + 1000", arg=before)
+    page.wait_for_timeout(300)
+    page.evaluate("() => { window.dispatchEvent(new Event('touchstart')); window.scrollBy(0, 300); }")
+    page.wait_for_timeout(500)
+    assert "cover 0" not in channel.messages()
+
+
+def test_a_picture_that_loads_late_does_not_count_as_reading_on(viewer, page, made, port):
+    """
+    A link's place moves down the chapter as the pictures above it take their sizes, and the
+    page follows it there. Where the link left the reader is where that ends, not where it began.
+    """
+    page.set_viewport_size({"width": 390, "height": 400})
+    book = little_book(made, "late.epub", [
+        ("", "", '<body><h1>From</h1><p><a id="over" href="c1.xhtml#there">Over there</a></p></body>'),
+        ("", "", '<body><h1>To</h1><p><img id="tall" src="tall.png" alt=""/></p><p id="there">There.</p>'
+         + FILLER * 40 + "</body>"),
+    ], extra={"tall.png": png(8, 2400, lambda x, y: WHITE)},
+        listed='<item id="tall" href="tall.png" media-type="image/png"/>')
+    open_book(viewer, page, fixture=book)
+    channel = port()
+    page.click("#book #over")
+    wait_for_heading(page, "To")
+    page.wait_for_function("() => window.pageYOffset > 2000")
+    channel.wait_for(r"cover 1")
+    page.wait_for_timeout(400)
+    channel.clear_inbox()
+    page.evaluate("() => { window.dispatchEvent(new Event('touchstart')); window.scrollBy(0, 200); }")
+    page.wait_for_timeout(500)
+    assert "cover 0" not in channel.messages()
+
+
+@pytest.mark.parametrize("how", ["next", "contents"])
+def test_going_on_with_the_book_leaves_back_for_leaving(viewer, page, made, port, how):
+    channel, _ = follow_the_note(viewer, page, made, port)
+    if how == "next":
+        page.evaluate("() => document.querySelector('#epub-next').click()")
+    else:
+        page.evaluate("() => document.querySelector('#epub-contents-open').click()")
+        page.evaluate("() => document.querySelector('#epub-contents-list button').click()")
+    channel.wait_for(r"cover 0")
+
+
+def test_back_closes_the_contents_before_it_goes_back(viewer, page, made, port):
+    """The app stops listening for Back each time it passes one on, so it is told again while there is more to do."""
+    channel, was = follow_the_note(viewer, page, made, port)
+    channel.contents()
+    page.wait_for_selector("#epub-contents", state="visible")
+    channel.close_over()
+    page.wait_for_selector("#epub-contents", state="hidden")
+    channel.wait_for(r"cover 1")
+    assert page.evaluate("() => window.pageYOffset") > was + 1000
+    channel.close_over()
+    page.wait_for_function("(was) => Math.abs(window.pageYOffset - was) < 30", arg=was)
+
+
+# ---------------------------------------------------------------------------
+# A search begun part way through a book
+# ---------------------------------------------------------------------------
+
+def searched_book(made):
+    return little_book(made, "searched.epub", [
+        ("", "", "<body><h1>One</h1><p>The first needle.</p></body>"),
+        ("", "", "<body><h1>Two</h1><p>The second needle.</p>" + FILLER * 60
+         + '<p id="late">The third needle.</p>' + FILLER * 60 + '<p id="foot">The foot.</p></body>'),
+        ("", "", '<body><h1>Three</h1><p>The fourth needle. <a id="up" href="c0.xhtml">To the start</a></p>'
+         + FILLER * 60 + '<p id="end">The end.</p></body>'),
+    ])
+
+
+@pytest.mark.parametrize("chapter,below,found", [(0, None, 1), (1, None, 2), (1, "#late", 3), (1, "#foot", 4), (2, "#end", 1)],
+                         ids=["at the start", "a chapter in", "past a match", "past the last in the chapter", "past them all"])
+def test_a_search_starts_from_where_the_reader_is(viewer, page, made, port, chapter, below, found):
+    """
+    The first match at or below the top of the screen, or in a chapter after this one, and
+    the book's first only when there is none: a search used to take a reader deep in a book
+    back to its first page. The chapters ahead are not all in memory when the search is
+    asked for, and it waits for them before it chooses.
+    """
+    page.set_viewport_size({"width": 390, "height": 400})
+    open_book(viewer, page, fixture=searched_book(made))
+    channel = port()
+    go_to(page, chapter)
+    if below:
+        page.evaluate(
+            "(s) => document.querySelector('#book').shadowRoot.querySelector(s).scrollIntoView({ block: 'start' })",
+            below,
+        )
+        page.wait_for_timeout(250)
+    channel.query("needle")
+    channel.wait_for(rf"{found} 4 1")
+    # It went nowhere else on the way there
+    assert {count.split()[0] for count in channel.counts()} <= {"0", str(found)}
+    page.wait_for_function("(i) => vwFindParts.shown() === i", arg=[0, 1, 1, 2][found - 1])
+    page.wait_for_function("() => CSS.highlights.has('vw-find-active')")
+
+
+def test_a_later_search_starts_from_where_the_reader_is_too(viewer, page, made, port):
+    """The first search of a book reads all of it, so a later one has nothing to wait for and chooses at once."""
+    page.set_viewport_size({"width": 390, "height": 400})
+    open_book(viewer, page, fixture=searched_book(made))
+    channel = port()
+    channel.query("needle")
+    channel.wait_for(r"1 4 1")
+    channel.clear()
+    go_to(page, 2)
+    channel.clear_inbox()
+    channel.query("needle")
+    channel.wait_for(r"4 4 1")
+    assert {count.split()[0] for count in channel.counts()} == {"4"}
+
+
+def test_a_search_that_turns_the_chapter_leaves_back_for_leaving(viewer, page, made, port):
+    open_book(viewer, page, fixture=searched_book(made))
+    channel = port()
+    go_to(page, 2)
+    page.click("#book #up")
+    wait_for_heading(page, "One")
+    channel.wait_for(r"cover 1")
+    channel.clear_inbox()
+    channel.query("third")
+    wait_for_heading(page, "Two")
+    channel.wait_for(r"cover 0")

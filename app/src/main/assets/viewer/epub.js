@@ -132,7 +132,11 @@ var vwEpub = (function () {
    * out in rows: a page that scrolls downward has no way to turn to the next column.
    *
    * A dark phone gets the book's words in light ink on the page's dark ground, whatever
-   * colours the book set, and its pictures as they are.
+   * colours the book set, and its pictures as they are. A picture keeps the ground its book
+   * gave it, which is often there for this very page. One drawn in dark ink on a ground left
+   * clear was drawn for white paper and would be lost on this one: see weigh() for the two
+   * that are told apart, and for what each is given. A rule drawn in black is lost the same
+   * way, and is drawn in the ink of the words beside it: see inkRules().
    *
    * None of that is for a page of a fixed size (.vw-fixed, see scale()), which is a drawing
    * more than it is text: its html is the sheet it was drawn on, white unless the book says
@@ -152,10 +156,13 @@ var vwEpub = (function () {
     "  margin: 0 !important; padding: 0 !important; overflow: hidden !important;",
     "  transform-origin: 0 0 !important; }",
     "@media (prefers-color-scheme: dark) {",
-    "  .vw-flow html, .vw-flow body, .vw-flow body * { color: #E7E2D9 !important;",
+    "  .vw-flow html, .vw-flow body, .vw-flow body * { color: #E7E2D9 !important; }",
+    "  .vw-flow html, .vw-flow body, .vw-flow body *:not(img):not(svg):not(video) {",
     "    background-color: transparent !important; }",
     "  .vw-flow a, .vw-flow a * { color: #FFB39E !important; }",
     "  .vw-flow svg text, .vw-flow svg tspan { fill: #E7E2D9 !important; }",
+    "  .vw-flow img[data-vw-ground=\"ink\"] { filter: invert(0.9) !important; }",
+    "  .vw-flow img[data-vw-ground=\"paper\"] { background-color: #E7E2D9 !important; }",
     "}"
   ].join("\n");
 
@@ -164,6 +171,17 @@ var vwEpub = (function () {
    * is one. See firstShowing().
    */
   var COUNTED = /^(img|svg|video)$/;
+
+  /* The kinds of picture file that can leave their ground clear, which a photograph's cannot */
+  var CLEAR_KINDS = /^image\/(png|gif|webp|avif|svg\+xml)$/;
+
+  /* How many pixels across and down a picture is weighed at: see weigh() */
+  var WEIGH_PX = 32;
+
+  /* Below this much light, of 255, ink does not show on the dark page */
+  var TOO_DARK = 70;
+
+  var EDGES = ["border-top-color", "border-right-color", "border-bottom-color", "border-left-color"];
 
   /* What a tap may be a link through: a link, and a part of a picture that is one */
   var LINK = /^(a|area)$/;
@@ -219,8 +237,16 @@ var vwEpub = (function () {
   var settling = 0;
   /* How far down the page relaid() left the screen, or -1 once the reader has moved it */
   var heldAt = -1;
-  /* Whether the app has been told that something of the page's own is open over the book */
+  /* Whether the app has been told that Back has something to do here before it leaves */
   var toldOver = false;
+  /*
+   * Where the reader was when they last followed a link to another place in the book, which
+   * Back brings them back to: { i, past } as a place is, with how far down the page the link
+   * left them and whether they have touched the page since. A note is read and come back
+   * from, and many books give their notes no link back. One place and no trail of them, and
+   * forgotten once the reader has read on from where the link put them: see readOn().
+   */
+  var before = null;
   /* What fit() and unfloat() have set on the chapter, each with what was there before */
   var setToFit = [];
   /* The width the chapter was last fitted to, and the height of the letter that tells the
@@ -228,6 +254,8 @@ var vwEpub = (function () {
   var across = window.innerWidth;
   var gauge = null;
   var gaugeTall = 0;
+  /* The zoom the phone itself asks of the page's text, as a percentage, where the app said */
+  var phoneType = Number(vwParams.get("type")) || 0;
   var opened = false;
   /* Whether the reader has moved the page since the chapter went on it */
   var moved = false;
@@ -235,6 +263,13 @@ var vwEpub = (function () {
   var wholeBook = false;
   /* While that reading is going on */
   var reading = false;
+  /* Looks out for the chapter's pictures coming near the screen on a dark phone: see watch() */
+  var watching = null;
+  /* A small canvas, which pictures are weighed on and colours are read with */
+  var scales = null;
+  /* Whether each colour a book has given a rule is too dark to see, by the colour as written */
+  var darkness = {};
+  var darkPhone = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
   /* Object URLs made for the chapter on the page, by path, given back when it leaves */
   var held = {};
   /* The same for what stylesheets name, kept as long as the book, since chapters share them */
@@ -1150,6 +1185,7 @@ var vwEpub = (function () {
    */
   function fetched(body, base) {
     var jobs = [];
+    var clear = [];
 
     function one(el, name, put) {
       var value = el.getAttribute("data-vw-" + name);
@@ -1160,7 +1196,9 @@ var vwEpub = (function () {
         return;
       }
       var at = resolve(base, value);
-      jobs.push((at ? objectUrl(drawnFrom(at.path), held) : Promise.resolve(null)).then(function (url) {
+      var from = at ? drawnFrom(at.path) : "";
+      if (from && name === "src" && local(el) === "img" && CLEAR_KINDS.test(typeOf(from))) clear.push(el);
+      jobs.push((from ? objectUrl(from, held) : Promise.resolve(null)).then(function (url) {
         return function () { if (url) put(el, url); };
       }));
     }
@@ -1181,8 +1219,134 @@ var vwEpub = (function () {
     }
 
     return Promise.all(jobs).then(function (puts) {
-      return function () { puts.forEach(function (put) { put(); }); };
+      var dress = function () { puts.forEach(function (put) { put(); }); };
+      // The pictures among them whose kind of file can have a clear ground: see watch()
+      dress.clear = clear;
+      return dress;
     });
+  }
+
+  /*
+   * On a dark phone, has each of [pictures] weighed as it comes within a screen of the one
+   * showing. A book of formulas has a hundred pictures to a chapter and drawing each one
+   * small takes the engine a moment, so they are not all weighed as the chapter goes up.
+   * Nothing is weighed on a light phone, where every picture is on the paper it was drawn
+   * for: show() hands over none.
+   */
+  function watch(pictures) {
+    if (watching) watching.disconnect();
+    watching = null;
+    if (!pictures.length || !window.IntersectionObserver) return;
+    watching = new IntersectionObserver(function (seen) {
+      for (var i = 0; i < seen.length; i++) {
+        if (!seen[i].isIntersecting) continue;
+        watching.unobserve(seen[i].target);
+        weigh(seen[i].target);
+      }
+    }, { rootMargin: "100% 0px" });
+    pictures.forEach(function (img) { watching.observe(img); });
+  }
+
+  /*
+   * Tells a picture drawn in dark ink on a clear ground, and marks it for the dark page's
+   * rules in GUARD_CSS. Standard Ebooks does the same by hand for its own books, in the same
+   * two ways. Lines in plain black, a formula or an ornament or a diagram, are drawn in the
+   * page's light ink instead, as the words around them are. Anything else dark, which has
+   * greys or colours that would come out as a negative, is given paper to stand on.
+   *
+   * Told by drawing the picture small and counting: a tenth of it clear, and of the rest
+   * 85 in 100 black for lines, or 60 in 100 dark for paper. A picture the book has already
+   * given a ground or a filter is the book's to show, and one the engine will not let be
+   * read is left as it is.
+   */
+  function weigh(img) {
+    if (!img.complete) {
+      img.addEventListener("load", function () { weigh(img); });
+      return;
+    }
+    if (!img.naturalWidth || img.hasAttribute("data-vw-ground")) return;
+    var style = getComputedStyle(img);
+    if (style.filter !== "none" || style.backgroundImage !== "none" ||
+        !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor)) return;
+    var data;
+    try {
+      scales2d().clearRect(0, 0, WEIGH_PX, WEIGH_PX);
+      scales.drawImage(img, 0, 0, WEIGH_PX, WEIGH_PX);
+      data = scales.getImageData(0, 0, WEIGH_PX, WEIGH_PX).data;
+    } catch (e) {
+      return;
+    }
+    var clear = 0;
+    var inked = 0;
+    var dark = 0;
+    var black = 0;
+    for (var k = 0; k < data.length; k += 4) {
+      if (data[k + 3] < 64) clear++;
+      if (data[k + 3] < 128) continue;
+      inked++;
+      var light = 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
+      var hue = Math.max(data[k], data[k + 1], data[k + 2]) - Math.min(data[k], data[k + 1], data[k + 2]);
+      if (light < 90) dark++;
+      if (light < TOO_DARK && hue < 32) black++;
+    }
+    if (!inked || clear * 10 < WEIGH_PX * WEIGH_PX) return;
+    if (black * 100 >= inked * 85) img.setAttribute("data-vw-ground", "ink");
+    else if (dark * 100 >= inked * 60) img.setAttribute("data-vw-ground", "paper");
+  }
+
+  function scales2d() {
+    if (!scales) {
+      var canvas = document.createElement("canvas");
+      canvas.width = canvas.height = WEIGH_PX;
+      scales = canvas.getContext("2d");
+    }
+    return scales;
+  }
+
+  /*
+   * Whether [colour], as a stylesheet writes it, is too dark to see on the dark page. The
+   * canvas reads every way of writing one and answers in two, and leaves what it is given
+   * alone for a word that is not a colour of its own, as inherit is not.
+   */
+  function tooDark(colour) {
+    if (darkness[colour] !== undefined) return darkness[colour];
+    var is = false;
+    try {
+      scales2d().fillStyle = "#ffffff";
+      scales.fillStyle = colour;
+      var read = String(scales.fillStyle);
+      var hex = /^#(..)(..)(..)$/.exec(read);
+      var parts = hex ? [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)]
+        : (read.match(/[\d.]+/g) || []).map(Number);
+      is = parts.length >= 3 && !(parts.length > 3 && parts[3] < 0.5) &&
+        0.2126 * parts[0] + 0.7152 * parts[1] + 0.0722 * parts[2] < TOO_DARK;
+    } catch (e) { /* not too dark, then */ }
+    darkness[colour] = is;
+    return is;
+  }
+
+  /* Gives each edge of [style] that is too dark to see the ink of the words it is among */
+  function inkEdges(style) {
+    for (var k = 0; k < EDGES.length; k++) {
+      var colour = style.getPropertyValue(EDGES[k]);
+      if (colour && tooDark(colour)) {
+        style.setProperty(EDGES[k], "currentColor", style.getPropertyPriority(EDGES[k]));
+      }
+    }
+  }
+
+  /*
+   * On a dark phone, draws what a book rules in black in the ink of the words beside it: the
+   * lines of a table, the box round a note, the line under a heading. Only a colour too dark
+   * to see is changed, in the book's rules as they stand on the page for this chapter. A
+   * grey rule or a coloured one stays the book's, and so does one left clear to hold a space
+   * open, which the usual way of doing this, every border in the ink, would draw.
+   */
+  function inkRules(rules) {
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i].cssRules) inkRules(rules[i].cssRules);
+      if (rules[i].selectorText && rules[i].style) inkEdges(rules[i].style);
+    }
   }
 
   /* Once the chapter's pictures have their sizes, or after a second and a half without them */
@@ -1535,14 +1699,20 @@ var vwEpub = (function () {
   function rest() {
     settling = 0;
     if (shown < 0 || !onPage || page.style.opacity === "0") return;
+    readOn();
     // Where a change of type size left it, the place is still the letter that was kept on
     // top. Worked out again it would be the start of that letter's line, a little earlier
     // at each change, and the reader would be walked back up the chapter.
     if (heldAt >= 0 && Math.abs(window.pageYOffset - heldAt) < 1) return;
     heldAt = -1;
-    var first = window.pageYOffset > 0 ? firstShowing(onPage, topEdge()) : null;
-    above = first ? countBefore(first.node, first.at) : 0;
+    above = here();
     tell();
+  }
+
+  /* How many letters and pictures of the chapter are above the screen as it stands */
+  function here() {
+    var first = window.pageYOffset > 0 ? firstShowing(onPage, topEdge()) : null;
+    return first ? countBefore(first.node, first.at) : 0;
   }
 
   function tell() {
@@ -1657,14 +1827,21 @@ var vwEpub = (function () {
       if (mine !== turn) return null;
       var keep = quiet ? middle() : null;
       var fonts = "";
+      var night = !drawn && !!darkPhone && darkPhone.matches;
       got[0].forEach(function (s) {
         var el = document.createElement("style");
         el.textContent = s.css;
         bookSheets.appendChild(el);
         fonts += s.faces;
+        try { if (night && el.sheet) inkRules(el.sheet.cssRules); } catch (e) { /* as the book ruled it */ }
       });
       faces.textContent = fonts;
       got[1]();
+      if (night) {
+        var ruled = body.querySelectorAll('[style*="border"]');
+        for (var r = 0; r < ruled.length; r++) inkEdges(ruled[r].style);
+      }
+      watch(night ? got[1].clear : []);
       page.style.opacity = "";
       fit();
       if (keep) keep.scrollIntoView({ block: "center" });
@@ -1737,11 +1914,15 @@ var vwEpub = (function () {
       return EMPTY;
     },
     show: function (i) {
-      if (spine[i].ready) show(i, null, true);
+      if (spine[i].ready) {
+        forget();
+        show(i, null, true);
+      }
       return onPage;
     },
     shown: function () { return shown; },
-    busy: function () { return reading; }
+    busy: function () { return reading; },
+    top: topEdge
   };
 
   /* What the app sends besides search: "o" for the contents, from its menu, and "x" for
@@ -1812,16 +1993,60 @@ var vwEpub = (function () {
     over();
   }
 
-  /* Tells the app whether something of the page's own is open over the book, which is what
-     Back closes before it leaves: see PortMessage.kt */
+  /* Tells the app whether Back has something to do on this page before it leaves the book:
+     the contents or a link's address to close, or a place to go back to. See PortMessage.kt */
   function over() {
-    var is = !panel.hidden || !linkBox.hidden;
+    var is = !panel.hidden || !linkBox.hidden || !!before;
     if (is !== toldOver && vwFind.post(is ? "cover 1" : "cover 0")) toldOver = is;
   }
 
+  /* Back, from the app: one thing at a time, what is open over the book before the place */
   function closeOver() {
-    if (!linkBox.hidden) showLink("");
-    else if (!panel.hidden) showContents(false);
+    if (!linkBox.hidden) {
+      showLink("");
+    } else if (!panel.hidden) {
+      showContents(false);
+    } else if (before) {
+      var to = before;
+      before = null;
+      go(to.i, { past: to.past });
+    }
+    // The app stops listening for Back as it sends this, so that a page which never answers
+    // cannot hold on to it. Where there is still something for Back to do, it is told again.
+    toldOver = false;
+    over();
+  }
+
+  /* Keeps [from] as the place Back goes to, the reader having just left it by a link */
+  function remember(from) {
+    before = { i: from.i, past: from.past, y: window.pageYOffset, touched: false };
+    over();
+  }
+
+  function forget() {
+    if (!before) return;
+    before = null;
+    over();
+  }
+
+  /*
+   * Called when the page comes to rest. Until the reader touches it, where it rests is where
+   * the link put them, which is settled only once the chapter's pictures have their sizes.
+   * After that, more than two screens from there is a reader who has gone on reading, as one
+   * does from a link in a book's own list of chapters. Back is then theirs to leave by, and
+   * the place the book is left at is the one they are reading.
+   */
+  function readOn() {
+    if (!before) return;
+    if (!before.touched) before.y = window.pageYOffset;
+    else if (Math.abs(window.pageYOffset - before.y) > 2 * window.innerHeight) forget();
+  }
+
+  /* Whether [past], a place in the chapter on the page, is within a screen of its top */
+  function near(past) {
+    if (past <= 0) return window.pageYOffset < window.innerHeight;
+    var box = boxAt(past);
+    return !!box && Math.abs(box.top - topEdge()) < window.innerHeight;
   }
 
   /* An address outside the book that a reader is shown, or nothing for any other */
@@ -1872,8 +2097,9 @@ var vwEpub = (function () {
 
   openContents.addEventListener("click", function () { showContents(true); });
   closeContents.addEventListener("click", function () { showContents(false); });
-  prev.addEventListener("click", function () { go(shown - 1, null); });
-  next.addEventListener("click", function () { go(shown + 1, null); });
+  // Turning the chapter or choosing one is going on with the book, and Back is for leaving
+  prev.addEventListener("click", function () { forget(); go(shown - 1, null); });
+  next.addEventListener("click", function () { forget(); go(shown + 1, null); });
   linkCopy.addEventListener("click", copyLink);
   linkClose.addEventListener("click", function () { showLink(""); });
   // A tap beside the box, on the book behind it, puts it away as well
@@ -1883,6 +2109,7 @@ var vwEpub = (function () {
     var el = e.target;
     if (!el || !el.getAttribute || el.getAttribute("data-n") === null) return;
     var to = contents[Number(el.getAttribute("data-n"))];
+    forget();
     showContents(false);
     go(to.at, to.frag ? { frag: to.frag } : null);
   });
@@ -1908,7 +2135,14 @@ var vwEpub = (function () {
       return;
     }
     if (index[at.path] === undefined) return;
-    go(index[at.path], at.frag ? { frag: at.frag } : null);
+    var from = { i: shown, past: here() };
+    var back = before;
+    go(index[at.path], at.frag ? { frag: at.frag } : null).then(function () {
+      // A note's own link back is a link like any other. Arriving where they set out from is
+      // the return itself, and leaves nothing for Back to return to.
+      if (back && shown === back.i && near(back.past)) forget();
+      else remember(from);
+    });
   });
 
   var reporting = false;
@@ -1941,13 +2175,27 @@ var vwEpub = (function () {
   function relaid() {
     across = window.innerWidth;
     gaugeTall = typeTall();
+    ownSize();
     if (shown < 0 || !onPage) return;
     refit();
     if (!settling) {
       place(above > 0 ? { past: above } : null);
       heldAt = window.pageYOffset;
     }
+    // Every line below the first is somewhere else now, and so is where the link left them
+    if (before) before.y = window.pageYOffset;
     report();
+  }
+
+  /*
+   * Keeps the page's own words the size the phone asks for: see --epub-own in epub.css. The
+   * letter that tells the size of the type is 100 px tall before any zoom, so its height is
+   * the whole zoom as a percentage, the phone's own and the reader's text size together.
+   */
+  function ownSize() {
+    var tall = typeTall();
+    if (!phoneType || !tall) return;
+    document.documentElement.style.setProperty("--epub-own", String(phoneType / tall));
   }
 
   // The keyboard coming up changes the height alone, which moves nothing in a chapter
@@ -1980,6 +2228,7 @@ var vwEpub = (function () {
       "pointer-events:none;white-space:nowrap;font:100px/1 serif";
     document.body.appendChild(gauge);
     gaugeTall = typeTall();
+    ownSize();
     new ResizeObserver(function () {
       // The first word is of the size the letter starts at
       if (first) {
@@ -1992,7 +2241,10 @@ var vwEpub = (function () {
   })();
 
   ["touchstart", "wheel", "keydown"].forEach(function (name) {
-    window.addEventListener(name, function () { moved = true; }, { passive: true });
+    window.addEventListener(name, function () {
+      moved = true;
+      if (before) before.touched = true;
+    }, { passive: true });
   });
 
   function fail(e) {

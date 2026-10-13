@@ -33,6 +33,14 @@ body { background: #ffffff; background: var(--epub-paper); }
 body { font-family: sans-serif; }
 
 /*
+ * What Gander says on this page stays the size the phone asks for, however large the reader
+ * has set the book's type. That size is the WebView's own zoom, which reaches every letter
+ * on the page, a button's as much as a chapter's: at 250% the strip's words would be taller
+ * than a line of the book. So each size below is multiplied by --epub-own, which epub.js
+ * keeps at the phone's share of the zoom over the whole of it.
+ */
+
+/*
  * Around the book, so that nothing a book says of itself is weighed against the contents or
  * a link's address, which open over it: a stylesheet in a shadow tree can place the element
  * the tree hangs on anywhere and give it any z-index, and nothing here outranks it there.
@@ -70,12 +78,19 @@ body { font-family: sans-serif; }
   background: none;
   font: inherit;
   font-size: 15px;
+  font-size: calc(15px * var(--epub-own, 1));
   font-weight: 500;
   color: #af2d18;
   color: var(--vw-accent);
 }
 
 .epub-turn button[disabled] { color: var(--epub-quiet); opacity: 0.5; }
+
+/* Half the strip each, since Next is tapped at the foot of every chapter and of every page
+   of a comic: the word stays in its corner and the whole of its side takes the tap */
+.epub-turn button { flex: 1; }
+#epub-prev { text-align: left; }
+#epub-next { text-align: right; }
 
 .epub-where {
   min-width: 0;
@@ -84,6 +99,7 @@ body { font-family: sans-serif; }
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 13px;
+  font-size: calc(13px * var(--epub-own, 1));
   color: var(--epub-quiet);
 }
 
@@ -100,7 +116,6 @@ body { font-family: sans-serif; }
   bottom: 0;
   left: 0;
   box-sizing: border-box;
-  padding-top: var(--vw-top, 0px);
   overflow-y: auto;
   overscroll-behavior: contain;
   background: #ffffff;
@@ -109,12 +124,31 @@ body { font-family: sans-serif; }
   color: var(--epub-ink);
 }
 
-.epub-contents-head { border-bottom: 1px solid var(--epub-line); }
+/*
+ * The heading and Close stay at the top while the list scrolls under them. Deep in a book
+ * the list opens at the chapter being read, which used to leave both off the top of the
+ * screen. The room for the title bar, which is over this page, is the heading's own padding
+ * and not the list's: engines disagree on whether a list's padding is part of the top a
+ * thing sticks to, and WebView 66 put the heading behind the bar. The scroll padding keeps
+ * an entry the keyboard moves to from stopping behind the two.
+ */
+.epub-contents { scroll-padding-top: calc(var(--vw-top, 0px) + 56px); }
+
+.epub-contents .epub-contents-head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding-top: var(--vw-top, 0px);
+  border-bottom: 1px solid var(--epub-line);
+  background: #ffffff;
+  background: var(--epub-paper);
+}
 
 .epub-contents-head h1 {
   margin: 0;
   padding: 0 12px;
   font-size: 17px;
+  font-size: calc(17px * var(--epub-own, 1));
   font-weight: 600;
 }
 
@@ -124,6 +158,7 @@ body { font-family: sans-serif; }
   padding: 16px 20px 4px;
   box-sizing: border-box;
   font-size: 13px;
+  font-size: calc(13px * var(--epub-own, 1));
   color: var(--epub-quiet);
 }
 
@@ -142,6 +177,7 @@ body { font-family: sans-serif; }
   padding: 12px;
   text-align: left;
   font-size: 15px;
+  font-size: calc(15px * var(--epub-own, 1));
   line-height: 1.35;
   color: var(--epub-ink);
 }
@@ -183,6 +219,7 @@ body { font-family: sans-serif; }
 .epub-link-box h1 {
   margin: 0 0 8px;
   font-size: 17px;
+  font-size: calc(17px * var(--epub-own, 1));
   font-weight: 600;
 }
 
@@ -193,6 +230,7 @@ body { font-family: sans-serif; }
   overflow-wrap: anywhere;
   word-break: break-all;
   font-size: 15px;
+  font-size: calc(15px * var(--epub-own, 1));
   line-height: 1.5;
   -webkit-user-select: text;
   user-select: text;
@@ -201,6 +239,7 @@ body { font-family: sans-serif; }
 .epub-link-note {
   margin: 0;
   font-size: 13px;
+  font-size: calc(13px * var(--epub-own, 1));
   line-height: 1.4;
   color: var(--epub-quiet);
 }

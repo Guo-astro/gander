@@ -55,7 +55,7 @@ internal object PortCommand {
     /** Show a book's contents list, which its own button for is at the top of a chapter. */
     fun contents() = "o"
 
-    /** Close whatever of the page's own is open over the document. See [PortMessage.Covered]. */
+    /** Back, for a page that has said it has something to do first. See [PortMessage.Covered]. */
     fun closeOver() = "x"
 }
 
@@ -87,8 +87,9 @@ internal sealed interface PortMessage {
     data class Place(val chapter: Int, val past: Int) : PortMessage
 
     /**
-     * Something of the page's own is open over the document, a book's contents list or the
-     * address of a link, or no longer is. Back closes it before it leaves the viewer.
+     * The page has something for Back to do before it leaves the viewer, or no longer has: a
+     * book's contents list or the address of a link open over the document, or a place to go
+     * back to after a link inside the book.
      */
     data class Covered(val on: Boolean) : PortMessage
 

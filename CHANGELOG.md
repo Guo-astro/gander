@@ -9,11 +9,15 @@
   the menu, makes a book's type smaller or larger in nine steps and keeps the line you were
   on at the top. A book has no pages of its own, so the readout says how far through it you
   are, as a percentage, and a book reopens at the line it was left on, at any text size and
-  whichever way the phone is held. A web link in a book shows its address, to copy: Gander
-  still opens none. Find searches the whole book. A table or a line of code too wide for
-  the screen scrolls sideways by itself. The fixed pages of a picture book or a comic are
+  whichever way the phone is held, its last page included. After a link to a note or to
+  another chapter, Back brings you back to the line you left, until you have read on from
+  where the link put you. A web link in a book shows its address, to copy: Gander still
+  opens none. Find searches the whole book, starting from where you are. A table or a line
+  of code too wide for the screen scrolls sideways by itself. The fixed pages of a picture book or a comic are
   fitted to the width of the screen, and a book set in vertical columns is laid out in rows.
-  On a dark phone the page is dark, whatever colours the book set. A book locked with DRM
+  On a dark phone the page is dark, whatever colours the book set: a formula or a drawing
+  in black on a clear ground is shown in light ink, a darker picture of that kind gets
+  paper behind it, and a table's black lines are drawn light. A book locked with DRM
   says so: only the app of the shop or library it came from can open one.
 
 ## 2.4 (2026-10-12)
