@@ -110,6 +110,25 @@ class PlayerErrorTest {
         assertThat(viewer.shown.filterIsInstance<PlayerView>()).isEmpty()
     }
 
+    /**
+     * Viewing unknown files as text is about files Gander has no viewer for. A track its
+     * player gave up on keeps the card, and neither card nor menu offers the choice. Issue #51.
+     */
+    @Test
+    fun aTrackThatFailsIsNotReadAsTextWhateverWasChosen() {
+        Settings.setUnknownAsText(context, true)
+        val viewer = play()
+        viewer.player.fail()
+        until(moving = false) {
+            viewer.shown.filterIsInstance<WebView>().any { shadowOf(it).lastLoadedUrl != null }
+        }
+        val url = shadowOf(viewer.shown.filterIsInstance<WebView>().single()).lastLoadedUrl
+        assertThat(url).contains("viewer/unsupported.html")
+        assertThat(url).doesNotContain("astext")
+        val menu = viewer.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar).menu
+        assertThat(menu.findItem(R.id.action_unknown_as_text).isVisible).isFalse()
+    }
+
     @Test
     fun aTrackThatFailsAfterAWhileGoesOnFromWhereItStopped() {
         val viewer = play()

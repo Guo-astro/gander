@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A file of a format Gander doesn't know can open as text straight away, without the card that
+  offers to (thanks @Cecalie, who asked for this in #51). Open one, turn on **View unknown
+  files as text** in the menu, and from then on such files skip the card. Turn it off in the
+  same place to get the card back. A `.ppt` keeps its card, which says how to get it opened.
+
 ## 2.4 (2026-10-12)
 
 - An animated WebP or PNG plays, as a GIF does (#49, reported in a Play review). Gander showed

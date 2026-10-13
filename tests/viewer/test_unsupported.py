@@ -24,6 +24,24 @@ def test_reading_it_as_text_is_offered_with_a_caveat(viewer, page):
     assert "random characters" in page.text_content("#caveat")
 
 
+def test_the_way_to_skip_the_card_is_named_where_the_menu_offers_it(viewer, page):
+    """
+    astext=1 is the app saying its menu has "View unknown files as text", issue #51,
+    and the card then points at it by the name the menu gives it.
+    """
+    viewer("unsupported.html", "unknown.xyz", astext=1)
+    page.wait_for_selector("#skip", state="visible", timeout=10000)
+    assert '"View unknown files as text"' in page.text_content("#skip")
+
+
+def test_the_card_does_not_point_at_a_menu_item_that_is_not_there(viewer, page):
+    """A .ppt, or a track the player gave up on, gets the card without the menu item."""
+    viewer("unsupported.html", "unknown.xyz")
+    # The name is written by the script that would show the line, so it has run
+    page.wait_for_function("document.getElementById('fname').textContent !== ''", timeout=10000)
+    assert not page.is_visible("#skip")
+
+
 def test_reading_it_as_text_opens_the_text_viewer(viewer, page):
     viewer("unsupported.html", "unknown.xyz")
     page.wait_for_selector("#asText", timeout=10000)

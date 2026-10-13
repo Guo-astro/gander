@@ -93,8 +93,9 @@ tools in other languages are read as names rather than question marks, with **Fi
 encoding** in the menu to correct a wrong guess.
 
 Anything else, including files with no extension at all, offers **View as text**, which
-shows the raw contents without renaming the file. Large files load 5 MB at a time with a
-**Show more** button, so they open instantly and can still be read end to end.
+shows the raw contents without renaming the file. With **View unknown files as text** turned
+on in the menu, such files open as text without the offer. Large files load 5 MB at a time
+with a **Show more** button, so they open instantly and can still be read end to end.
 
 Word 97-2003 `.doc`, OpenDocument `.odt` and Rich Text `.rtf` are read by code written for
 Gander rather than by a bundled library: text and formatting, headings, lists, tables,

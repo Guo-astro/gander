@@ -202,6 +202,123 @@ class ViewerActivityTest {
         assertThat(search("bracket.stl").isVisible).isFalse()
     }
 
+    // ---------------------------------------------------------------
+    // Unknown formats as text, issue #51
+    // ---------------------------------------------------------------
+
+    private fun ActivityController<ViewerActivity>.asTextItem(): android.view.MenuItem =
+        get().findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(R.id.action_unknown_as_text)
+
+    private fun ActivityController<ViewerActivity>.tapAsText() {
+        get().findViewById<MaterialToolbar>(R.id.toolbar).menu
+            .performIdentifierAction(R.id.action_unknown_as_text, 0)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** How many channels the page was handed once it had loaded: one for a text file's page. */
+    private fun ActivityController<ViewerActivity>.channels(): Int {
+        val web = webView()!!
+        web.webViewClient.onPageFinished(web, loadedUrl())
+        return shadowOf(web).createdPorts.size
+    }
+
+    /** The card is told the menu has the item, and the item starts unchecked. */
+    @Test
+    fun anUnknownFormatOffersToSkipItsCard() {
+        val controller = open("unknown.xyz")
+        assertThat(controller.pageName()).isEqualTo("unsupported.html")
+        assertThat(controller.loadedUrl()).contains("&astext=1")
+        assertThat(controller.asTextItem().isVisible).isTrue()
+        assertThat(controller.asTextItem().isChecked).isFalse()
+        assertThat(controller.channels()).isEqualTo(0)
+    }
+
+    /** Once chosen, an unknown format opens as a text file does, with the channel a text file's page gets. */
+    @Test
+    fun anUnknownFormatOpensAsTextOnceThatIsChosen() {
+        Settings.setUnknownAsText(context, true)
+        val controller = open("unknown.xyz")
+        assertThat(controller.pageName()).isEqualTo("text.html")
+        assertThat(controller.loadedUrl()).contains("ext=xyz")
+        assertThat(controller.loadedUrl()).doesNotContain("astext")
+        assertThat(controller.asTextItem().isVisible).isTrue()
+        assertThat(controller.asTextItem().isChecked).isTrue()
+        assertThat(controller.channels()).isEqualTo(open("plain.txt").channels())
+    }
+
+    /** The choice is about files Gander has no viewer for, so a file it has one for never shows it. */
+    @Test
+    fun aKnownFormatHasNoSuchChoice() {
+        for (chosen in listOf(false, true)) {
+            Settings.setUnknownAsText(context, chosen)
+            for (fixture in listOf("plain.txt", "six-pages.pdf", "exif-1.jpg", "archive.zip")) {
+                assertWithMessage("$fixture, chosen=$chosen")
+                    .that(open(fixture).asTextItem().isVisible).isFalse()
+            }
+        }
+    }
+
+    /** A .ppt keeps its card whatever was chosen, since the card says how to get it opened. */
+    @Test
+    fun aLegacyPowerPointKeepsItsCard() {
+        Settings.setUnknownAsText(context, true)
+        val controller = view(FixtureProvider.uriNamed("unknown.xyz", "slides.ppt"))
+        assertThat(controller.pageName()).isEqualTo("unsupported.html")
+        assertThat(controller.loadedUrl()).contains("ext=ppt")
+        assertThat(controller.loadedUrl()).doesNotContain("astext")
+        assertThat(controller.asTextItem().isVisible).isFalse()
+    }
+
+    /** Chosen on the card, the file opens as text there and then, and the choice is kept. */
+    @Test
+    fun choosingItOnTheCardOpensTheFileAsText() {
+        val controller = open("unknown.xyz")
+        controller.tapAsText()
+
+        assertThat(Settings.unknownAsText(context)).isTrue()
+        assertThat(controller.pageName()).isEqualTo("text.html")
+        assertThat(controller.asTextItem().isChecked).isTrue()
+    }
+
+    /** Taken back, the card comes back in place of the text it had skipped to. */
+    @Test
+    fun takingTheChoiceBackBringsTheCardBack() {
+        Settings.setUnknownAsText(context, true)
+        val controller = open("unknown.xyz")
+        controller.tapAsText()
+
+        assertThat(Settings.unknownAsText(context)).isFalse()
+        assertThat(controller.pageName()).isEqualTo("unsupported.html")
+        assertThat(controller.asTextItem().isChecked).isFalse()
+    }
+
+    /**
+     * Text the reader asked the card for is already what the choice would show, so choosing
+     * leaves the page alone, and so does taking it back: that text was their own doing.
+     */
+    @Test
+    fun textAskedOfTheCardStaysThroughTheChoice() {
+        val controller = open("unknown.xyz")
+        val web = controller.webView()!!
+        // As the card's button does
+        web.loadUrl(controller.loadedUrl().replace("unsupported.html", "text.html"))
+
+        controller.tapAsText()
+        assertThat(Settings.unknownAsText(context)).isTrue()
+        assertThat(controller.webView()).isSameInstanceAs(web)
+
+        controller.tapAsText()
+        assertThat(Settings.unknownAsText(context)).isFalse()
+        assertThat(controller.webView()).isSameInstanceAs(web)
+    }
+
+    /** The card points at the menu item by name, so the two spellings are held together. */
+    @Test
+    fun theCardNamesTheMenuItemAsTheMenuSpellsIt() {
+        val card = File("src/main/assets/viewer/unsupported.html").readText()
+        assertThat(card).contains("\"${context.getString(R.string.unknown_as_text)}\"")
+    }
+
     /**
      * A Word document's night mode, page counter and Go to page go over the channel, so its page
      * gets one below Chromium 105 too, where it is too old to search itself. A Markdown file

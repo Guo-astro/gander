@@ -15,13 +15,21 @@
         android:title="@string/go_to_page"
         android:visible="false"
         app:showAsAction="never" />
-    <!-- Turns the contents of a PDF over for reading in the dark, issue #19. The one
-         checkable item in here, and hidden for every format but PDF: it is the only one
-         drawn as a picture rather than laid out as a document. -->
+    <!-- Turns the contents of a PDF over for reading in the dark, issue #19. Checkable,
+         and hidden for every format but PDF: it is the only one drawn as a picture rather
+         than laid out as a document. -->
     <item
         android:id="@+id/action_night_mode"
         android:checkable="true"
         android:title="@string/night_mode"
+        android:visible="false"
+        app:showAsAction="never" />
+    <!-- Only on a file of no known format, and kept from one to the next as night mode
+         is. Issue #51. -->
+    <item
+        android:id="@+id/action_unknown_as_text"
+        android:checkable="true"
+        android:title="@string/unknown_as_text"
         android:visible="false"
         app:showAsAction="never" />
     <item

@@ -8,6 +8,7 @@ import androidx.test.espresso.web.webdriver.DriverAtoms.getText
 import androidx.test.espresso.web.webdriver.Locator
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
@@ -95,13 +96,31 @@ class ViewerFormatsTest {
         }
     }
 
+    /** [block] with "View unknown files as text" set one way, then put back as the phone had it. */
+    private fun withUnknownAsText(on: Boolean, block: () -> Unit) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val before = Settings.unknownAsText(context)
+        Settings.setUnknownAsText(context, on)
+        try {
+            block()
+        } finally {
+            Settings.setUnknownAsText(context, before)
+        }
+    }
+
     @Test
-    fun anUnknownFormatOffersToShowItAsText() {
+    fun anUnknownFormatOffersToShowItAsText() = withUnknownAsText(false) {
         open("unknown.xyz").use {
             onWebView()
                 .withElement(findElement(Locator.ID, "asText"))
                 .check(webMatches(getText(), containsString("View as text")))
         }
+    }
+
+    /** With the choice made, the same file opens as text with no card to tap through. Issue #51. */
+    @Test
+    fun anUnknownFormatOpensAsTextOnceThatIsChosen() = withUnknownAsText(true) {
+        expect("unknown.xyz", "#content", "0123456789")
     }
 
     // The three formats read by Gander's own code rather than a library, on the
