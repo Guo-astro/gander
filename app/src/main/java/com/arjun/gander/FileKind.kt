@@ -143,7 +143,7 @@ enum class FileKind(val page: String) {
 
         /**
          * Whether a file is one Gander has no viewer for and nothing to say about. These
-         * are what the reader's choice to view unknown files as text covers. Issue #51.
+         * open as text where their bytes read as text: see [readsAsText]. Issue #51.
          */
         fun isUnknown(kind: FileKind, ext: String): Boolean = kind == UNSUPPORTED && ext !in advisedExt
 

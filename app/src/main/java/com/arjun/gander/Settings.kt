@@ -19,7 +19,6 @@ object Settings {
     private const val PREFS = "viewer"
     private const val KEY_NIGHT = "night"
     private const val KEY_SORT_ORDER = "folder_sort_order"
-    private const val KEY_UNKNOWN_AS_TEXT = "unknown_as_text"
 
     enum class SortOrder(val labelRes: Int) {
         NAME_AZ(R.string.sort_name_az),
@@ -38,16 +37,6 @@ object Settings {
     fun setNight(context: Context, on: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_NIGHT, on) }
-    }
-
-    /** Whether a file of no known format opens as text, without the card that offers to. Issue #51. */
-    fun unknownAsText(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_UNKNOWN_AS_TEXT, false)
-
-    fun setUnknownAsText(context: Context, on: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit { putBoolean(KEY_UNKNOWN_AS_TEXT, on) }
     }
 
     fun sortOrder(context: Context): SortOrder {

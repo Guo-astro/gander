@@ -23,14 +23,6 @@
         android:title="@string/night_mode"
         android:visible="false"
         app:showAsAction="never" />
-    <!-- Only on a file of no known format, and kept from one to the next as night mode
-         is. Issue #51. -->
-    <item
-        android:id="@+id/action_unknown_as_text"
-        android:checkable="true"
-        android:title="@string/unknown_as_text"
-        android:visible="false"
-        app:showAsAction="never" />
     <item
         android:id="@+id/action_share"
         android:icon="@drawable/ic_share"

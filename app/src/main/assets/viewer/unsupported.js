@@ -8,9 +8,6 @@ if (vwExt === "ppt") {
   hint.style.display = "none";
 }
 
-// astext=1 arrives when the viewer's menu offers to view unknown files as text. Issue #51.
-if (vwParams.get("astext")) document.getElementById("skip").hidden = false;
-
 document.getElementById("asText").addEventListener("click", function () {
   location.replace(
     "text.html?name=" + encodeURIComponent(vwName) + "&ext=" + encodeURIComponent(vwExt)

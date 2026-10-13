@@ -98,8 +98,9 @@
          rather than what it does, because "invert" describes the arithmetic and this is
          the only place in the app a reader meets it. -->
     <string name="night_mode">Night mode</string>
-    <!-- The card for an unknown format names this item word for word, in unsupported.html -->
-    <string name="unknown_as_text">View unknown files as text</string>
+    <!-- Under the name of a file of no known format that reads as text, and so opened as
+         text with no card to say why. Issue #51. -->
+    <string name="unknown_shown_as_text">Unknown format, shown as text</string>
     <string name="page_number">Page number</string>
     <string name="page_range">1 to %1$d</string>
     <string name="page_out_of_range">Enter a page between 1 and %1$d</string>

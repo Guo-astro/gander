@@ -1,6 +1,10 @@
 package com.arjun.gander
 
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.web.assertion.WebViewAssertions.webMatches
 import androidx.test.espresso.web.sugar.Web.onWebView
 import androidx.test.espresso.web.webdriver.DriverAtoms.findElement
@@ -8,7 +12,6 @@ import androidx.test.espresso.web.webdriver.DriverAtoms.getText
 import androidx.test.espresso.web.webdriver.Locator
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
-import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
@@ -96,31 +99,25 @@ class ViewerFormatsTest {
         }
     }
 
-    /** [block] with "View unknown files as text" set one way, then put back as the phone had it. */
-    private fun withUnknownAsText(on: Boolean, block: () -> Unit) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val before = Settings.unknownAsText(context)
-        Settings.setUnknownAsText(context, on)
-        try {
-            block()
-        } finally {
-            Settings.setUnknownAsText(context, before)
-        }
-    }
-
+    /** A file of no known format whose bytes are not text gets the card, and its offer. */
     @Test
-    fun anUnknownFormatOffersToShowItAsText() = withUnknownAsText(false) {
-        open("unknown.xyz").use {
+    fun anUnknownFormatThatIsNotTextOffersToShowItAsText() {
+        open("opaque.xyz").use {
             onWebView()
                 .withElement(findElement(Locator.ID, "asText"))
                 .check(webMatches(getText(), containsString("View as text")))
         }
     }
 
-    /** With the choice made, the same file opens as text with no card to tap through. Issue #51. */
+    /** One that reads as text opens as text with no card to tap through, and says so under its name. Issue #51. */
     @Test
-    fun anUnknownFormatOpensAsTextOnceThatIsChosen() = withUnknownAsText(true) {
-        expect("unknown.xyz", "#content", "0123456789")
+    fun anUnknownFormatThatReadsAsTextOpensAsText() {
+        open("unknown.xyz").use {
+            onWebView()
+                .withElement(findElement(Locator.CSS_SELECTOR, "#content"))
+                .check(webMatches(getText(), containsString("0123456789")))
+            onView(withText(R.string.unknown_shown_as_text)).check(matches(isDisplayed()))
+        }
     }
 
     // The three formats read by Gander's own code rather than a library, on the

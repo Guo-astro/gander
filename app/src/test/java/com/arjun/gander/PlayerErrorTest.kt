@@ -112,12 +112,11 @@ class PlayerErrorTest {
     }
 
     /**
-     * Viewing unknown files as text is about files Gander has no viewer for. A track its
-     * player gave up on keeps the card, and neither card nor menu offers the choice. Issue #51.
+     * Opening as text unasked is for files Gander has no viewer for. A track its player gave
+     * up on keeps the card, which says the track would not play. Issue #51.
      */
     @Test
-    fun aTrackThatFailsIsNotReadAsTextWhateverWasChosen() {
-        Settings.setUnknownAsText(context, true)
+    fun aTrackThatFailsKeepsItsCard() {
         val viewer = play()
         viewer.player.fail()
         until(moving = false) {
@@ -125,9 +124,7 @@ class PlayerErrorTest {
         }
         val url = shadowOf(viewer.shown.filterIsInstance<WebView>().single()).lastLoadedUrl
         assertThat(url).contains("viewer/unsupported.html")
-        assertThat(url).doesNotContain("astext")
-        val menu = viewer.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
-        assertThat(menu.findItem(R.id.action_unknown_as_text).isVisible).isFalse()
+        assertThat(viewer.get().findViewById<MaterialToolbar>(R.id.toolbar).subtitle).isNull()
     }
 
     @Test

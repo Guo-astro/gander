@@ -15,6 +15,7 @@
         app:menu="@menu/viewer_menu"
         app:navigationContentDescription="@string/back"
         app:navigationIcon="@drawable/ic_back"
+        app:subtitleTextAppearance="?attr/textAppearanceBodySmall"
         app:titleTextAppearance="?attr/textAppearanceTitleMedium" />
 
     <!-- Every control in the bar is at least 48dp each way, the smallest target Android's

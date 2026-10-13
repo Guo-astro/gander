@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- A file of a format Gander doesn't know can open as text straight away, without the card that
-  offers to (thanks @Cecalie, who asked for this in #51). Open one, turn on **View unknown
-  files as text** in the menu, and from then on such files skip the card. Turn it off in the
-  same place to get the card back. A `.ppt` keeps its card, which says how to get it opened.
+- A file of a format Gander doesn't know opens as text straight away when it is text, without
+  the card that offered to (thanks @Cecalie, who asked in #51 for a way past the card). Gander
+  tells from the file's first bytes, and the line under the file's name says "Unknown format,
+  shown as text". A file that is not text keeps the card and its **View as text** button. So
+  does a `.ppt`, whose card says how to get it opened.
 
 ## 2.4 (2026-10-12)
 

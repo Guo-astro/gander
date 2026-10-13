@@ -1648,9 +1648,13 @@ Text after the injected markup, so the sanitiser can be seen to have kept it.
     (OUT / "utf16be.txt").write_bytes(b"\xfe\xff" + marked.encode("utf-16-be"))
     written(OUT / "utf16be.txt")
 
-    # An extension nothing claims, so the viewer offers to read it as text.
+    # An extension nothing claims, over bytes that read as text, so the app opens it as text.
     (OUT / "unknown.xyz").write_bytes(bytes(range(32, 127)) * 4 + b"\n")
     written(OUT / "unknown.xyz")
+
+    # The same over bytes that do not, a zero among them, so the app keeps its card.
+    (OUT / "opaque.xyz").write_bytes(bytes(range(256)) * 2)
+    written(OUT / "opaque.xyz")
 
     # Text under other names, which the text viewer shows as it is: subtitles
     # as SubRip and as WebVTT, a playlist of tracks that are not here, as one

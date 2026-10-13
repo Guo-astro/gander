@@ -362,45 +362,44 @@ open class ViewerActivity : AppCompatActivity() {
             }
         }
 
-        val detected = detect(ext, mime)
-        // A file of no known format opens as text where the reader has chosen that. Issue #51.
-        val unknown = FileKind.isUnknown(detected, ext)
-        // Held past the when because setUpSearch needs it to know whether the
-        // format it is offering to search actually has anything findable in it
-        val kind = if (unknown && Settings.unknownAsText(this)) FileKind.TEXT else detected
-        when (kind) {
-            FileKind.IMAGE -> showPicture(container, uri, name, ext)
-            FileKind.PLAYER -> showPlayer(container, uri, name, ext)
-            FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
-            else -> showWeb(container, uri, kind, name, ext, offersText = unknown)
+        fun show(kind: FileKind) {
+            when (kind) {
+                FileKind.IMAGE -> showPicture(container, uri, name, ext)
+                FileKind.PLAYER -> showPlayer(container, uri, name, ext)
+                FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
+                else -> showWeb(container, uri, kind, name, ext)
+            }
+            setUpSearch(toolbar, kind)
+            setUpActions(toolbar, kind, uri, name, ext, mime)
+            // A document that opens turned over opens with the parts around it dark as well
+            if (loadedNight) nightChrome.show(true)
         }
-        setUpSearch(toolbar, kind)
-        setUpActions(toolbar, kind, uri, name, ext, mime)
-        setUpUnknownAsText(toolbar, kind, unknown)
-        // A document that opens turned over opens with the parts around it dark as well
-        if (loadedNight) nightChrome.show(true)
+
+        val detected = detect(ext, mime)
+        if (!FileKind.isUnknown(detected, ext)) return show(detected)
+        // A file of no known format that reads as text opens as text, with no card to tap
+        // through, and the line under its name says so. Issue #51.
+        whetherText(uri) { text ->
+            if (text) toolbar.subtitle = getString(R.string.unknown_shown_as_text)
+            show(if (text) FileKind.TEXT else detected)
+        }
     }
 
     /**
-     * Viewing files of no known format as text, without the card that offers to. Issue #51.
-     * Only on such a file, as night mode is only on a document with pages.
+     * Tells [then] whether the file reads as text. Its first bytes are read off the main
+     * thread, as a picture's are, since a provider can be slow to hand over even those. One
+     * that cannot be read is not text, and gets the card it always had.
      */
-    private fun setUpUnknownAsText(toolbar: MaterialToolbar, kind: FileKind, unknown: Boolean) {
-        val item = toolbar.menu.findItem(R.id.action_unknown_as_text)
-        item.isVisible = unknown
-        if (!unknown) return
-        item.isChecked = Settings.unknownAsText(this)
-        item.setOnMenuItemClickListener {
-            val on = !it.isChecked
-            it.isChecked = on
-            Settings.setUnknownAsText(this, on)
-            // The file opens again where the choice changes what it shows: the card goes, or
-            // comes back. Text the reader asked the card for stays as it is.
-            val onCard = kind == FileKind.UNSUPPORTED && webView?.url?.contains("/text.html") != true
-            val reopen = if (on) onCard else kind == FileKind.TEXT
-            if (reopen) recreate()
-            true
+    private fun whetherText(uri: Uri, then: (Boolean) -> Unit) {
+        val app = applicationContext
+        val main = Handler(Looper.getMainLooper())
+        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
+        worker.execute {
+            val text = runCatching { app.contentResolver.openInputStream(uri)?.use(::readsAsText) }
+                .getOrNull() == true
+            main.post { if (!isDestroyed) then(text) }
         }
+        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
 
     /** Night mode, share, print and "show in file manager" toolbar actions. */
@@ -1637,14 +1636,7 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
-    private fun showWeb(
-        container: FrameLayout,
-        uri: Uri,
-        kind: FileKind,
-        name: String,
-        ext: String,
-        offersText: Boolean = false,
-    ) {
+    private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
         val web = ScrollProbeWebView(this)
         webView = web
         pageSearches = canPortSearch() &&
@@ -1851,8 +1843,6 @@ open class ViewerActivity : AppCompatActivity() {
                         (if (resumeAt > 1) "&resume=$resumeAt" else "") +
                         // The room to leave at the top for the title bar floating over it
                         (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
-                        // The card points at the menu item only where the menu has it
-                        (if (offersText && kind == FileKind.UNSUPPORTED) "&astext=1" else "") +
                         floor
                 )
             }

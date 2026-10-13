@@ -314,7 +314,7 @@ class FileKindTest {
         assertThat(FileKind.detect("", "application/octet-stream")).isEqualTo(UNSUPPORTED)
     }
 
-    /** What viewing unknown files as text covers: no viewer, and no advice on the card. Issue #51. */
+    /** What may open as text unasked: a file with no viewer and no advice on the card. Issue #51. */
     @Test
     fun anUnknownFileHasNoViewerAndNoAdvice() {
         assertThat(FileKind.isUnknown(UNSUPPORTED, "xyz")).isTrue()
