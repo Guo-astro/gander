@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.common.truth.Truth.assertThat
 import java.time.Duration
 import org.junit.Before
@@ -125,7 +126,7 @@ class PlayerErrorTest {
         val url = shadowOf(viewer.shown.filterIsInstance<WebView>().single()).lastLoadedUrl
         assertThat(url).contains("viewer/unsupported.html")
         assertThat(url).doesNotContain("astext")
-        val menu = viewer.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar).menu
+        val menu = viewer.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
         assertThat(menu.findItem(R.id.action_unknown_as_text).isVisible).isFalse()
     }
 

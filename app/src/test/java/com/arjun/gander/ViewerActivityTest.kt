@@ -202,6 +202,79 @@ class ViewerActivityTest {
         assertThat(search("bracket.stl").isVisible).isFalse()
     }
 
+    /**
+     * A Word document's night mode, page counter and Go to page go over the channel, so its page
+     * gets one below Chromium 105 too, where it is too old to search itself. A Markdown file
+     * there needs none, since Chromium's own find searches it.
+     */
+    @Test
+    fun aWordDocumentGetsTheChannelOnAWebViewTooOldToSearchIt() {
+        ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
+            packageName = "com.google.android.webview"
+            versionName = "104.0.5112.97"
+        })
+        fun loaded(fixture: String) = open(fixture).also {
+            val web = it.webView()!!
+            web.webViewClient.onPageFinished(web, it.loadedUrl())
+        }
+        assertThat(shadowOf(loaded("notes.md").webView()!!).createdPorts).isEmpty()
+
+        val word = loaded("report.docx")
+        val channels = shadowOf(word.webView()!!).createdPorts
+        assertThat(channels).hasSize(1)
+        val menu = word.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
+        assertThat(menu.findItem(R.id.action_night_mode).isVisible).isTrue()
+        menu.performIdentifierAction(R.id.action_night_mode, 0)
+        // After the title bar's height, which the channel carries as it opens
+        val bar = PortCommand.barHeight(word.get().documentChrome!!.heightDp())
+        assertThat(channels[0][0].outgoingMessages).containsExactly(bar, "i1").inOrder()
+    }
+
+    /** A photo gets the tiling view, not a WebView. */
+    @Test
+    fun aPhotoIsDrawnByTheTilingViewInstead() {
+        val controller = open("exif-1.jpg")
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.container().children().filterIsInstance<SubsamplingScaleImageView>())
+            .hasSize(1)
+    }
+
+    /** The tiling view draws one frame, so a WebP or PNG that moves gets the page that plays GIFs. #49 */
+    @Test
+    fun aMovingWebpOrPngGetsThePageThatPlaysIt() {
+        assertThat(open("moving.webp").pageName()).isEqualTo("imgweb.html")
+        assertThat(open("moving.png").pageName()).isEqualTo("imgweb.html")
+
+        for (still in listOf("still.webp", "tiny.png")) {
+            val controller = open(still)
+            assertThat(controller.webView()).isNull()
+            assertThat(controller.container().children().filterIsInstance<SubsamplingScaleImageView>())
+                .hasSize(1)
+        }
+    }
+
+    @Test
+    fun audioGetsThePlayerRatherThanAPage() {
+        val controller = open("tone.wav")
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.container().childCount).isAtLeast(1)
+    }
+
+    /** The file name reaches the page, so it can title itself. */
+    @Test
+    fun thePageIsToldTheFileName() {
+        val uri = FixtureProvider.uriNamed("six-pages.pdf", "Alder Court.pdf")
+        assertThat(view(uri).loadedUrl()).contains("name=Alder%20Court.pdf")
+    }
+
+    @Test
+    fun theToolbarShowsTheDocumentName() {
+        val uri = FixtureProvider.uriNamed("six-pages.pdf", "Alder Court.pdf")
+        val toolbar = view(uri).get()
+            .findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        assertThat(toolbar.title.toString()).isEqualTo("Alder Court.pdf")
+    }
+
     // ---------------------------------------------------------------
     // Unknown formats as text, issue #51
     // ---------------------------------------------------------------
@@ -317,79 +390,6 @@ class ViewerActivityTest {
     fun theCardNamesTheMenuItemAsTheMenuSpellsIt() {
         val card = File("src/main/assets/viewer/unsupported.html").readText()
         assertThat(card).contains("\"${context.getString(R.string.unknown_as_text)}\"")
-    }
-
-    /**
-     * A Word document's night mode, page counter and Go to page go over the channel, so its page
-     * gets one below Chromium 105 too, where it is too old to search itself. A Markdown file
-     * there needs none, since Chromium's own find searches it.
-     */
-    @Test
-    fun aWordDocumentGetsTheChannelOnAWebViewTooOldToSearchIt() {
-        ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
-            packageName = "com.google.android.webview"
-            versionName = "104.0.5112.97"
-        })
-        fun loaded(fixture: String) = open(fixture).also {
-            val web = it.webView()!!
-            web.webViewClient.onPageFinished(web, it.loadedUrl())
-        }
-        assertThat(shadowOf(loaded("notes.md").webView()!!).createdPorts).isEmpty()
-
-        val word = loaded("report.docx")
-        val channels = shadowOf(word.webView()!!).createdPorts
-        assertThat(channels).hasSize(1)
-        val menu = word.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
-        assertThat(menu.findItem(R.id.action_night_mode).isVisible).isTrue()
-        menu.performIdentifierAction(R.id.action_night_mode, 0)
-        // After the title bar's height, which the channel carries as it opens
-        val bar = PortCommand.barHeight(word.get().documentChrome!!.heightDp())
-        assertThat(channels[0][0].outgoingMessages).containsExactly(bar, "i1").inOrder()
-    }
-
-    /** A photo gets the tiling view, not a WebView. */
-    @Test
-    fun aPhotoIsDrawnByTheTilingViewInstead() {
-        val controller = open("exif-1.jpg")
-        assertThat(controller.webView()).isNull()
-        assertThat(controller.container().children().filterIsInstance<SubsamplingScaleImageView>())
-            .hasSize(1)
-    }
-
-    /** The tiling view draws one frame, so a WebP or PNG that moves gets the page that plays GIFs. #49 */
-    @Test
-    fun aMovingWebpOrPngGetsThePageThatPlaysIt() {
-        assertThat(open("moving.webp").pageName()).isEqualTo("imgweb.html")
-        assertThat(open("moving.png").pageName()).isEqualTo("imgweb.html")
-
-        for (still in listOf("still.webp", "tiny.png")) {
-            val controller = open(still)
-            assertThat(controller.webView()).isNull()
-            assertThat(controller.container().children().filterIsInstance<SubsamplingScaleImageView>())
-                .hasSize(1)
-        }
-    }
-
-    @Test
-    fun audioGetsThePlayerRatherThanAPage() {
-        val controller = open("tone.wav")
-        assertThat(controller.webView()).isNull()
-        assertThat(controller.container().childCount).isAtLeast(1)
-    }
-
-    /** The file name reaches the page, so it can title itself. */
-    @Test
-    fun thePageIsToldTheFileName() {
-        val uri = FixtureProvider.uriNamed("six-pages.pdf", "Alder Court.pdf")
-        assertThat(view(uri).loadedUrl()).contains("name=Alder%20Court.pdf")
-    }
-
-    @Test
-    fun theToolbarShowsTheDocumentName() {
-        val uri = FixtureProvider.uriNamed("six-pages.pdf", "Alder Court.pdf")
-        val toolbar = view(uri).get()
-            .findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
-        assertThat(toolbar.title.toString()).isEqualTo("Alder Court.pdf")
     }
 
     // ---------------------------------------------------------------
