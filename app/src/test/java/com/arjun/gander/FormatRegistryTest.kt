@@ -33,10 +33,12 @@ class FormatRegistryTest {
     private companion object {
         val MANIFEST = File("src/main/AndroidManifest.xml").readText()
 
-        /** The two Office types whose registered spelling is not all lower case. */
+        /** The Office types whose registered spelling is not all lower case. */
         val MACRO_ENABLED = mapOf(
             "application/vnd.ms-word.document.macroEnabled.12" to FileKind.DOCX,
             "application/vnd.ms-powerpoint.presentation.macroEnabled.12" to FileKind.PPTX,
+            "application/vnd.ms-excel.sheet.macroEnabled.12" to FileKind.XLSX,
+            "application/vnd.ms-excel.sheet.binary.macroEnabled.12" to FileKind.XLSX,
         )
 
         /** Not a format but the lack of one, claimed for a file an app knows only as binary. */
@@ -187,6 +189,10 @@ class FormatRegistryTest {
             "application/vnd.openxmlformats-officedocument.presentationml.template"
                 to FileKind.PPTX,
             "application/x-subrip" to FileKind.TEXT,
+            // What Android 10 and later call a .js, a .rb and a .sql
+            "application/javascript" to FileKind.TEXT,
+            "application/x-ruby" to FileKind.TEXT,
+            "application/x-sql" to FileKind.TEXT,
             "model/stl" to FileKind.MODEL,
             "model/x.stl-binary" to FileKind.MODEL,
             "model/x.stl-ascii" to FileKind.MODEL,
@@ -203,9 +209,9 @@ class FormatRegistryTest {
     }
 
     /**
-     * A filter matches a type exactly, case and all. Android 10 and later report a .docm or
-     * a .pptm in lower case, and the registered spelling says macroEnabled, so each is
-     * claimed both ways. Without one of the two lines Gander is missing from the chooser for
+     * A filter matches a type exactly, case and all. Android 10 and later report a .docm, a
+     * .pptm, a .xlsm or a .xlsb in lower case, and the registered spelling says macroEnabled,
+     * so each is claimed both ways. Without one of the two lines Gander is missing from the chooser for
      * whichever spelling that was, in the one place nothing else would notice.
      */
     @Test

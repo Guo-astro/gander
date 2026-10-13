@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Gander is among the apps offered for a macro-enabled or binary Excel workbook (.xlsm, .xlsb)
+  and for a .js, .rb or .sql file, in a file manager's Open with and in the share sheet. On
+  Android 10 and later it was missing for these five, though it opened each from its own Open
+  button.
+
 ## 2.4 (2026-10-12)
 
 - An animated WebP or PNG plays, as a GIF does (#49, reported in a Play review). Gander showed

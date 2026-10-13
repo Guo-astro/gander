@@ -91,10 +91,15 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/xml" />
                 <data android:mimeType="application/x-subrip" />
+                <!-- Three kinds of source that Android gives a type outside text/, so that
+                     text/* above does not cover them: a .js, a .rb and a .sql. -->
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-ruby" />
+                <data android:mimeType="application/x-sql" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
-                <!-- The Office formats' relatives. A .docm and a .pptm twice over, because a
+                <!-- The Office formats' relatives. A .docm, a .pptm, a .xlsm and a .xlsb twice over, because a
                      filter matches a type case-sensitively: Android 10 and later report every
                      type in lower case, while the registered spelling says macroEnabled and an
                      app passing on the type a file was sent with can use that. Lint wants lower
@@ -109,6 +114,10 @@
                 <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" tools:ignore="AppLinkUrlError" />
                 <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroenabled.12" />
                 <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroenabled.12" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroenabled.12" />
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
                 <data android:mimeType="application/vnd.oasis.opendocument.text" />
                 <data android:mimeType="application/vnd.oasis.opendocument.text-template" />
@@ -140,6 +149,11 @@
                 <data android:mimeType="application/json" />
                 <data android:mimeType="application/xml" />
                 <data android:mimeType="application/x-subrip" />
+                <!-- Three kinds of source that Android gives a type outside text/, so that
+                     text/* above does not cover them: a .js, a .rb and a .sql. -->
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-ruby" />
+                <data android:mimeType="application/x-sql" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
@@ -153,6 +167,10 @@
                 <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroEnabled.12" tools:ignore="AppLinkUrlError" />
                 <data android:mimeType="application/vnd.ms-powerpoint.presentation.macroenabled.12" />
                 <data android:mimeType="application/vnd.ms-excel" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.macroenabled.12" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroEnabled.12" tools:ignore="AppLinkUrlError" />
+                <data android:mimeType="application/vnd.ms-excel.sheet.binary.macroenabled.12" />
                 <data android:mimeType="application/vnd.oasis.opendocument.spreadsheet" />
                 <data android:mimeType="application/vnd.oasis.opendocument.text" />
                 <data android:mimeType="application/vnd.oasis.opendocument.text-template" />
