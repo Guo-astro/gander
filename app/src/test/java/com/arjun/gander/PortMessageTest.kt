@@ -31,6 +31,8 @@ class PortMessageTest {
         assertThat(PortCommand.barHeight("64")).isEqualTo("t64")
         assertThat(PortCommand.barGone("0")).isEqualTo("b0")
         assertThat(PortCommand.barGone("23.5")).isEqualTo("b23.5")
+        assertThat(PortCommand.contents()).isEqualTo("o")
+        assertThat(PortCommand.closeOver()).isEqualTo("x")
     }
 
     /**
@@ -50,9 +52,11 @@ class PortMessageTest {
             PortCommand.nightMode(true),
             PortCommand.barHeight("64"),
             PortCommand.barGone("0"),
+            PortCommand.contents(),
+            PortCommand.closeOver(),
         ).map { it.take(1) }
         assertThat(verbs).containsNoDuplicates()
-        assertThat(verbs).containsExactly("q", "n", "p", "c", "g", "i", "t", "b")
+        assertThat(verbs).containsExactly("q", "n", "p", "c", "g", "i", "t", "b", "o", "x")
     }
 
     /**
@@ -122,6 +126,47 @@ class PortMessageTest {
         assertThat(parsePortMessage("locked ")).isNull()
         assertThat(parsePortMessage(" locked")).isNull()
         assertThat(parsePortMessage("locked 1 0")).isNull()
+    }
+
+    // ---------------------------------------------------------------
+    // Inbound: a book's place, what is open over it, and whether it reflows
+    // ---------------------------------------------------------------
+
+    @Test
+    fun aPlaceIsRead() {
+        assertThat(parsePortMessage("at 2 2968")).isEqualTo(PortMessage.Place(2, 2968))
+        assertThat(parsePortMessage("at 0 0")).isEqualTo(PortMessage.Place(0, 0))
+    }
+
+    /** Chapters and what is past in them both count from nought, and neither is ever less. */
+    @Test
+    fun aPlaceThatCouldNotBeInABookIsDropped() {
+        assertThat(parsePortMessage("at -1 5")).isNull()
+        assertThat(parsePortMessage("at 2 -5")).isNull()
+        assertThat(parsePortMessage("at 2 x")).isNull()
+        assertThat(parsePortMessage("at 2.5 5")).isNull()
+        assertThat(parsePortMessage("at 2")).isNull()
+        assertThat(parsePortMessage("at 2 5 9")).isNull()
+        assertThat(parsePortMessage("at 99999999999 5")).isNull()
+    }
+
+    @Test
+    fun whatIsOpenOverTheBookAndWhetherItReflowsAreRead() {
+        assertThat(parsePortMessage("cover 1")).isEqualTo(PortMessage.Covered(true))
+        assertThat(parsePortMessage("cover 0")).isEqualTo(PortMessage.Covered(false))
+        assertThat(parsePortMessage("reflow 1")).isEqualTo(PortMessage.Reflows(true))
+        assertThat(parsePortMessage("reflow 0")).isEqualTo(PortMessage.Reflows(false))
+    }
+
+    /** Each of the four is one exact message, as "locked" is. */
+    @Test
+    fun onlyTheExactWordsAreThose() {
+        assertThat(parsePortMessage("cover 2")).isNull()
+        assertThat(parsePortMessage("cover")).isNull()
+        assertThat(parsePortMessage("cover 1 ")).isNull()
+        assertThat(parsePortMessage("Cover 1")).isNull()
+        assertThat(parsePortMessage("reflow yes")).isNull()
+        assertThat(parsePortMessage("reflow 1 0")).isNull()
     }
 
     // ---------------------------------------------------------------

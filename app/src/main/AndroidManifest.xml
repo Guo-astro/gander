@@ -114,6 +114,7 @@
                 <data android:mimeType="application/vnd.oasis.opendocument.text-template" />
                 <data android:mimeType="application/msword" />
                 <data android:mimeType="application/rtf" />
+                <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <!-- An STL, by every type it is sent as. The last is the one Android itself
@@ -158,6 +159,7 @@
                 <data android:mimeType="application/vnd.oasis.opendocument.text-template" />
                 <data android:mimeType="application/msword" />
                 <data android:mimeType="application/rtf" />
+                <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="model/stl" />

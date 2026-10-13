@@ -19,6 +19,15 @@ object Settings {
     private const val PREFS = "viewer"
     private const val KEY_NIGHT = "night"
     private const val KEY_SORT_ORDER = "folder_sort_order"
+    private const val KEY_BOOK_TEXT = "book_text_size"
+
+    /**
+     * The sizes a book's text can be set to, as a percentage of the size it opens at. Nine
+     * steps, each about a seventh larger than the one before, from a little under the book's
+     * own size to two and a half times it. Past that a phone holds three words to a line,
+     * and pinching is the better tool.
+     */
+    val BOOK_TEXT_SIZES = intArrayOf(80, 90, 100, 115, 130, 150, 175, 200, 250)
 
     enum class SortOrder(val labelRes: Int) {
         NAME_AZ(R.string.sort_name_az),
@@ -37,6 +46,17 @@ object Settings {
     fun setNight(context: Context, on: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit { putBoolean(KEY_NIGHT, on) }
+    }
+
+    /** The size of a book's text, one of [BOOK_TEXT_SIZES]. The same for every book. */
+    fun bookTextSize(context: Context): Int {
+        val kept = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_BOOK_TEXT, 100)
+        return if (kept in BOOK_TEXT_SIZES) kept else 100
+    }
+
+    fun setBookTextSize(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit { putInt(KEY_BOOK_TEXT, percent) }
     }
 
     fun sortOrder(context: Context): SortOrder {

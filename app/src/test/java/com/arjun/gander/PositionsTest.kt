@@ -10,7 +10,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The page each PDF was left at, issue #25: what it is filed under, and what is kept.
+ * The page each PDF was left at, issue #25, and the place each book was, issue #50: what it
+ * is filed under, and what is kept.
  *
  * The viewer's side, that the page reaches the URL and that nothing in a zip is filed, is in
  * ViewerActivityTest; this is the store itself.
@@ -118,5 +119,67 @@ class PositionsTest {
         store().writeText("garbage\nabc 5 notatime\ngood 3 100\n")
         assertThat(Positions.page(context, "abc")).isEqualTo(0)
         assertThat(Positions.page(context, "good")).isEqualTo(3)
+    }
+
+    // ---------------------------------------------------------------
+    // A book, which is left at a place finer than a page
+    // ---------------------------------------------------------------
+
+    @Test
+    fun aBooksPlaceIsKeptWithItsPageAndGivenBack() {
+        val key = keyOf("harbour.epub")
+        Positions.save(context, key, 4, 9, Positions.Place(2, 2968))
+        assertThat(Positions.place(context, key)).isEqualTo(Positions.Place(2, 2968))
+        assertThat(Positions.page(context, key)).isEqualTo(4)
+    }
+
+    /** A PDF's line has no place in it, and one filed by a build before books reads as it did. */
+    @Test
+    fun aPdfHasNoPlace() {
+        val key = keyOf("six-pages.pdf")
+        Positions.save(context, key, 4, 6)
+        assertThat(Positions.place(context, key)).isNull()
+        assertThat(store().readText().trim().split(' ')).hasSize(3)
+    }
+
+    /**
+     * What a book counts as its first page is more than a screenful, so a book left on it is
+     * kept where a PDF left on its first page is not. Only the top of the first chapter is
+     * where a book opens anyway.
+     */
+    @Test
+    fun aBookLeftPartWayDownItsFirstPageIsKept() {
+        val key = keyOf("harbour.epub")
+        Positions.save(context, key, 1, 9, Positions.Place(0, 412))
+        assertThat(Positions.place(context, key)).isEqualTo(Positions.Place(0, 412))
+
+        Positions.save(context, key, 1, 9, Positions.Place(0, 0))
+        assertThat(Positions.place(context, key)).isNull()
+
+        // The top of a later chapter is a place like any other
+        Positions.save(context, key, 3, 9, Positions.Place(2, 0))
+        assertThat(Positions.place(context, key)).isEqualTo(Positions.Place(2, 0))
+    }
+
+    /** A book left on its last page opens there, where a PDF read to the end opens at its first. */
+    @Test
+    fun aBookLeftAtItsEndIsKeptThere() {
+        val key = keyOf("harbour.epub")
+        Positions.save(context, key, 4, 9, Positions.Place(2, 2968))
+        Positions.save(context, key, 9, 9, Positions.Place(3, 600))
+        assertThat(Positions.place(context, key)).isEqualTo(Positions.Place(3, 600))
+    }
+
+    /** A line with a place that is not two counts is passed over whole, page and all. */
+    @Test
+    fun aLineWithADamagedPlaceIsPassedOver() {
+        store().writeText(
+            "four 3 100 2\nletters 3 100 two 5\nless 3 100 -1 5\nsix 3 100 2 5 9\ngood 3 100 2 5\n"
+        )
+        for (key in listOf("four", "letters", "less", "six")) {
+            assertThat(Positions.page(context, key)).isEqualTo(0)
+            assertThat(Positions.place(context, key)).isNull()
+        }
+        assertThat(Positions.place(context, "good")).isEqualTo(Positions.Place(2, 5))
     }
 }

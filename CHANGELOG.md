@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- An EPUB book opens (#50, asked for by @0xlne). Gander reads it a chapter at a time, with
+  the book's own contents list, Previous and Next under each chapter, the links between
+  chapters, and the book's pictures, fonts and styles. Contents is in the menu as well, so
+  the list is a tap away from anywhere in a chapter, and Back closes it. Text size, also in
+  the menu, makes a book's type smaller or larger in nine steps and keeps the line you were
+  on at the top. A book has no pages of its own, so the readout says how far through it you
+  are, as a percentage, and a book reopens at the line it was left on, at any text size and
+  whichever way the phone is held, its last page included. After a link to a note or to
+  another chapter, Back brings you back to the line you left, until you have read on from
+  where the link put you. A web link in a book shows its address, to copy: Gander still
+  opens none. Find searches the whole book, starting from where you are. A table or a line
+  of code too wide for the screen scrolls sideways by itself. The fixed pages of a picture book or a comic are
+  fitted to the width of the screen, and a book set in vertical columns is laid out in rows.
+  On a dark phone the page is dark, whatever colours the book set: a formula or a drawing
+  in black on a clear ground is shown in light ink, a darker picture of that kind gets
+  paper behind it, and a table's black lines are drawn light. A book locked with DRM
+  says so: only the app of the shop or library it came from can open one.
 - A file of a format Gander doesn't know opens as text straight away when it is text, without
   the card that offered to (thanks @Cecalie, who asked in #51 for a way past the card). Gander
   tells from the file's first bytes, and the line under the file's name says "Shown as text,

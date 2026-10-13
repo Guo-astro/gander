@@ -20,6 +20,7 @@ OPENING = [
     ("md.html", "notes.md"),
     ("text.html", "plain.txt"),
     ("model.html", "bracket.stl"),
+    ("epub.html", "harbour.epub"),
 ]
 
 CARD = (

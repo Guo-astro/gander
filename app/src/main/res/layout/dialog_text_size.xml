@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A book's text size: see ViewerActivity.askForTextSize. The two buttons are 48dp tall and
+     wider than that, and the size between them is read out when it changes. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/textSmaller"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/text_smaller"
+        android:minWidth="72dp"
+        android:minHeight="48dp"
+        android:text="@string/text_smaller_label"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/textSizeNow"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:accessibilityLiveRegion="polite"
+        android:gravity="center"
+        android:textAppearance="?attr/textAppearanceTitleMedium"
+        android:textColor="?attr/colorOnSurface" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/textLarger"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:contentDescription="@string/text_larger"
+        android:minWidth="72dp"
+        android:minHeight="48dp"
+        android:text="@string/text_larger_label"
+        android:textSize="20sp" />
+</LinearLayout>

@@ -80,6 +80,10 @@ should stay obviously so.
 | `utf16le.txt`, `utf16be.txt` | `vwEncodingOf` byte order mark sniffing. The mark itself must not appear in the output. |
 | `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. Its bytes read as text, so the app opens it as text without that page. Issue #51. |
 | `opaque.xyz` | The same extension over bytes that are not text, a zero among them, so the app keeps the unsupported page for it. |
+| `harbour.epub` | Issue #50, an EPUB 3 in four chapters. A stylesheet that imports another, a picture named from a chapter, a stylesheet, an inline style and a drawing, a scrambled font, a link to a place in another chapter, and a nav contents list with one entry under another and one that goes nowhere. Chapter one carries script four ways and a picture on another host. Chapter two is six pages long and is not sound XML. "Heronsgate" is once in chapter one and twice in chapter three. |
+| `almanac.epub` | The older kind of book: contents in an NCX file, the package at the top of the zip, and a chapter whose name has a space in it. |
+| `locked.epub` | A book whose one chapter is encrypted, as DRM leaves it, which must be said rather than drawn as noise. |
+| `gazetteer.epub` | What real books did to the reader that `harbour.epub` does not: body margins set for a desktop window, a heading whose id is `title`, a box 1400 pixels wide with a picture in it, a table, a line of code and a formula wider than any phone, a table in a box that already scrolls, a note placed out of sight, two switches with a default, a chapter set in columns that offers a stylesheet for rows, and a page of a fixed size, 600 by 800, in a book whose first two chapters say they reflow. |
 | `captions.srt`, `captions.vtt` | The same two captions as SubRip and as WebVTT, which the text viewer shows as written. |
 | `playlist.m3u` | A playlist of tracks that are not there. Android labels it audio, and Gander shows it as text. |
 | `release.nfo` | The notes that come with a download, as text. |

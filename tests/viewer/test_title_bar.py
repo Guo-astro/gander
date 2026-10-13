@@ -22,6 +22,8 @@ FIRST = {
     "md.html": "#content",
     "text.html": "#content",
     "prose.html": ".vw-paper > section",
+    # The strip above a chapter, which is where a book's page begins
+    "epub.html": "#epub-bar",
 }
 
 
@@ -95,6 +97,7 @@ def test_a_long_document_begins_the_bars_height_further_down(opened, made, html,
     ("xlsx.html", "budget.xlsx"),
     ("md.html", "notes.md"),
     ("text.html", "plain.txt"),
+    ("epub.html", "harbour.epub"),
 ])
 def test_a_short_document_clears_the_bar_and_still_does_not_scroll(opened, made, one_page_pdf, html, fixture):
     if fixture == "one-page.pdf":
