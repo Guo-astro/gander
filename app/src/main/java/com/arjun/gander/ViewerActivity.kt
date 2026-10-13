@@ -362,19 +362,44 @@ open class ViewerActivity : AppCompatActivity() {
             }
         }
 
-        // Held past the when because setUpSearch needs it to know whether the
-        // format it is offering to search actually has anything findable in it
-        val kind = detect(ext, mime)
-        when (kind) {
-            FileKind.IMAGE -> showPicture(container, uri, name, ext)
-            FileKind.PLAYER -> showPlayer(container, uri, name, ext)
-            FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
-            else -> showWeb(container, uri, kind, name, ext)
+        fun show(kind: FileKind) {
+            when (kind) {
+                FileKind.IMAGE -> showPicture(container, uri, name, ext)
+                FileKind.PLAYER -> showPlayer(container, uri, name, ext)
+                FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
+                else -> showWeb(container, uri, kind, name, ext)
+            }
+            setUpSearch(toolbar, kind)
+            setUpActions(toolbar, kind, uri, name, ext, mime)
+            // A document that opens turned over opens with the parts around it dark as well
+            if (loadedNight) nightChrome.show(true)
         }
-        setUpSearch(toolbar, kind)
-        setUpActions(toolbar, kind, uri, name, ext, mime)
-        // A document that opens turned over opens with the parts around it dark as well
-        if (loadedNight) nightChrome.show(true)
+
+        val detected = detect(ext, mime)
+        if (!FileKind.isUnknown(detected, ext)) return show(detected)
+        // A file of no known format that reads as text opens as text, with no card to tap
+        // through, and the line under its name says so. Issue #51.
+        whetherText(uri) { text ->
+            if (text) toolbar.subtitle = getString(R.string.unknown_shown_as_text)
+            show(if (text) FileKind.TEXT else detected)
+        }
+    }
+
+    /**
+     * Tells [then] whether the file reads as text. Its first bytes are read off the main
+     * thread, as a picture's are, since a provider can be slow to hand over even those. One
+     * that cannot be read is not text, and gets the card it always had.
+     */
+    private fun whetherText(uri: Uri, then: (Boolean) -> Unit) {
+        val app = applicationContext
+        val main = Handler(Looper.getMainLooper())
+        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
+        worker.execute {
+            val text = runCatching { app.contentResolver.openInputStream(uri)?.use(::readsAsText) }
+                .getOrNull() == true
+            main.post { if (!isDestroyed) then(text) }
+        }
+        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
 
     /** Night mode, share, print and "show in file manager" toolbar actions. */
@@ -1849,7 +1874,11 @@ open class ViewerActivity : AppCompatActivity() {
         // closed two lines down, so leaving either on screen offers a control that does
         // nothing, and night mode would go on rewriting the stored preference at a port
         // nothing is listening to.
-        val goneMenu = findViewById<MaterialToolbar>(R.id.toolbar).menu
+        val goneBar = findViewById<MaterialToolbar>(R.id.toolbar)
+        // The line under an unknown file's name says how the page was shown, and the page is
+        // gone. Reload reads the file's first bytes again and writes it back. Issue #51.
+        goneBar.subtitle = null
+        val goneMenu = goneBar.menu
         goneMenu.findItem(R.id.action_search)?.isVisible = false
         goneMenu.findItem(R.id.action_night_mode)?.isVisible = false
         // And Print, which has no document to print until Reload brings it back

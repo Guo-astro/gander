@@ -92,9 +92,10 @@ phone. Password-protected entries open with their password, and names written by
 tools in other languages are read as names rather than question marks, with **File name
 encoding** in the menu to correct a wrong guess.
 
-Anything else, including files with no extension at all, offers **View as text**, which
-shows the raw contents without renaming the file. Large files load 5 MB at a time with a
-**Show more** button, so they open instantly and can still be read end to end.
+Anything else, including files with no extension at all, opens as text when its first bytes
+read as text, and says so under the file's name. One that does not read as text offers **View
+as text**, which shows the raw contents without renaming the file. Large files load 5 MB at a
+time with a **Show more** button, so they open instantly and can still be read end to end.
 
 Word 97-2003 `.doc`, OpenDocument `.odt` and Rich Text `.rtf` are read by code written for
 Gander rather than by a bundled library: text and formatting, headings, lists, tables,

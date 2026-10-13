@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -135,7 +136,8 @@ class ViewerActivityTest {
             "anim.gif" to "imgweb.html",
             "bracket.stl" to "model.html",
             "bracket-ascii.stl" to "model.html",
-            "unknown.xyz" to "unsupported.html",
+            "unknown.xyz" to "text.html",
+            "opaque.xyz" to "unsupported.html",
         ).forEach { (fixture, page) ->
             val url = open(fixture).loadedUrl()
             assertThat("$fixture -> ${url.substringAfter("viewer/").substringBefore('?')}")
@@ -273,6 +275,131 @@ class ViewerActivityTest {
         val toolbar = view(uri).get()
             .findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
         assertThat(toolbar.title.toString()).isEqualTo("Alder Court.pdf")
+    }
+
+    // ---------------------------------------------------------------
+    // Unknown formats, issue #51
+    // ---------------------------------------------------------------
+
+    /** The line under the file's name in the title bar, or null where there is none. */
+    private fun ActivityController<ViewerActivity>.underTheName(): String? =
+        get().findViewById<MaterialToolbar>(R.id.toolbar).subtitle?.toString()
+
+    /** How many channels the page was handed once it had loaded: one for a text file's page. */
+    private fun ActivityController<ViewerActivity>.channels(): Int {
+        val web = webView()!!
+        web.webViewClient.onPageFinished(web, loadedUrl())
+        return shadowOf(web).createdPorts.size
+    }
+
+    /** One that reads as text opens as a text file does, channel and all, and says why under its name. */
+    @Test
+    fun anUnknownFormatThatReadsAsTextOpensAsText() {
+        val controller = open("unknown.xyz")
+        assertThat(controller.pageName()).isEqualTo("text.html")
+        assertThat(controller.loadedUrl()).contains("ext=xyz")
+        assertThat(controller.underTheName()).isEqualTo("Shown as text, unknown format")
+        assertThat(controller.channels()).isEqualTo(open("plain.txt").channels())
+    }
+
+    /** One that does not keeps the card, with nothing under its name and no channel. */
+    @Test
+    fun anUnknownFormatThatIsNotTextKeepsItsCard() {
+        val controller = open("opaque.xyz")
+        assertThat(controller.pageName()).isEqualTo("unsupported.html")
+        assertThat(controller.underTheName()).isNull()
+        assertThat(controller.channels()).isEqualTo(0)
+    }
+
+    /** One that cannot be read is not text either, and gets the card it always had. */
+    @Test
+    fun anUnknownFormatThatCannotBeReadKeepsItsCard() {
+        val gone = File(context.cacheDir, "never-written.xyz")
+        val controller = view(FixtureProvider.install().add("gone.xyz", gone))
+        assertThat(controller.pageName()).isEqualTo("unsupported.html")
+        assertThat(controller.underTheName()).isNull()
+    }
+
+    /** The line is for a file Gander has no name for, so a format it knows goes without. */
+    @Test
+    fun aKnownFormatSaysNothingUnderItsName() {
+        for (fixture in listOf("plain.txt", "six-pages.pdf", "exif-1.jpg", "archive.zip")) {
+            assertWithMessage(fixture).that(open(fixture).underTheName()).isNull()
+        }
+    }
+
+    /** A .ppt keeps its card though these bytes read as text, since the card says how to get it opened. */
+    @Test
+    fun aLegacyPowerPointKeepsItsCard() {
+        val controller = view(FixtureProvider.uriNamed("unknown.xyz", "slides.ppt"))
+        assertThat(controller.pageName()).isEqualTo("unsupported.html")
+        assertThat(controller.loadedUrl()).contains("ext=ppt")
+        assertThat(controller.underTheName()).isNull()
+    }
+
+    /** The line says how the page was shown, so it goes when the renderer under the page does. */
+    @Test
+    fun theLineGoesWithARendererThatHasGone() {
+        val controller = open("unknown.xyz")
+        assertThat(controller.underTheName()).isNotNull()
+        val web = controller.webView()!!
+        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
+            override fun didCrash() = false
+            override fun rendererPriorityAtExit() = 0
+        })
+        shadowOf(Looper.getMainLooper()).idle()
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.underTheName()).isNull()
+    }
+
+    /**
+     * Inside a zip the first bytes come through the archive's provider: a stored file as the
+     * part of the zip it sits in, which begins well after the zip's own first bytes, and a
+     * packed one down a pipe the check stops reading early. The packing runs at once here,
+     * since Robolectric's pipe is a file, and one nothing has been written to yet reads as empty.
+     */
+    @Test
+    fun anUnknownFormatInsideAZipIsToldByItsBytesToo() {
+        val text = Fixtures.bytes("unknown.xyz")
+        val file = File.createTempFile("unknown", ".zip").apply { deleteOnExit() }
+        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("stored.xyz").apply {
+                method = java.util.zip.ZipEntry.STORED
+                size = text.size.toLong()
+                compressedSize = text.size.toLong()
+                crc = java.util.zip.CRC32().apply { update(text) }.value
+            })
+            z.write(text)
+            z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("packed.xyz"))
+            z.write(text)
+            z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("opaque.xyz"))
+            z.write(Fixtures.bytes("opaque.xyz"))
+            z.closeEntry()
+        }
+        val archive = FixtureProvider.install().add("unknown.zip", file)
+        Robolectric.buildContentProvider(ArchiveProvider::class.java)
+            .create(ArchiveProvider.authority(context))
+            .get().writers = Executor { it.run() }
+        val raf = java.io.RandomAccessFile(file, "r")
+        val entries = ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, java.util.Locale.US)
+        }
+        fun opened(name: String) = start(
+            Intent()
+                .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
+                .setData(ArchiveProvider.uriFor(context, archive, entries.single { it.path == name }))
+        )
+
+        for (name in listOf("stored.xyz", "packed.xyz")) {
+            val controller = opened(name)
+            assertWithMessage(name).that(controller.pageName()).isEqualTo("text.html")
+            assertWithMessage(name).that(controller.underTheName()).isEqualTo("Shown as text, unknown format")
+        }
+        val card = opened("opaque.xyz")
+        assertThat(card.pageName()).isEqualTo("unsupported.html")
+        assertThat(card.underTheName()).isNull()
     }
 
     // ---------------------------------------------------------------

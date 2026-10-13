@@ -136,6 +136,18 @@ enum class FileKind(val page: String) {
         fun isAudioExt(ext: String) = ext in audioExt
 
         /**
+         * Files with no viewer that the card has advice for, in unsupported.js: a .ppt is
+         * told to be saved as .pptx. Read as text they would lose it.
+         */
+        val advisedExt = setOf("ppt")
+
+        /**
+         * Whether a file is one Gander has no viewer for and nothing to say about. These
+         * open as text where their bytes read as text: see [readsAsText]. Issue #51.
+         */
+        fun isUnknown(kind: FileKind, ext: String): Boolean = kind == UNSUPPORTED && ext !in advisedExt
+
+        /**
          * Where a file goes: by its extension, and failing that by the type its provider gave.
          *
          * The type is lowercased first. MIME types are case-insensitive, and the spellings

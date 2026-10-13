@@ -314,6 +314,24 @@ class FileKindTest {
         assertThat(FileKind.detect("", "application/octet-stream")).isEqualTo(UNSUPPORTED)
     }
 
+    /** What may open as text unasked: a file with no viewer and no advice on the card. Issue #51. */
+    @Test
+    fun anUnknownFileHasNoViewerAndNoAdvice() {
+        assertThat(FileKind.isUnknown(UNSUPPORTED, "xyz")).isTrue()
+        assertThat(FileKind.isUnknown(UNSUPPORTED, "")).isTrue()
+        assertThat(FileKind.isUnknown(UNSUPPORTED, "ppt")).isFalse()
+        assertThat(FileKind.isUnknown(TEXT, "xyz")).isFalse()
+        assertThat(FileKind.isUnknown(PLAYER, "mp4")).isFalse()
+    }
+
+    /** The advice is written in the card's script, so its extensions and these are held together. */
+    @Test
+    fun theAdvisedExtensionsAreTheOnesTheCardHasWordsFor() {
+        val script = File("src/main/assets/viewer/unsupported.js").readText()
+        val named = Regex("""vwExt === "([a-z0-9]+)"""").findAll(script).map { it.groupValues[1] }.toSet()
+        assertThat(named).isEqualTo(FileKind.advisedExt)
+    }
+
     // ---------------------------------------------------------------
 
     @Test

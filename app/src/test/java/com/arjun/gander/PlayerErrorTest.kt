@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.common.truth.Truth.assertThat
 import java.time.Duration
 import org.junit.Before
@@ -108,6 +109,22 @@ class PlayerErrorTest {
         viewer.player.fail()
         until(moving = false) { viewer.shown.any { it is WebView } }
         assertThat(viewer.shown.filterIsInstance<PlayerView>()).isEmpty()
+    }
+
+    /**
+     * Opening as text unasked is for files Gander has no viewer for. A track its player gave
+     * up on keeps the card, which says the track would not play. Issue #51.
+     */
+    @Test
+    fun aTrackThatFailsKeepsItsCard() {
+        val viewer = play()
+        viewer.player.fail()
+        until(moving = false) {
+            viewer.shown.filterIsInstance<WebView>().any { shadowOf(it).lastLoadedUrl != null }
+        }
+        val url = shadowOf(viewer.shown.filterIsInstance<WebView>().single()).lastLoadedUrl
+        assertThat(url).contains("viewer/unsupported.html")
+        assertThat(viewer.get().findViewById<MaterialToolbar>(R.id.toolbar).subtitle).isNull()
     }
 
     @Test

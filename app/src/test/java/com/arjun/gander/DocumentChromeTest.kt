@@ -144,13 +144,15 @@ class DocumentChromeTest {
 
     @Test
     fun everyDocumentFloatsItsBarAndNothingElseDoes() {
+        // The last is a file of no known format that reads as text, and so opens as text
         val documents = listOf(
             "six-pages.pdf", "report.docx", "letter.odt", "budget.xlsx", "deck.pptx", "notes.md", "plain.txt",
+            "unknown.xyz",
         )
         documents.forEach { assertWithMessage(it).that(open(it).get().floats).isTrue() }
 
         // A photo, a picture drawn by a page, a model, a sound, a zip and a file Gander cannot read
-        val others = listOf("tiny.png", "anim.gif", "bracket.stl", "tone.wav", "archive.zip", "unknown.xyz")
+        val others = listOf("tiny.png", "anim.gif", "bracket.stl", "tone.wav", "archive.zip", "opaque.xyz")
         others.forEach { assertWithMessage(it).that(open(it).get().floats).isFalse() }
     }
 

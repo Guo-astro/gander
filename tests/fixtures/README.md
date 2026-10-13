@@ -78,7 +78,8 @@ should stay obviously so.
 | `plain.txt` | Text viewer, UTF-8. |
 | `snapshot.json` | Issue #32. A .json file as they arrive, all on one line. Its id is 2<sup>53</sup>+1, the smallest whole number a double cannot hold, so laying it out by parsing and restringifying would round it and be caught. Carries an accent and an emoji, both inside strings the formatter copies through. |
 | `utf16le.txt`, `utf16be.txt` | `vwEncodingOf` byte order mark sniffing. The mark itself must not appear in the output. |
-| `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. |
+| `unknown.xyz` | An extension nothing claims, so the unsupported page offers to read it as text. Its bytes read as text, so the app opens it as text without that page. Issue #51. |
+| `opaque.xyz` | The same extension over bytes that are not text, a zero among them, so the app keeps the unsupported page for it. |
 | `captions.srt`, `captions.vtt` | The same two captions as SubRip and as WebVTT, which the text viewer shows as written. |
 | `playlist.m3u` | A playlist of tracks that are not there. Android labels it audio, and Gander shows it as text. |
 | `release.nfo` | The notes that come with a download, as text. |

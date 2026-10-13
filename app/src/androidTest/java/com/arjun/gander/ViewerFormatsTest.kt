@@ -1,6 +1,10 @@
 package com.arjun.gander
 
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
+import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.espresso.web.assertion.WebViewAssertions.webMatches
 import androidx.test.espresso.web.sugar.Web.onWebView
 import androidx.test.espresso.web.webdriver.DriverAtoms.findElement
@@ -95,12 +99,24 @@ class ViewerFormatsTest {
         }
     }
 
+    /** A file of no known format whose bytes are not text gets the card, and its offer. */
     @Test
-    fun anUnknownFormatOffersToShowItAsText() {
-        open("unknown.xyz").use {
+    fun anUnknownFormatThatIsNotTextOffersToShowItAsText() {
+        open("opaque.xyz").use {
             onWebView()
                 .withElement(findElement(Locator.ID, "asText"))
                 .check(webMatches(getText(), containsString("View as text")))
+        }
+    }
+
+    /** One that reads as text opens as text with no card to tap through, and says so under its name. Issue #51. */
+    @Test
+    fun anUnknownFormatThatReadsAsTextOpensAsText() {
+        open("unknown.xyz").use {
+            onWebView()
+                .withElement(findElement(Locator.CSS_SELECTOR, "#content"))
+                .check(webMatches(getText(), containsString("0123456789")))
+            onView(withText(R.string.unknown_shown_as_text)).check(matches(isDisplayed()))
         }
     }
 
