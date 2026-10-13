@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -297,7 +298,7 @@ class ViewerActivityTest {
         val controller = open("unknown.xyz")
         assertThat(controller.pageName()).isEqualTo("text.html")
         assertThat(controller.loadedUrl()).contains("ext=xyz")
-        assertThat(controller.underTheName()).isEqualTo("Unknown format, shown as text")
+        assertThat(controller.underTheName()).isEqualTo("Shown as text, unknown format")
         assertThat(controller.channels()).isEqualTo(open("plain.txt").channels())
     }
 
@@ -334,6 +335,71 @@ class ViewerActivityTest {
         assertThat(controller.pageName()).isEqualTo("unsupported.html")
         assertThat(controller.loadedUrl()).contains("ext=ppt")
         assertThat(controller.underTheName()).isNull()
+    }
+
+    /** The line says how the page was shown, so it goes when the renderer under the page does. */
+    @Test
+    fun theLineGoesWithARendererThatHasGone() {
+        val controller = open("unknown.xyz")
+        assertThat(controller.underTheName()).isNotNull()
+        val web = controller.webView()!!
+        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
+            override fun didCrash() = false
+            override fun rendererPriorityAtExit() = 0
+        })
+        shadowOf(Looper.getMainLooper()).idle()
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.underTheName()).isNull()
+    }
+
+    /**
+     * Inside a zip the first bytes come through the archive's provider: a stored file as the
+     * part of the zip it sits in, which begins well after the zip's own first bytes, and a
+     * packed one down a pipe the check stops reading early. The packing runs at once here,
+     * since Robolectric's pipe is a file, and one nothing has been written to yet reads as empty.
+     */
+    @Test
+    fun anUnknownFormatInsideAZipIsToldByItsBytesToo() {
+        val text = Fixtures.bytes("unknown.xyz")
+        val file = File.createTempFile("unknown", ".zip").apply { deleteOnExit() }
+        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("stored.xyz").apply {
+                method = java.util.zip.ZipEntry.STORED
+                size = text.size.toLong()
+                compressedSize = text.size.toLong()
+                crc = java.util.zip.CRC32().apply { update(text) }.value
+            })
+            z.write(text)
+            z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("packed.xyz"))
+            z.write(text)
+            z.closeEntry()
+            z.putNextEntry(java.util.zip.ZipEntry("opaque.xyz"))
+            z.write(Fixtures.bytes("opaque.xyz"))
+            z.closeEntry()
+        }
+        val archive = FixtureProvider.install().add("unknown.zip", file)
+        Robolectric.buildContentProvider(ArchiveProvider::class.java)
+            .create(ArchiveProvider.authority(context))
+            .get().writers = Executor { it.run() }
+        val raf = java.io.RandomAccessFile(file, "r")
+        val entries = ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, java.util.Locale.US)
+        }
+        fun opened(name: String) = start(
+            Intent()
+                .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
+                .setData(ArchiveProvider.uriFor(context, archive, entries.single { it.path == name }))
+        )
+
+        for (name in listOf("stored.xyz", "packed.xyz")) {
+            val controller = opened(name)
+            assertWithMessage(name).that(controller.pageName()).isEqualTo("text.html")
+            assertWithMessage(name).that(controller.underTheName()).isEqualTo("Shown as text, unknown format")
+        }
+        val card = opened("opaque.xyz")
+        assertThat(card.pageName()).isEqualTo("unsupported.html")
+        assertThat(card.underTheName()).isNull()
     }
 
     // ---------------------------------------------------------------

@@ -1874,7 +1874,11 @@ open class ViewerActivity : AppCompatActivity() {
         // closed two lines down, so leaving either on screen offers a control that does
         // nothing, and night mode would go on rewriting the stored preference at a port
         // nothing is listening to.
-        val goneMenu = findViewById<MaterialToolbar>(R.id.toolbar).menu
+        val goneBar = findViewById<MaterialToolbar>(R.id.toolbar)
+        // The line under an unknown file's name says how the page was shown, and the page is
+        // gone. Reload reads the file's first bytes again and writes it back. Issue #51.
+        goneBar.subtitle = null
+        val goneMenu = goneBar.menu
         goneMenu.findItem(R.id.action_search)?.isVisible = false
         goneMenu.findItem(R.id.action_night_mode)?.isVisible = false
         // And Print, which has no document to print until Reload brings it back
