@@ -20,8 +20,9 @@
   <span id="epub-where" class="epub-where"></span>
 </div>
 
-<!-- The chapter being read, drawn inside this element's shadow tree: see epub.js -->
-<main id="book"></main>
+<!-- The chapter being read, drawn inside this element's shadow tree: see epub.js. The
+     frame keeps it under what opens over it: see epub.css -->
+<div class="epub-frame"><main id="book"></main></div>
 
 <div id="epub-turn" class="epub-turn" hidden>
   <button type="button" id="epub-prev">Previous</button>

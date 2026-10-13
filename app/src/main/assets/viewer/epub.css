@@ -24,6 +24,21 @@
 
 body { background: #ffffff; background: var(--epub-paper); }
 
+/*
+ * What Gander says on this page is set in the phone's own sans-serif, asked for by that word
+ * alone. A book's fonts are named in this page's head, where a name counts for the whole
+ * page, so one that called a font of its own Roboto would have the address of a link drawn
+ * in letters of its choosing. No font a page brings can be had by the word sans-serif.
+ */
+body { font-family: sans-serif; }
+
+/*
+ * Around the book, so that nothing a book says of itself is weighed against the contents or
+ * a link's address, which open over it: a stylesheet in a shadow tree can place the element
+ * the tree hangs on anywhere and give it any z-index, and nothing here outranks it there.
+ */
+.epub-frame { isolation: isolate; }
+
 /* The ink a chapter inherits where the book names none of its own */
 #book {
   display: block;

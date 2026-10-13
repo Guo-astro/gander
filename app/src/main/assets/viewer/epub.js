@@ -35,6 +35,7 @@ var VW_EPUB_PAGE_BYTES = 2048;
 
 var vwEpub = (function () {
   var XLINK = "http://www.w3.org/1999/xlink";
+  var SVGNS = "http://www.w3.org/2000/svg";
   var OPS = "http://www.idpf.org/2007/ops";
   var MATHML = "http://www.w3.org/1998/Math/MathML";
 
@@ -86,8 +87,19 @@ var vwEpub = (function () {
     ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2"
   };
 
-  var URL_IN_CSS = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'")\s][^)]*?))\s*\)/gi;
-  var IMPORT_IN_CSS = /@import\s*(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;]*;/gi;
+  /*
+   * The three things looked for in a stylesheet. Each stops at the next place another of its
+   * kind could begin, a bracket for an address and an @ or a brace for a rule, so a sheet
+   * made of sixty thousand beginnings and no end is gone over once and not once for each.
+   */
+  var URL_IN_CSS = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'"()\s][^()]*?))\s*\)/gi;
+  var IMPORT_IN_CSS = /@import\s*(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;{}@]*;/gi;
+  var FACE_IN_CSS = /@font-face\s*\{[^{}]*\}/gi;
+
+  /* What may hide an address in a stylesheet, or in the style of one element: see plain() */
+  var VEILED = /\/\*|\\|image-set/i;
+  var VEIL = /\/\*|["'\\]/g;
+  var IMAGE_SET = /(?:-webkit-)?image-set\(/gi;
 
   /*
    * What a chapter starts from inside the shadow tree. These come before the book's
@@ -152,6 +164,9 @@ var vwEpub = (function () {
    * is one. See firstShowing().
    */
   var COUNTED = /^(img|svg|video)$/;
+
+  /* What a tap may be a link through: a link, and a part of a picture that is one */
+  var LINK = /^(a|area)$/;
 
   /* The addresses outside a book that a reader is shown, the ones vwDisarmLinks() leaves a
      Word document: a web page, somebody to write to and a number to ring */
@@ -669,10 +684,17 @@ var vwEpub = (function () {
   function markup(source) {
     var doc = new DOMParser().parseFromString(source, "application/xhtml+xml");
     if (doc.documentElement && !doc.getElementsByTagName("parsererror").length) return doc;
-    var spelled = source.replace(/<([A-Za-z][\w:.-]*)((?:\s[^<>]*?)?)\s*\/>/g, function (m, tag, attrs) {
+    // The gap before the stroke is taken with the attributes: looked for apart from them, a
+    // tag with a hundred thousand spaces in it is gone over once for every one of them
+    var spelled = source.replace(/<([A-Za-z][\w:.-]*)((?:\s[^<>]*?)?)\/>/g, function (m, tag, attrs) {
       return VOID.test(tag) ? m : "<" + tag + attrs + "></" + tag + ">";
     });
     return new DOMParser().parseFromString(spelled, "text/html");
+  }
+
+  /* Whether the style of one element names a file, or could be hiding that it does */
+  function addressed(style) {
+    return /url\(/i.test(style || "") || VEILED.test(style || "");
   }
 
   function setAside(el, name) {
@@ -696,7 +718,7 @@ var vwEpub = (function () {
       var el = els[i];
       setAside(el, "src");
       setAside(el, "poster");
-      if (/url\(/i.test(el.getAttribute("style") || "")) setAside(el, "style");
+      if (addressed(el.getAttribute("style"))) setAside(el, "style");
       var name = local(el);
       if (name !== "image" && name !== "use" && name !== "feimage") continue;
       var href = el.getAttributeNS(XLINK, "href") || el.getAttribute("href") || "";
@@ -705,6 +727,22 @@ var vwEpub = (function () {
       el.removeAttributeNS(XLINK, "href");
       el.removeAttribute("href");
       if (name === "image" && href) el.setAttribute("data-vw-href", href);
+    }
+
+    /*
+     * A drawing fills, masks, clips and filters a shape by the address of something drawn
+     * for the purpose, written as in a stylesheet but in an attribute of the shape. One that
+     * points into the chapter's own drawings stays. Any other would be asked of a host, so
+     * the attribute goes.
+     */
+    var shapes = doc.getElementsByTagNameNS(SVGNS, "*");
+    for (var s = 0; s < shapes.length; s++) {
+      var attrs = shapes[s].attributes;
+      for (var a = attrs.length - 1; a >= 0; a--) {
+        // Its style is answered from the zip like any other: see fetched()
+        if (/^(data-vw-)?style$/.test(attrs[a].name) || attrs[a].value.indexOf("(") < 0) continue;
+        if (/url\(\s*["']?(?!#)/i.test(plain(attrs[a].value))) shapes[s].removeAttribute(attrs[a].name);
+      }
     }
   }
 
@@ -738,7 +776,7 @@ var vwEpub = (function () {
       if (value) out[name] = value;
     });
     if (!out.lang && el.getAttribute("xml:lang")) out.lang = el.getAttribute("xml:lang");
-    var style = el.getAttribute("style");
+    var style = plain(el.getAttribute("style") || "");
     if (style && !/url\(/i.test(style)) out.style = style;
     return out;
   }
@@ -923,6 +961,87 @@ var vwEpub = (function () {
     held = {};
   }
 
+  /*
+   * A stylesheet written the one way the rest of this file reads them, so that an address
+   * cannot be spelled past it. The engine reads u\72l( as url(, and an @import with a
+   * comment between the word and the file as an import, which the patterns above would not.
+   * So comments come out, and a letter written as an escape is written as the letter. What
+   * is inside quotes is left as it is.
+   *
+   * image-set() goes altogether. It takes an address as bare quotes, or from a variable
+   * set somewhere else, with no url() for anything here to find, and a book that offers a
+   * picture at two sizes that way still has whatever it set before it.
+   */
+  function plain(css) {
+    if (!VEILED.test(css)) return css;
+    var out = "";
+    var at = 0;
+    var found;
+    VEIL.lastIndex = 0;
+    while ((found = VEIL.exec(css))) {
+      out += css.slice(at, found.index);
+      at = found.index;
+      var c = found[0];
+      if (c === "/*") {
+        var end = css.indexOf("*/", at + 2);
+        at = end < 0 ? css.length : end + 2;
+        out += " ";
+      } else if (c === "\\") {
+        var hex = /^[0-9a-f]{1,6}/i.exec(css.substr(at + 1, 6));
+        var span = hex ? 1 + hex[0].length : 2;
+        var letter = hex ? String.fromCharCode(parseInt(hex[0], 16)) : css.charAt(at + 1);
+        // One space after the number is part of the escape
+        if (hex && /\s/.test(css.charAt(at + span))) span++;
+        out += /^[a-z]$/i.test(letter) ? letter : css.substr(at, span);
+        at += span;
+      } else {
+        at = quoted(css, at);
+        out += css.slice(found.index, at);
+      }
+      VEIL.lastIndex = at;
+    }
+    out += css.slice(at);
+
+    var without = "";
+    at = 0;
+    IMAGE_SET.lastIndex = 0;
+    while ((found = IMAGE_SET.exec(out))) {
+      without += out.slice(at, found.index) + "none";
+      at = closed(out, IMAGE_SET.lastIndex);
+      IMAGE_SET.lastIndex = at;
+    }
+    return without + out.slice(at);
+  }
+
+  /* Where the quoted text that opens at [from] is over: past its closing quote, or at the
+     end of its line, which is where the engine gives up on one left open */
+  function quoted(css, from) {
+    var quote = css.charAt(from);
+    var i = from + 1;
+    while (i < css.length && css.charAt(i) !== quote && css.charAt(i) !== "\n") {
+      if (css.charAt(i) === "\\") i++;
+      i++;
+    }
+    return Math.min(i + 1, css.length);
+  }
+
+  /* Where the bracket opened just before [from] is closed, or the end where it never is */
+  function closed(css, from) {
+    var deep = 1;
+    var i = from;
+    while (i < css.length && deep) {
+      var c = css.charAt(i);
+      if (c === '"' || c === "'") {
+        i = quoted(css, i);
+        continue;
+      }
+      if (c === "(") deep++;
+      else if (c === ")") deep--;
+      i++;
+    }
+    return i;
+  }
+
   function cssAddress(match) {
     return (match[1] !== undefined ? match[1] : match[2] !== undefined ? match[2] : match[3] || "").trim();
   }
@@ -955,17 +1074,20 @@ var vwEpub = (function () {
 
   /*
    * A stylesheet with the ones it imports written into it, each read from where it lives, so
-   * the addresses in one are worked out against its own folder. [chain] is the files already
-   * being read on the way here, which is how one that imports itself comes to an end.
+   * the addresses in one are worked out against its own folder. [seen] is every file already
+   * written into the sheet this is part of, and each goes in once: that is how one that
+   * imports itself comes to an end, and how eight that each import the next ten times over
+   * come to eight readings and not ten million. [deep] is how many imports led here.
    */
-  function gathered(css, base, chain) {
+  function gathered(css, base, seen, deep) {
     var asked = [];
-    var marked = css.replace(IMPORT_IN_CSS, function (whole, quote, href) {
+    var marked = plain(css).replace(IMPORT_IN_CSS, function (whole, quote, href) {
       var at = resolve(base, href);
-      var ok = at && chain.length < 8 && chain.indexOf(at.path) < 0 && entry(at.path);
+      var ok = at && deep < 8 && !seen[at.path] && entry(at.path);
+      if (ok) seen[at.path] = true;
       asked.push(ok
         ? text(at.path).then(function (inner) {
-          return gathered(inner, at.path, chain.concat(at.path));
+          return gathered(inner, at.path, seen, deep + 1);
         }, function () { return ""; })
         : Promise.resolve(""));
       return "/*vw-import-" + (asked.length - 1) + "*/";
@@ -988,9 +1110,11 @@ var vwEpub = (function () {
    * given.
    */
   function fitted(css, base) {
-    return gathered(css, base, [base]).then(function (whole) {
+    var seen = {};
+    seen[base] = true;
+    return gathered(css, base, seen, 0).then(function (whole) {
       var fonts = "";
-      var rest = whole.replace(/@font-face\s*\{[^}]*\}/gi, function (rule) {
+      var rest = whole.replace(FACE_IN_CSS, function (rule) {
         if (/url\("(blob:|data:[^,])/i.test(rule)) fonts += rule + "\n";
         return "";
       });
@@ -1050,7 +1174,7 @@ var vwEpub = (function () {
         var style = el.getAttribute("data-vw-style");
         if (style === null) return;
         el.removeAttribute("data-vw-style");
-        jobs.push(urls(style, base, held).then(function (css) {
+        jobs.push(urls(plain(style), base, held).then(function (css) {
           return function () { el.setAttribute("style", css); };
         }));
       })(els[i]);
@@ -1770,11 +1894,13 @@ var vwEpub = (function () {
    */
   shadow.addEventListener("click", function (e) {
     var a = e.target;
-    while (a && a !== shadow && !(a.nodeType === 1 && local(a) === "a")) a = a.parentNode;
+    while (a && a !== shadow && !(a.nodeType === 1 && LINK.test(local(a)))) a = a.parentNode;
     if (!a || a === shadow) return;
+    // First, and whatever the link says of itself, so that no tap in a book is ever the
+    // engine's to follow: it would follow one to Gander's own pages, which the app allows
+    e.preventDefault();
     var href = a.getAttribute("href") || a.getAttributeNS(XLINK, "href");
     if (!href) return;
-    e.preventDefault();
     var at = resolve(spine[shown].path, href);
     if (!at) {
       var address = outside(href);
