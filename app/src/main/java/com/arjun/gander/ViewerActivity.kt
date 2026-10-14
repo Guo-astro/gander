@@ -199,6 +199,9 @@ open class ViewerActivity : AppCompatActivity() {
     internal var documentChrome: DocumentChrome? = null
         private set
 
+    /** A PDF's double tap. See [DoubleTapZoom]. */
+    private var doubleTapZoom: DoubleTapZoom? = null
+
     /**
      * ACTION_CREATE_DOCUMENT with the type set per file. The stock contract fixes
      * it at construction, and the viewer does not know what it is showing until an
@@ -995,10 +998,18 @@ open class ViewerActivity : AppCompatActivity() {
      * so a position: fixed scrubber would be pinned to a viewport the reader is not
      * looking at and would slide off screen the moment they pinched in.
      */
-    private class ScrollProbeWebView(context: Context) : WebView(context) {
+    private class ScrollProbeWebView(context: Context) : WebView(context), ZoomSurface {
         fun verticalOffset(): Int = computeVerticalScrollOffset()
         fun verticalRange(): Int = computeVerticalScrollRange()
         fun verticalExtent(): Int = computeVerticalScrollExtent()
+
+        // What a double tap reads; zoomBy and scrollTo are the WebView's own. See DoubleTapZoom.
+        override fun viewWidth(): Int = width
+        override fun viewHeight(): Int = height
+        override fun scrolledX(): Int = scrollX
+        override fun scrolledY(): Int = scrollY
+        override fun rangeX(): Int = computeHorizontalScrollRange()
+        override fun rangeY(): Int = computeVerticalScrollRange()
     }
 
     private val fastScrollTrack: View by lazy { findViewById(R.id.fastScrollTrack) }
@@ -1883,6 +1894,9 @@ open class ViewerActivity : AppCompatActivity() {
                 detail: android.webkit.RenderProcessGoneDetail
             ): Boolean {
                 if (webView === view) {
+                    // A zoom still on its way would go on calling a WebView that has gone
+                    doubleTapZoom?.cancel()
+                    doubleTapZoom = null
                     webView = null
                     (view.parent as? ViewGroup)?.removeView(view)
                     view.destroy()
@@ -1930,8 +1944,14 @@ open class ViewerActivity : AppCompatActivity() {
         if (pageGetsChannel(kind) && floor.isEmpty()) {
             documentChrome = DocumentChrome(this, ::touchExplorationOn, ::tellPage, ::keepThumbBelowBar)
                 .apply { float() }
-            // Not consumed: the document still takes every touch
-            web.setOnTouchListener { _, event -> documentChrome?.touched(event); false }
+        }
+        // Only pdf.html turns the WebView's own double tap off, so only a PDF gets this one
+        doubleTapZoom = if (kind == FileKind.PDF) DoubleTapZoom(this, web) else null
+        // Not consumed: the document still takes every touch
+        web.setOnTouchListener { _, event ->
+            documentChrome?.touched(event)
+            doubleTapZoom?.touched(event)
+            false
         }
 
         // Any scroll at all is what brings the readout up; the number in it comes from
@@ -2294,6 +2314,7 @@ open class ViewerActivity : AppCompatActivity() {
         lockScreen = null
         player?.release()
         player = null
+        doubleTapZoom?.cancel()
         webView?.destroy()
         webView = null
         super.onDestroy()

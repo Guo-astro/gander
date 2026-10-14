@@ -25,6 +25,12 @@
      before and only the temperature has moved. */
   body { background: #48443D; }
 
+  /* Turns off Chromium's own double tap zoom, which fits the block under the finger to the
+     screen and so took a page, one block as wide as the screen, in by a fifth. The app zooms a
+     double tap itself, in DoubleTapZoom.kt, and would zoom twice without this line. A pinch and
+     a pan are as they were. */
+  html { touch-action: manipulation; }
+
   /* The strip between two pages. One declaration, three consumers: .pg's margin draws
      it, .vw-gap bridges it so a selection can cross it, and PAGE_PITCH counts it into
      the draw and keep bands. They disagreeing is a bug in each of those three ways. */

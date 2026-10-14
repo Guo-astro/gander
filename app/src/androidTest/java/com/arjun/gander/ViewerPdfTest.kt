@@ -1,6 +1,14 @@
 package com.arjun.gander
 
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.webkit.WebView
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.GeneralClickAction
+import androidx.test.espresso.action.Press
+import androidx.test.espresso.action.Tap
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import com.google.common.truth.Truth.assertThat
@@ -133,6 +141,53 @@ class ViewerPdfTest {
             WebViewProbe.await(scenario, "$DRAWN >= 1", "the first page to be drawn")
             val origin = WebViewProbe.text(scenario, "location.origin")
             assertThat(origin).isEqualTo("https://appassets.androidplatform.net")
+        }
+    }
+
+    /** How many hundredths of its fitted width the page is drawn at. */
+    private val ZOOM = "Math.round(100 * document.documentElement.clientWidth / visualViewport.width)"
+
+    /** Where in the document the place a quarter across the screen and a third down it is, in CSS px. */
+    private val UNDER_THE_FINGER =
+        "Math.round(visualViewport.pageLeft + visualViewport.width / 4) + ' ' +" +
+            " Math.round(visualViewport.pageTop + visualViewport.height / 3)"
+
+    private val doubleTapOffCentre = GeneralClickAction(
+        Tap.DOUBLE,
+        { view ->
+            val at = IntArray(2).also { view.getLocationOnScreen(it) }
+            floatArrayOf(at[0] + view.width / 4f, at[1] + view.height / 3f)
+        },
+        Press.FINGER,
+        InputDevice.SOURCE_TOUCHSCREEN,
+        MotionEvent.BUTTON_PRIMARY,
+    )
+
+    private fun place(scenario: ActivityScenario<ViewerActivity>): List<Int> =
+        WebViewProbe.text(scenario, UNDER_THE_FINGER).split(" ").map { it.toInt() }
+
+    /**
+     * The double tap has a half in the page, which turns Chromium's own off, and a half in the
+     * app, which zooms the WebView. Only a device has both, and a WebView to zoom.
+     */
+    @Test
+    fun aDoubleTapZoomsInAboutThePlaceTappedAndTheNextPutsThePageBack() {
+        open("six-pages.pdf").use { scenario ->
+            WebViewProbe.await(scenario, "$DRAWN >= 1", "the first page to be drawn")
+            assertThat(WebViewProbe.eval(scenario, ZOOM)).isEqualTo("100")
+            val before = place(scenario)
+
+            onView(isAssignableFrom(WebView::class.java)).perform(doubleTapOffCentre)
+            val wanted = (DOUBLE_TAP_ZOOM * 100).toInt()
+            WebViewProbe.await(
+                scenario, "Math.abs($ZOOM - $wanted) <= 2", "the page to zoom in", 10_000
+            )
+            val after = place(scenario)
+            assertThat(after[0]).isWithin(4).of(before[0])
+            assertThat(after[1]).isWithin(4).of(before[1])
+
+            onView(isAssignableFrom(WebView::class.java)).perform(doubleTapOffCentre)
+            WebViewProbe.await(scenario, "$ZOOM === 100", "the page to come back", 10_000)
         }
     }
 }
