@@ -9,6 +9,7 @@ Gander показывает документы на Android без подклю�
 - Документы OpenDocument (.odt) и Rich Text (.rtf)
 - Таблицы Excel (.xlsx, .xls, .xlsm, .xlsb, .csv, .ods), с вкладками листов
 - Презентации PowerPoint (.pptx)
+- Книги EPUB (.epub) без DRM
 - Фото: JPG, PNG, WebP, HEIC, BMP, GIF, SVG, AVIF и другие
 - Видео: MP4, MKV, WebM, MOV и другие
 - Аудио: MP3, M4A, FLAC, WAV, OGG, Opus

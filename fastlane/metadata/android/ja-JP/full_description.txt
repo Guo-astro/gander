@@ -9,6 +9,7 @@ GanderはAndroid用のオフライン文書ビューアーです。PDF、Word文
 - OpenDocumentテキスト（.odt）、リッチテキスト（.rtf）
 - Excelの表計算ファイル（.xlsx、.xls、.xlsm、.xlsb、.csv、.ods）：複数シートのブックはタブで切り替え
 - PowerPointのスライド（.pptx）
+- EPUBの電子書籍（.epub、DRMなし）
 - 写真：JPG、PNG、WebP、HEIC、BMP、GIF、SVG、AVIFなど
 - 動画：MP4、MKV、WebM、MOVなど
 - 音声：MP3、M4A、FLAC、WAV、OGG、Opus

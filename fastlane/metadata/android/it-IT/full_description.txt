@@ -9,6 +9,7 @@ Tutti i formati che probabilmente ti invieranno:
 - Testi OpenDocument (.odt) e Rich Text (.rtf)
 - Fogli di calcolo Excel (.xlsx, .xls, .xlsm, .xlsb, .csv, .ods), con schede per le cartelle di lavoro a più fogli
 - Presentazioni PowerPoint (.pptx)
+- Libri EPUB (.epub) senza DRM
 - Foto: JPG, PNG, WebP, HEIC, BMP, GIF, SVG, AVIF e altri
 - Video: MP4, MKV, WebM, MOV e altri
 - Audio: MP3, M4A, FLAC, WAV, OGG, Opus

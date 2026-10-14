@@ -47,7 +47,7 @@ class ReleaseHygieneTest {
          * while the English one leaves it out, because Play Console flags the
          * English phrase as a promotion keyword and none of the translated ones.
          */
-        const val TRANSLATED_FROM = "cfc5a3df00799a1ebb3887064b5d5ba2911f67a0d854905b15afe00480a5c607"
+        const val TRANSLATED_FROM = "cb2d9241aee082acb17803ddaa43237cd1eabf500577f4997a2c1c29a544519a"
 
         /** Every listing language beside the English, read off the disk. */
         val TRANSLATIONS: List<File> = LISTING.listFiles { f -> f.isDirectory && f.name != "en-US" }

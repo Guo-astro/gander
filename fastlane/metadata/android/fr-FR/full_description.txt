@@ -9,6 +9,7 @@ Tous les formats qu'on vous envoie :
 - Textes OpenDocument (.odt) et Rich Text (.rtf)
 - Feuilles de calcul Excel (.xlsx, .xls, .xlsm, .xlsb, .csv, .ods), avec des onglets pour les classeurs à plusieurs feuilles
 - Présentations PowerPoint (.pptx)
+- Livres EPUB (.epub) sans DRM
 - Photos : JPG, PNG, WebP, HEIC, BMP, GIF, SVG, AVIF, etc.
 - Vidéos : MP4, MKV, WebM, MOV, etc.
 - Audio : MP3, M4A, FLAC, WAV, OGG, Opus
@@ -24,7 +25,7 @@ Inutile de me croire sur parole. Regardez les autorisations de l'application sur
 
 Comment ouvrir vos fichiers
 
-Gander ouvre le fichier que vous lui confiez : via le sélecteur de fichiers du système, via « Ouvrir avec » depuis votre gestionnaire de fichiers ou une autre application, ou depuis un dossier auquel vous lui donnez accès une fois pour toutes. Il n'analyse pas votre téléphone, ne le parcourt pas de lui-même et ne demande jamais l'autorisation d'accès au stockage. C'est un choix de confidentialité, pas une fonction manquante. Les fichiers récents réapparaissent avec leurs miniatures, et les dossiers autorisés restent à portée de doigt.
+Gander ouvre le fichier que vous lui confiez : via le sélecteur de fichiers du système, via « Ouvrir avec » depuis votre gestionnaire de fichiers ou une autre application, ou depuis un dossier auquel vous lui donnez accès une fois. Il n'analyse ni ne parcourt votre téléphone, et ne demande jamais l'autorisation d'accès au stockage. C'est un choix de confidentialité, pas une fonction manquante. Les fichiers récents réapparaissent avec leurs miniatures, et les dossiers autorisés restent à portée de doigt.
 
 Conçu pour lire sur un téléphone
 
@@ -44,7 +45,7 @@ Ses limites, en toute franchise
 
 - Gander est une visionneuse, pas un éditeur
 - L'ancien format binaire .ppt n'est pas pris en charge. Les .xls et .doc binaires le sont
-- Les présentations PowerPoint complexes s'affichent de façon approximative, et les graphiques des feuilles de calcul n'apparaissent pas
+- Les présentations PowerPoint complexes s'affichent approximativement, et les graphiques des feuilles de calcul n'apparaissent pas
 - L'affichage des PDF nécessite Android System WebView 125 ou plus récent, et Gander vous le signale clairement si votre version est plus ancienne
 - L'application elle-même est en anglais
 
