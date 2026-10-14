@@ -26,7 +26,11 @@ def in_book(page, script, arg=None):
 
 
 def tap_all(page, selector):
-    """A real tap on everything in the chapter that [selector] finds and that has a box."""
+    """
+    A real tap on everything in the chapter that [selector] finds and that has a box, and how
+    many taps were made: a tap can take away the next thing to tap.
+    """
+    taps = 0
     spots = in_book(
         page,
         """return [...root.querySelectorAll(arg)].map(el => {
@@ -52,7 +56,8 @@ def tap_all(page, selector):
         if at:
             page.mouse.click(at[0], at[1])
             page.wait_for_timeout(60)
-    return spots
+            taps += 1
+    return taps
 
 
 def asked_of(page):
@@ -342,38 +347,45 @@ html, body, #epub-bar, .epub-bar, #epub-turn, #epub-contents, #epub-link, #vw-st
 """
 
 
-def test_a_book_cannot_draw_over_the_contents_or_a_links_address(viewer, page, made, port):
+def test_a_book_cannot_draw_over_any_part_of_gander(viewer, page, made, port):
     """
     A stylesheet in the shadow tree can reach the element the tree hangs on, and nothing
-    outranks what it says there with !important. So a book can lay itself over the whole
-    screen, and the two things of Gander's own that open over a book must still open over
-    this one: its contents, and the address a link leaves for.
+    outranks what it says there with !important, so a book could lay itself over the whole
+    screen and take the taps meant for the bar above it. A book's :host matches nothing, and
+    the bar, Next, the contents and the address a link leaves for are each on top where they
+    are and take a real tap.
     """
     book = little_book(
         made, "over.epub",
         [("", "<style>" + OVER_CSS + "</style>",
-          '<body><h1>Over everything</h1><p><a id="out" href="https://example.invalid/">out</a></p></body>')],
+          '<body><h1>Over everything</h1><p><a id="out" href="https://example.invalid/">out</a></p></body>'),
+         ("", "", "<body><h1>Second</h1></body>")],
     )
     open_book(viewer, page, book)
     wait_for_heading(page, "Over everything")
-    on_top = """(id) => {
-      const el = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
-      return !!(el && el.closest('#' + id));
+    on_top = """(sel) => {
+      const part = document.querySelector(sel);
+      part.scrollIntoView({ block: 'center' });
+      const r = part.getBoundingClientRect();
+      const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!(el && el.closest(sel));
     }"""
-    # The book did get over the page, or this test shows nothing
-    assert page.evaluate(on_top, "book")
-    assert page.evaluate("() => getComputedStyle(document.querySelector('#epub-bar')).display") != "none"
+    for part in ("#epub-contents-open", "#epub-where", "#epub-next"):
+        assert page.evaluate(on_top, part), part
+    assert page.evaluate("() => getComputedStyle(document.querySelector('#book')).position") != "fixed"
+    assert style_of(page, "h1", "color") != "rgb(1, 2, 3)"
 
-    app = port()
-    app.contents()
+    box = page.evaluate("""() => { const r = document.querySelector('#epub-contents-open').getBoundingClientRect();
+                             return [r.left + r.width / 2, r.top + r.height / 2]; }""")
+    page.mouse.click(box[0], box[1])
     page.wait_for_function("() => !document.querySelector('#epub-contents').hidden")
-    assert page.evaluate(on_top, "epub-contents")
-    app.close_over()
+    assert page.evaluate(on_top, "#epub-contents")
+    port().close_over()
     page.wait_for_function("() => document.querySelector('#epub-contents').hidden")
 
     page.click("#book #out")
     page.wait_for_function("() => !document.querySelector('#epub-link').hidden")
-    assert page.evaluate(on_top, "epub-link")
+    assert page.evaluate(on_top, "#epub-link")
 
 
 FACES = ["Roboto", "sans-serif", "-apple-system", "Segoe UI", "system-ui", "serif", "monospace",
@@ -432,8 +444,37 @@ def fanned_out():
     return sheets
 
 
+def fanned_out_by_capitals():
+    """Nine sheets, each a folder deeper, each bringing in the next by six spellings of its folder."""
+    names = ["abcd", "Abcd", "aBcd", "abCd", "abcD", "ABcd"]
+    sheets = {}
+    for n in range(9):
+        sheets["abcd/" * n + f"s{n}.css"] = (
+            "".join(f'@import "{name}/s{n + 1}.css";\n' for name in names) if n < 8
+            else "h1 { color: rgb(1, 2, 3); }\n")
+    return sheets
+
+
+def forged_markers():
+    """Nine sheets, each importing the next, with what an import was once marked by in a string."""
+    sheets = {f"m{n}.css": f'@import "m{n + 1}.css";\ni::after {{ content: "{"/*vw-import-0*/" * 6}"; }}\n'
+              for n in range(8)}
+    sheets["m8.css"] = "h1 { color: rgb(1, 2, 3); }\n" + "p { margin: 0; }\n" * 4
+    return sheets
+
+
+def sheet_of(css):
+    return dict(head='<link rel="stylesheet" href="b.css"/>', extra={"b.css": "h1 { color: rgb(1, 2, 3); }\n" + css})
+
+
 BUSY = {
     "imports that fan out": dict(head='<link rel="stylesheet" href="s0.css"/>', extra=fanned_out()),
+    "imports that fan out by every spelling of a folder": dict(
+        head='<link rel="stylesheet" href="s0.css"/>', extra=fanned_out_by_capitals()),
+    "imports with a marker forged in them": dict(head='<link rel="stylesheet" href="m0.css"/>', extra=forged_markers()),
+    "an address that stays open": sheet_of("url(a" + " " * 400000),
+    "an import of nothing": sheet_of("@import " + "a" * 400000),
+    "imports with nothing between them": sheet_of("@import" * 57000),
     "imports with no end": dict(
         head='<link rel="stylesheet" href="b.css"/>',
         extra={"b.css": "h1 { color: rgb(1, 2, 3); }\n" + "@import x " * 60000}),
@@ -471,3 +512,248 @@ def test_a_book_written_to_keep_the_page_busy_still_opens(viewer, page, made, ho
     assert "Busy" in page.text_content("#book h1")
     if "head" in case:
         assert style_of(page, "h1", "color") == "rgb(1, 2, 3)"
+
+
+# ---------------------------------------------------------------------------
+# What a book must still be drawn with, however its addresses are written
+# ---------------------------------------------------------------------------
+
+def test_a_drawing_keeps_what_it_draws_with_from_itself(viewer, page, made):
+    """
+    A shape is filled, clipped and filtered by things drawn for the purpose in the same
+    chapter, written url(#g) with or without quotes and spaces. Those stay, and one that
+    reaches outside the chapter goes, however it is spelled: in a picture offered at sizes,
+    or after a comment the engine reads as part of the address before it.
+    """
+    asked = asked_of(page)
+    body = f"""<body><h1>Drawn</h1><svg {SVG} width="200" height="40">
+<defs><linearGradient id="g"><stop offset="0" stop-color="#f00"/><stop offset="1" stop-color="#00f"/></linearGradient>
+<clipPath id="c"><rect width="10" height="10"/></clipPath><filter id="f"><feGaussianBlur stdDeviation="1"/></filter></defs>
+<rect id="r1" width="30" height="30" fill="url(#g)"/>
+<rect id="r2" x="35" width="30" height="30" fill="url('#g')"/>
+<rect id="r3" x="70" width="30" height="30" fill='url("#g")'/>
+<rect id="r4" x="105" width="30" height="30" fill="url( #g)"/>
+<rect id="r5" x="140" width="30" height="30" clip-path="url('#c')" filter="url( '#f' )"/>
+<rect id="r6" x="175" width="20" height="20" mask="image-set(url(leak-mask.png) 1x)" filter="url(#f/*) url(leak-filter.svg#f)"/>
+</svg></body>"""
+    book = little_book(made, "drawn.epub", [("", "", body)])
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Drawn")
+    page.wait_for_timeout(300)
+
+    for n in range(1, 5):
+        assert in_book(page, "return root.querySelector('#r' + arg).getAttribute('fill')", n), n
+        assert in_book(page, "return getComputedStyle(root.querySelector('#r' + arg)).fill", n) == 'url("#g")', n
+    assert in_book(page, "return root.querySelector('#r5').getAttribute('clip-path')") == "url('#c')"
+    assert in_book(page, "return getComputedStyle(root.querySelector('#r5')).filter") == 'url("#f")'
+    assert in_book(page, "const r = root.querySelector('#r6'); return [r.getAttribute('mask'), r.getAttribute('filter')]") == [None, None]
+    assert [u for u in asked if "leak" in u] == []
+
+
+def test_a_picture_offered_at_several_sizes_still_shows(viewer, page, made, fixture_path):
+    """
+    image-set() offers a picture at more than one size, by url() or by its address in quotes
+    alone. Each is answered from the zip like any other address, so the picture shows, and
+    a book that gave a plain picture first and the sizes after loses neither.
+    """
+    asked = asked_of(page)
+    css = (".one { background-image: url(pix.png); background-image: -webkit-image-set(url(pix.png) 1x, url(pix.png) 2x); }\n"
+           ".two { background: image-set(url(pix.png) 1x) no-repeat; }\n"
+           '.three { background-image: image-set("pix.png" 1x, "pix.png" 2x); }\n')
+    book = little_book(
+        made, "sizes.epub",
+        [("", '<link rel="stylesheet" href="b.css"/>',
+          '<body><h1>Sizes</h1><div class="one">1</div><div class="two">2</div><div class="three">3</div></body>')],
+        listed='<item id="pix" href="pix.png" media-type="image/png"/>',
+        extra={"b.css": css, "pix.png": fixture_path("tiny.png").read_bytes()},
+    )
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Sizes")
+    for name in ("one", "two", "three"):
+        assert "blob:" in style_of(page, "." + name, "backgroundImage"), name
+    assert [u for u in asked if "pix.png" in u] == []
+
+
+@pytest.mark.parametrize("style", [
+    "background-color: rgb(253, 246, 227); /* paper */",
+    "background-color: rgb(253, 246, 227); font-family: 'A\\62 c', serif",
+])
+def test_a_chapters_style_for_its_own_body_holds(viewer, page, made, style):
+    """A body's own style with a comment or an escape in it, neither of which names a file."""
+    book = little_book(made, "own.epub", [("", "", f'<body style="{style}"><h1>Own style</h1><p>text</p></body>')])
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Own style")
+    assert style_of(page, "body", "backgroundColor") == "rgb(253, 246, 227)"
+    if "font-family" in style:
+        assert style_of(page, "body", "fontFamily").startswith('Abc')
+
+
+def test_a_sheet_imported_from_two_places_stands_where_the_engine_puts_it(viewer, page, made):
+    """
+    b.css and c.css both import d.css, b with a rule after it. The engine reads d at both
+    places, so d's rule, at the second, has the last word over b's.
+    """
+    extra = {
+        "a.css": '@import "b.css";\n@import "c.css";\n',
+        "b.css": '@import "d.css";\nh1 { color: rgb(200, 0, 0); }\n',
+        "c.css": '@import "d.css";\n',
+        "d.css": "h1 { color: rgb(1, 2, 3); }\n",
+    }
+    book = little_book(made, "diamond.epub", [("", '<link rel="stylesheet" href="a.css"/>', "<body><h1>Diamond</h1></body>")],
+                       extra=extra)
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Diamond")
+    assert style_of(page, "h1", "color") == "rgb(1, 2, 3)"
+
+
+@pytest.mark.parametrize("sheet", [
+    '@import "my styles.css";\n',
+    "@import url('my styles.css') screen;\n",
+    '@import "my styles.css"',
+])
+def test_a_sheet_is_imported_however_the_import_is_written(viewer, page, made, sheet):
+    """A name with a space in it, an import with what it is for after it, and one the sheet ends in."""
+    asked = asked_of(page)
+    book = little_book(made, "imported.epub", [("", '<link rel="stylesheet" href="a.css"/>', "<body><h1>Imported</h1></body>")],
+                       extra={"a.css": sheet, "my styles.css": "h1 { color: rgb(1, 2, 3); }\n"})
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Imported")
+    assert style_of(page, "h1", "color") == "rgb(1, 2, 3)"
+    assert [u for u in asked if "styles" in u] == []
+
+
+@pytest.mark.parametrize("inner", [
+    "h1 { color: rgb(1, 2, 3)",
+    "h1 { color: rgb(1, 2, 3); } h2",
+    "h1 { color: rgb(1, 2, 3); } /* a note",
+    'h1 { color: rgb(1, 2, 3); content: "a quote',
+])
+def test_a_sheet_imported_unfinished_leaves_the_rest_whole(viewer, page, made, inner):
+    """
+    The engine reads an imported sheet to its own end, where whatever it left open closes.
+    Written into the sheet that imports it, a block, a rule, a comment or a quote it leaves
+    open must close there too, and not take in the rules after the import.
+    """
+    book = little_book(made, "unfinished.epub",
+                       [("", '<link rel="stylesheet" href="a.css"/>', "<body><h1>Unfinished</h1><p>after</p></body>")],
+                       extra={"a.css": '@import "inner.css";\np { margin-top: 3px; }\n', "inner.css": inner})
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Unfinished")
+    assert style_of(page, "h1", "color") == "rgb(1, 2, 3)"
+    assert style_of(page, "p", "marginTop") == "3px"
+
+
+def test_a_name_in_a_chapter_is_not_a_link(viewer, page, made):
+    """
+    An a with no address is a name for a place, and a tap on it is a tap on what it is in: a
+    summary that opens its details, or a link around it. A summary inside a link is nearer
+    than the link, and a tap on it opens its details and goes nowhere, as the engine has it.
+    """
+    book = little_book(made, "names.epub", [
+        ("", "", '<body><h1>Names</h1><details id="d1"><summary><a id="s1">Answers</a></summary><p>42</p></details>'
+                 '<a href="c1.xhtml"><details id="d2"><summary id="s2">More</summary><p>43</p></details></a>'
+                 '<p><a href="c1.xhtml"><a id="p12">To the second</a></a></p></body>'),
+        ("", "", "<body><h1>Second</h1></body>"),
+    ])
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Names")
+    page.click("#book #s1")
+    page.click("#book #s2")
+    page.wait_for_timeout(300)
+    assert in_book(page, "return [root.querySelector('#d1').open, root.querySelector('#d2').open]") == [True, True]
+    assert "Names" in page.text_content("#book h1")
+    page.click("#book #p12")
+    wait_for_heading(page, "Second")
+
+
+# ---------------------------------------------------------------------------
+# Spellings of an address the engine reads and a pattern would not
+# ---------------------------------------------------------------------------
+
+LINKED = '<link rel="stylesheet" href="reach.css"/>'
+PLAIN = '<body><h1>Spelled</h1><div class="a">a</div><i>i</i></body>'
+
+SPELLINGS = {
+    "an escape for a letter written into another escape": (LINKED, PLAIN, {"reach.css": ".a { background: ur\\6\\63 (leak-fused.png) }"}),
+    "an escape for a hyphen in image-set": (LINKED, PLAIN, {"reach.css": '.a { background-image: image\\2d set("leak-hyphen.png" 1x) }'}),
+    "a quote inside a bare address": (LINKED, PLAIN, {"reach.css": "i { content: url(x'y) } .a { background: u\\72l(leak-badurl.png) }"}),
+    "a line carried on in a string": (LINKED, PLAIN, {"reach.css": 'i { content: "a\\\r\n b"; } .a { background: u\\72l(leak-crlf.png) } /* " */'}),
+    "a form feed ending a string": (LINKED, PLAIN, {"reach.css": "i { content: '\f } .a { background: u\\72l(leak-ff.png) }"}),
+    "a carriage return ending a string": (LINKED, PLAIN, {"reach.css": "i { content: '\r } .a { background: u\\72l(leak-cr.png) }"}),
+    "an import the sheet ends in": (LINKED, PLAIN, {"reach.css": '@import "leak-eof.css"'}),
+    "an import with an @ after it": (LINKED, PLAIN, {"reach.css": '@import "leak-at.css" @x;\n.a { color: red }'}),
+    "an import with a block after it": (LINKED, PLAIN, {"reach.css": '@import "leak-brace.css" ({});\n.a { color: red }'}),
+    "an address the sheet ends in": (LINKED, PLAIN, {"reach.css": ".a { background: url(leak-unclosed.png"}),
+    "an address a style ends in": ("", '<body><h1>Spelled</h1><div class="a" style="background:url(leak-attr.png">a</div></body>', {}),
+    "an escaped quote in a quoted address": (LINKED, PLAIN, {"reach.css": '.a { background: url("leak-esc\\"x.png") }'}),
+    "an escaped bracket in a bare address": (LINKED, PLAIN, {"reach.css": ".a { background: url(leak-paren\\(1.png) }"}),
+    "an address with a modifier": (LINKED, PLAIN, {"reach.css": '.a { background: url("leak-mod.png" crossorigin(anonymous)) }'}),
+    "an import cut out of the middle of url(": (LINKED, PLAIN, {"reach.css": '.a{background:u@import "nothere.css";rl(leak-splice.png)}'}),
+    "a font rule cut out of the middle of url(": (LINKED, PLAIN, {"reach.css": ".a{background:u@font-face{}rl(leak-facesplice.png)}"}),
+    "an import marker forged in a string": (LINKED, PLAIN, {
+        "reach.css": "@import \"inner.css\";\ni{content:'/*vw-import-0*/'}",
+        "inner.css": "x{content:\"'} .a { background: u\\72l(leak-forged.png) } q { content:'\"}",
+    }),
+    "image-set inside quotes": (LINKED, PLAIN, {"reach.css": 'i{content:"image-set("\n)} b{content:" } .a{background:u\\72l(leak-setquote.png)} d{content:"}'}),
+    "attributes named in capitals": ("", '<body><h1>Spelled</h1><p><img SRC=" leak-upper.png" alt=""/></p>'
+                                         '<p STYLE=" background:url(leak-upperstyle.png)">x</p></body>', {}),
+    "image-set in a drawing's attribute": ("", f'<body><h1>Spelled</h1><svg {SVG} width="60" height="20">'
+                                               '<rect width="20" height="20" mask="image-set(url(leak-mask.png) 1x)" '
+                                               'cursor="image-set(\'leak-cursor.png\' 1x), auto"/></svg></body>', {}),
+}
+
+
+@pytest.mark.parametrize("how", sorted(SPELLINGS))
+def test_no_spelling_of_an_address_gets_past_the_reader(viewer, page, made, how):
+    """
+    Each a way of writing an address that the engine takes as one and a pattern does not,
+    or of hiding one in plain text that a pattern read as an address and took out. Gander's
+    own host would answer any of them, so none may be asked for.
+    """
+    head, body, extra = SPELLINGS[how]
+    asked = asked_of(page)
+    book = little_book(made, "spelled.epub", [("", head, body)], extra=extra)
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Spelled")
+    page.wait_for_timeout(500)
+    assert [u.rsplit("/", 1)[-1] for u in asked if "leak" in u] == []
+
+
+def test_a_link_named_like_what_every_object_has_goes_nowhere(viewer, page, made):
+    """
+    The chapters are kept by their names, and every object has a constructor and the like:
+    a link to one must find no chapter, and a tap on it must leave the book where it is.
+    """
+    names = ["/constructor", "/toString", "/hasOwnProperty", "../../__proto__"]
+    body = "<body><h1>Named</h1>" + "".join(f'<p><a id="n{i}" href="{n}">{n}</a></p>' for i, n in enumerate(names)) + "</body>"
+    book = little_book(made, "named.epub", [("", "", body)])
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Named")
+    for i in range(len(names)):
+        page.click(f"#book #n{i}")
+        page.wait_for_timeout(150)
+    assert page.locator("#vw-status.vw-error").count() == 0
+    assert "Named" in page.text_content("#book h1")
+
+
+def test_a_middle_click_on_a_link_opens_nothing(viewer, page, made, fixture_path):
+    """A middle click opens a link in a page of its own, which no link in a book may."""
+    book = leaving(made, fixture_path, "text.html?name=spoof")
+    open_book(viewer, page, book)
+    at = in_book(page, "const r = root.querySelector('#plain').getBoundingClientRect(); return [r.left + 4, r.top + r.height / 2];")
+    page.mouse.click(at[0], at[1], button="middle")
+    page.wait_for_timeout(500)
+    assert len(page.context.pages) == 1
+
+
+def test_a_namespace_keeps_its_name(viewer, page, made):
+    """
+    A namespace's address is a name and nothing to fetch, so it stays as written. A sheet
+    that styles a drawing's shapes by svg|rect still reaches them.
+    """
+    css = '@namespace svg url(http://www.w3.org/2000/svg);\nsvg|rect { fill: rgb(1, 2, 3); }\n'
+    body = f'<body><h1>Named space</h1><svg {SVG} width="20" height="20"><rect id="r" width="20" height="20"/></svg></body>'
+    book = little_book(made, "space.epub", [("", '<link rel="stylesheet" href="b.css"/>', body)], extra={"b.css": css})
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Named space")
+    assert in_book(page, "return getComputedStyle(root.querySelector('#r')).fill") == "rgb(1, 2, 3)"
