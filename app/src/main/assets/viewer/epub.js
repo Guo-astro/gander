@@ -88,20 +88,6 @@ var vwEpub = (function () {
   };
 
   /*
-   * The three things looked for in a stylesheet. Each stops at the next place another of its
-   * kind could begin, a bracket for an address and an @ or a brace for a rule, so a sheet
-   * made of sixty thousand beginnings and no end is gone over once and not once for each.
-   */
-  var URL_IN_CSS = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'"()\s][^()]*?))\s*\)/gi;
-  var IMPORT_IN_CSS = /@import\s*(?:url\(\s*)?(["']?)([^"')\s;]+)\1\s*\)?[^;{}@]*;/gi;
-  var FACE_IN_CSS = /@font-face\s*\{[^{}]*\}/gi;
-
-  /* What may hide an address in a stylesheet, or in the style of one element: see plain() */
-  var VEILED = /\/\*|\\|image-set/i;
-  var VEIL = /\/\*|["'\\]/g;
-  var IMAGE_SET = /(?:-webkit-)?image-set\(/gi;
-
-  /*
    * What a chapter starts from inside the shadow tree. These come before the book's
    * stylesheets, which may overrule any of them.
    */
@@ -194,26 +180,34 @@ var vwEpub = (function () {
      it: about three short words to a line. With less, the picture is set on its own. */
   var FLOAT_ROOM_EMS = 8;
 
+  /*
+   * A map with nothing in it to begin with, not even what every object has. The keys are a
+   * book's own names, and a link to "constructor" must find nothing.
+   */
+  function bag() {
+    return Object.create(null);
+  }
+
   var zip = null;
   /* Every file in the zip by its name in lower case, for a book that spells one differently */
-  var names = {};
+  var names = bag();
   /* The type the package gives each file, by path */
-  var types = {};
+  var types = bag();
   /* The file the package names to show where another cannot be, by that other's path */
-  var stead = {};
+  var stead = bag();
   /* Files under a real lock, which is what DRM is and nothing here can read */
-  var locked = {};
+  var locked = bag();
   /* Fonts the book scrambled, by path, each with the entry of SCRAMBLES for how */
-  var scrambled = {};
+  var scrambled = bag();
   /* The name the book goes by, which is what its fonts are scrambled with, and its UUID */
   var bookId = "";
   var bookUuid = "";
   /* The key for each kind of scrambling, once it has been asked for */
-  var keys = {};
+  var keys = bag();
   /* The chapters in reading order: { path, pages, start, fixed, wait, ready } */
   var spine = [];
   /* A chapter's place in the spine, by path */
-  var index = {};
+  var index = bag();
   /* The contents list: { label, depth, at, frag }, at being -1 for a heading that goes nowhere */
   var contents = [];
   var bookTitle = "";
@@ -268,14 +262,16 @@ var vwEpub = (function () {
   /* A small canvas, which pictures are weighed on and colours are read with */
   var scales = null;
   /* Whether each colour a book has given a rule is too dark to see, by the colour as written */
-  var darkness = {};
+  var darkness = bag();
   var darkPhone = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
   /* Object URLs made for the chapter on the page, by path, given back when it leaves */
-  var held = {};
+  var held = bag();
   /* The same for what stylesheets name, kept as long as the book, since chapters share them */
-  var shared = {};
+  var shared = bag();
   /* Each stylesheet as the page can use it, by path */
-  var sheets = {};
+  var sheets = bag();
+  /* Each stylesheet in the zip in parts, by its name there: see partsOf() */
+  var readSheets = bag();
 
   var host = document.getElementById("book");
   var shadow = host.attachShadow({ mode: "open" });
@@ -496,7 +492,7 @@ var vwEpub = (function () {
    */
   function drawnFrom(path) {
     if (!stead[path] || !/^image\//.test(types[path] || "") || isPicture(path) || isPage(path)) return path;
-    var seen = {};
+    var seen = bag();
     for (var at = path; at && !seen[at]; at = stead[at]) {
       seen[at] = true;
       if ((isPicture(at) || isPage(at)) && entry(at)) return at;
@@ -511,8 +507,8 @@ var vwEpub = (function () {
   }
 
   function readPackage(doc, path) {
-    var byId = {};
-    var insteadOf = {};
+    var byId = bag();
+    var insteadOf = bag();
     var nav = null;
     var ncx = null;
     var items = all(doc, "item");
@@ -545,7 +541,7 @@ var vwEpub = (function () {
      * page or picture among those is taken, and the file itself where there is none.
      */
     function readFrom(id) {
-      var seen = {};
+      var seen = bag();
       for (var at = id; at && byId[at] && !seen[at]; at = insteadOf[at]) {
         seen[at] = true;
         if ((isPage(byId[at]) || isPicture(byId[at])) && entry(byId[at])) return byId[at];
@@ -727,9 +723,9 @@ var vwEpub = (function () {
     return new DOMParser().parseFromString(spelled, "text/html");
   }
 
-  /* Whether the style of one element names a file, or could be hiding that it does */
+  /* Whether the style of one element names a file. Every way of naming one has a bracket. */
   function addressed(style) {
-    return /url\(/i.test(style || "") || VEILED.test(style || "");
+    return !!style && style.indexOf("(") >= 0 && inStyle(style, "", false).found.all > 0;
   }
 
   function setAside(el, name) {
@@ -748,6 +744,20 @@ var vwEpub = (function () {
    * it was copied in, as a path that is not there.
    */
   function disarm(doc) {
+    // Read as XML, SRC is not src and nothing here would find it, but DOMPurify writes it
+    // back in lower case, as src
+    var every = doc.getElementsByTagName("*");
+    for (var n = 0; n < every.length; n++) {
+      var named = every[n].attributes;
+      for (var k = named.length - 1; k >= 0; k--) {
+        var lower = named[k].name.toLowerCase();
+        if (lower === named[k].name || !/^(src|poster|style)$/.test(lower)) continue;
+        var was = named[k].value;
+        every[n].removeAttribute(named[k].name);
+        every[n].setAttribute(lower, was);
+      }
+    }
+
     var els = doc.querySelectorAll("[src], [poster], [style], image, use, feImage, feimage");
     for (var i = 0; i < els.length; i++) {
       var el = els[i];
@@ -776,7 +786,7 @@ var vwEpub = (function () {
       for (var a = attrs.length - 1; a >= 0; a--) {
         // Its style is answered from the zip like any other: see fetched()
         if (/^(data-vw-)?style$/.test(attrs[a].name) || attrs[a].value.indexOf("(") < 0) continue;
-        if (/url\(\s*["']?(?!#)/i.test(plain(attrs[a].value))) shapes[s].removeAttribute(attrs[a].name);
+        if (inStyle(attrs[a].value, "", false).found.far) shapes[s].removeAttribute(attrs[a].name);
       }
     }
   }
@@ -811,8 +821,12 @@ var vwEpub = (function () {
       if (value) out[name] = value;
     });
     if (!out.lang && el.getAttribute("xml:lang")) out.lang = el.getAttribute("xml:lang");
-    var style = plain(el.getAttribute("style") || "");
-    if (style && !/url\(/i.test(style)) out.style = style;
+    // One that names a file was set aside by disarm(), and the chapter goes without it
+    var style = el.getAttribute("style");
+    if (style) {
+      var read = inStyle(style, "", false);
+      if (!read.found.all) out.style = read.parts.join("");
+    }
     return out;
   }
 
@@ -993,187 +1007,652 @@ var vwEpub = (function () {
     for (var path in held) {
       held[path].then(function (url) { if (url) URL.revokeObjectURL(url); });
     }
-    held = {};
+    held = bag();
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // A book's stylesheets, read the way the engine reads them
+  // ---------------------------------------------------------------------------------------
+
+  /*
+   * A stylesheet as CSS Syntax 3 has the engine read it: one kind of line end and no NULs.
+   * A backslash at the very end is written as the letter it stands for there, so that
+   * nothing put after the sheet can become part of its last escape.
+   */
+  function prepared(css) {
+    css = String(css).replace(/\r\n?|\f/g, "\n").replace(/\u0000/g, "\uFFFD");
+    var end = css.length;
+    while (end > 0 && css.charCodeAt(end - 1) === 92) end--;
+    return (css.length - end) % 2 ? css + "\uFFFD" : css;
+  }
+
+  function codeAt(css, i) {
+    return i < css.length ? css.charCodeAt(i) : -1;
+  }
+
+  function isDigit(c) {
+    return c >= 48 && c <= 57;
+  }
+
+  function isHex(c) {
+    return isDigit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
+  }
+
+  function isNameStart(c) {
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 128;
+  }
+
+  function isName(c) {
+    return isNameStart(c) || isDigit(c) || c === 45;
+  }
+
+  function isSpace(c) {
+    return c === 10 || c === 9 || c === 32;
+  }
+
+  function isUnprintable(c) {
+    return (c >= 0 && c <= 8) || c === 11 || (c >= 14 && c <= 31) || c === 127;
+  }
+
+  /* Whether the backslash at [i] begins an escape, which anything but a line end may follow */
+  function escapes(css, i) {
+    return codeAt(css, i) === 92 && codeAt(css, i + 1) !== 10;
+  }
+
+  /* The letter an escape stands for, its backslash being at [i - 1], and where it ends */
+  function escaped(css, i) {
+    var c = codeAt(css, i);
+    if (c < 0) return { ch: "\uFFFD", to: i };
+    if (!isHex(c)) return { ch: css.charAt(i), to: i + 1 };
+    var j = i;
+    while (j < i + 6 && isHex(codeAt(css, j))) j++;
+    var n = parseInt(css.slice(i, j), 16);
+    // One space after the number is part of the escape
+    if (isSpace(codeAt(css, j))) j++;
+    if (n === 0 || (n >= 0xD800 && n <= 0xDFFF) || n > 0x10FFFF) return { ch: "\uFFFD", to: j };
+    if (n < 0x10000) return { ch: String.fromCharCode(n), to: j };
+    n -= 0x10000;
+    return { ch: String.fromCharCode(0xD800 + (n >> 10), 0xDC00 + (n & 0x3FF)), to: j };
+  }
+
+  /* Whether a name begins at [i]: an identifier's, a function's or an @rule's */
+  function startsName(css, i) {
+    var c = codeAt(css, i);
+    if (c === 45) {
+      var d = codeAt(css, i + 1);
+      return isNameStart(d) || d === 45 || escapes(css, i + 1);
+    }
+    return isNameStart(c) || escapes(css, i);
+  }
+
+  function startsNumber(css, i) {
+    var c = codeAt(css, i);
+    if (c === 43 || c === 45) {
+      c = codeAt(css, i + 1);
+      return isDigit(c) || (c === 46 && isDigit(codeAt(css, i + 2)));
+    }
+    return c === 46 ? isDigit(codeAt(css, i + 1)) : isDigit(c);
+  }
+
+  /* The name that begins at [i], with its escapes read, and where it ends */
+  function nameAt(css, i) {
+    var value = "";
+    var run = i;
+    for (;;) {
+      if (isName(codeAt(css, i))) {
+        i++;
+      } else if (escapes(css, i)) {
+        var e = escaped(css, i + 1);
+        value += css.slice(run, i) + e.ch;
+        i = run = e.to;
+      } else {
+        return { value: value + css.slice(run, i), to: i };
+      }
+    }
+  }
+
+  /* Where the number that begins at [i] ends, with its unit or its percent sign */
+  function numberEnd(css, i) {
+    if (codeAt(css, i) === 43 || codeAt(css, i) === 45) i++;
+    while (isDigit(codeAt(css, i))) i++;
+    if (codeAt(css, i) === 46 && isDigit(codeAt(css, i + 1))) {
+      i += 2;
+      while (isDigit(codeAt(css, i))) i++;
+    }
+    var c = codeAt(css, i);
+    var d = codeAt(css, i + 1);
+    if ((c === 69 || c === 101) && (isDigit(d) || ((d === 43 || d === 45) && isDigit(codeAt(css, i + 2))))) {
+      i += isDigit(d) ? 2 : 3;
+      while (isDigit(codeAt(css, i))) i++;
+    }
+    if (startsName(css, i)) return nameAt(css, i).to;
+    return codeAt(css, i) === 37 ? i + 1 : i;
   }
 
   /*
-   * A stylesheet written the one way the rest of this file reads them, so that an address
-   * cannot be spelled past it. The engine reads u\72l( as url(, and an @import with a
-   * comment between the word and the file as an import, which the patterns above would not.
-   * So comments come out, and a letter written as an escape is written as the letter. What
-   * is inside quotes is left as it is.
-   *
-   * image-set() goes altogether. It takes an address as bare quotes, or from a variable
-   * set somewhere else, with no url() for anything here to find, and a book that offers a
-   * picture at two sizes that way still has whatever it set before it.
+   * The quoted text whose opening quote is at [i - 1]. A line end ends it too, as a bad
+   * string, before the line end; the end of the sheet closes it.
    */
-  function plain(css) {
-    if (!VEILED.test(css)) return css;
-    var out = "";
-    var at = 0;
-    var found;
-    VEIL.lastIndex = 0;
-    while ((found = VEIL.exec(css))) {
-      out += css.slice(at, found.index);
-      at = found.index;
-      var c = found[0];
-      if (c === "/*") {
-        var end = css.indexOf("*/", at + 2);
-        at = end < 0 ? css.length : end + 2;
-        out += " ";
-      } else if (c === "\\") {
-        var hex = /^[0-9a-f]{1,6}/i.exec(css.substr(at + 1, 6));
-        var span = hex ? 1 + hex[0].length : 2;
-        var letter = hex ? String.fromCharCode(parseInt(hex[0], 16)) : css.charAt(at + 1);
-        // One space after the number is part of the escape
-        if (hex && /\s/.test(css.charAt(at + span))) span++;
-        out += /^[a-z]$/i.test(letter) ? letter : css.substr(at, span);
-        at += span;
-      } else {
-        at = quoted(css, at);
-        out += css.slice(found.index, at);
+  function stringAt(css, i, quote) {
+    var value = "";
+    var run = i;
+    for (;;) {
+      var c = codeAt(css, i);
+      if (c === quote || c < 0) {
+        return { type: "string", value: value + css.slice(run, i), to: c < 0 ? i : i + 1, closed: c >= 0 };
       }
-      VEIL.lastIndex = at;
-    }
-    out += css.slice(at);
-
-    var without = "";
-    at = 0;
-    IMAGE_SET.lastIndex = 0;
-    while ((found = IMAGE_SET.exec(out))) {
-      without += out.slice(at, found.index) + "none";
-      at = closed(out, IMAGE_SET.lastIndex);
-      IMAGE_SET.lastIndex = at;
-    }
-    return without + out.slice(at);
-  }
-
-  /* Where the quoted text that opens at [from] is over: past its closing quote, or at the
-     end of its line, which is where the engine gives up on one left open */
-  function quoted(css, from) {
-    var quote = css.charAt(from);
-    var i = from + 1;
-    while (i < css.length && css.charAt(i) !== quote && css.charAt(i) !== "\n") {
-      if (css.charAt(i) === "\\") i++;
-      i++;
-    }
-    return Math.min(i + 1, css.length);
-  }
-
-  /* Where the bracket opened just before [from] is closed, or the end where it never is */
-  function closed(css, from) {
-    var deep = 1;
-    var i = from;
-    while (i < css.length && deep) {
-      var c = css.charAt(i);
-      if (c === '"' || c === "'") {
-        i = quoted(css, i);
+      if (c === 10) return { type: "bad-string", to: i };
+      if (c !== 92) {
+        i++;
         continue;
       }
-      if (c === "(") deep++;
-      else if (c === ")") deep--;
-      i++;
+      value += css.slice(run, i);
+      var d = codeAt(css, i + 1);
+      if (d < 0 || d === 10) {
+        // Nothing at the very end, and a line carried on to the next
+        i = run = d < 0 ? i + 1 : i + 2;
+      } else {
+        var e = escaped(css, i + 1);
+        value += e.ch;
+        i = run = e.to;
+      }
     }
+  }
+
+  /* An address written bare after url(, from [i] */
+  function urlAt(css, i) {
+    var value = "";
+    var run = i;
+    for (;;) {
+      var c = codeAt(css, i);
+      if (c === 41 || c < 0) return { type: "url", value: value + css.slice(run, i), to: c < 0 ? i : i + 1 };
+      if (isSpace(c)) {
+        var end = i;
+        while (isSpace(codeAt(css, i))) i++;
+        c = codeAt(css, i);
+        if (c === 41 || c < 0) return { type: "url", value: value + css.slice(run, end), to: c < 0 ? i : i + 1 };
+        return badUrlAt(css, i);
+      }
+      if (c === 34 || c === 39 || c === 40 || isUnprintable(c) || (c === 92 && !escapes(css, i))) {
+        return badUrlAt(css, i);
+      }
+      if (c === 92) {
+        var e = escaped(css, i + 1);
+        value += css.slice(run, i) + e.ch;
+        i = run = e.to;
+      } else {
+        i++;
+      }
+    }
+  }
+
+  /* The rest of an address the engine gives up on, which runs to its bracket, escapes and all */
+  function badUrlAt(css, i) {
+    for (;;) {
+      var c = codeAt(css, i);
+      if (c === 41 || c < 0) return { type: "bad-url", to: c < 0 ? i : i + 1 };
+      i = escapes(css, i) ? escaped(css, i + 1).to : i + 1;
+    }
+  }
+
+  /* An identifier, a function, or url( and the bare address after it, from [i] */
+  function nameLike(css, i) {
+    var name = nameAt(css, i);
+    if (codeAt(css, name.to) !== 40) return { type: "ident", value: name.value, to: name.to };
+    if (/^url$/i.test(name.value)) {
+      var k = name.to + 1;
+      while (isSpace(codeAt(css, k))) k++;
+      // A quoted address is a function and its text, as the engine reads it
+      if (codeAt(css, k) !== 34 && codeAt(css, k) !== 39) return urlAt(css, k);
+    }
+    return { type: "function", value: name.value, to: name.to + 1 };
+  }
+
+  /*
+   * A stylesheet in the pieces the engine reads it in, CSS Syntax 3's tokens: each is
+   * { type, from, to }, and a value where it has one. A character that is a token of its
+   * own is its own type.
+   *
+   * Read any other way, a sheet can be spelled so that the engine finds an address where
+   * the reading found none: u\72l(, a quote a line end closes, a comment inside an address.
+   * So nothing below goes by patterns, and whatever the engine will take for an address is
+   * one here too.
+   */
+  function tokens(css) {
+    var out = [];
+    var i = 0;
+    while (i < css.length) {
+      var c = css.charCodeAt(i);
+      var t;
+      if (c === 47 && codeAt(css, i + 1) === 42) {
+        var end = css.indexOf("*/", i + 2);
+        t = { type: "comment", to: end < 0 ? css.length : end + 2 };
+      } else if (isSpace(c)) {
+        var j = i;
+        while (isSpace(codeAt(css, j))) j++;
+        t = { type: "space", to: j };
+      } else if (c === 34 || c === 39) {
+        t = stringAt(css, i + 1, c);
+      } else if (c === 35 && (isName(codeAt(css, i + 1)) || escapes(css, i + 1))) {
+        t = { type: "hash", to: nameAt(css, i + 1).to };
+      } else if (c === 64 && startsName(css, i + 1)) {
+        var at = nameAt(css, i + 1);
+        t = { type: "at", value: at.value, to: at.to };
+      } else if (startsNumber(css, i)) {
+        t = { type: "number", to: numberEnd(css, i) };
+      } else if (c === 45 && codeAt(css, i + 1) === 45 && codeAt(css, i + 2) === 62) {
+        t = { type: "cdc", to: i + 3 };
+      } else if (c === 60 && css.substr(i + 1, 3) === "!--") {
+        t = { type: "cdo", to: i + 4 };
+      } else if (startsName(css, i)) {
+        t = nameLike(css, i);
+      } else {
+        t = { type: css.charAt(i), to: i + 1 };
+      }
+      t.from = i;
+      out.push(t);
+      i = t.to;
+    }
+    return out;
+  }
+
+  /* An address as the URL parser takes it, which trims spaces and controls from either end */
+  function urlTrim(s) {
+    var a = 0;
+    var b = s.length;
+    while (a < b && s.charCodeAt(a) <= 32) a++;
+    while (b > a && s.charCodeAt(b - 1) <= 32) b--;
+    return s.slice(a, b);
+  }
+
+  /* Text written to go between double quotes in a stylesheet */
+  function cssString(s) {
+    return s.replace(/[\\"]/g, "\\$&").replace(/\n/g, "\\a ");
+  }
+
+  function closerOf(type) {
+    return type === "{" ? "}" : type === "[" ? "]" : type === "(" || type === "function" ? ")" : "";
+  }
+
+  /* Past where the bracket token [i] opens is closed, or [to] */
+  function closedAt(list, i, to) {
+    var open = [closerOf(list[i].type)];
+    for (var j = i + 1; j < to; j++) {
+      var close = closerOf(list[j].type);
+      if (close) {
+        open.push(close);
+      } else if (list[j].type === open[open.length - 1]) {
+        open.pop();
+        if (!open.length) return j + 1;
+      }
+    }
+    return to;
+  }
+
+  /*
+   * Past where the rule that begins at token [i] ends: its semicolon or its block. Inside
+   * another rule's block, the end of that block ends it too.
+   */
+  function ruleEnd(list, i, to, nested) {
+    for (var j = i + 1; j < to; j++) {
+      var type = list[j].type;
+      if (type === ";") return j + 1;
+      if (type === "}" && nested) return j;
+      if (type === "{") return closedAt(list, j, to);
+      if (closerOf(type)) j = closedAt(list, j, to) - 1;
+    }
+    return to;
+  }
+
+  /* The next token after [i] that is not a space or a comment */
+  function after(list, i, to) {
+    for (i++; i < to && (list[i].type === "space" || list[i].type === "comment"); i++);
     return i;
   }
 
-  function cssAddress(match) {
-    return (match[1] !== undefined ? match[1] : match[2] !== undefined ? match[2] : match[3] || "").trim();
-  }
-
-  /*
-   * Stylesheet text with every url() answered from the zip. One that points outside the book,
-   * or at nothing, becomes an empty data: address, which fetches nothing and breaks no rule
-   * around it. One that is already bytes, or a place in the same file, stays.
-   */
-  function urls(css, base, store) {
-    var wanted = [];
-    var match;
-    URL_IN_CSS.lastIndex = 0;
-    while ((match = URL_IN_CSS.exec(css))) {
-      var at = resolve(base, cssAddress(match));
-      if (at) wanted.push(at.path);
+  /* The address the @import at token [i] names, or null */
+  function importing(list, i, to) {
+    var j = after(list, i, to);
+    var t = j < to ? list[j] : null;
+    if (t && (t.type === "string" || t.type === "url")) return t.value;
+    if (t && t.type === "function" && /^url$/i.test(t.value)) {
+      var k = after(list, j, to);
+      if (k < to && list[k].type === "string") return list[k].value;
     }
-    if (!wanted.length && !/url\(/i.test(css)) return Promise.resolve(css);
-    return Promise.all(wanted.map(function (path) { return objectUrl(path, store); })).then(function (made) {
-      var urlOf = {};
-      for (var i = 0; i < wanted.length; i++) urlOf[wanted[i]] = made[i];
-      return css.replace(URL_IN_CSS, function (whole, a, b, c) {
-        var href = cssAddress([whole, a, b, c]);
-        if (/^(data|blob):/i.test(href) || href.charAt(0) === "#") return whole;
-        var to = resolve(base, href);
-        return 'url("' + ((to && urlOf[to.path]) || "data:,") + '")';
+    return null;
+  }
+
+  /* Rules that hold rules, inside which a font rule may begin as at the top of a sheet */
+  var HOLDERS = /^(media|supports|document|-moz-document|layer|container|scope|starting-style)$/i;
+
+  /*
+   * The properties EPUB once had names of its own for, which the engine still answers to
+   * some of, -epub-writing-mode among them. These are the ones it does not, so a book that
+   * hyphenates by -epub-hyphens would otherwise go unhyphenated.
+   */
+  var EPUB_ONLY = /^-epub-(hyphens|line-break|text-align-last|text-underline-position)$/i;
+
+  /*
+   * Writes tokens [from, to) of [css] into [into], as text and, for each address to be
+   * answered from the zip, { path }. In a sheet, [how.sheet], an @import at the top is
+   * { imp: its name in the zip } and a font rule { face: its parts }, and :root, :host and
+   * the EPUB properties are written for the shadow tree.
+   *
+   * Everything else is written as it was, but for what could take in whatever is written
+   * after it, which is written closed: an address as url("..."), one the engine would not
+   * take as url() with a control letter in it, which it gives up on, a comment as an empty
+   * one, and a quote or a bracket the text leaves open by closing it.
+   *
+   * Answers how many addresses there were, and how many of them were not a place in the
+   * chapter itself: { all, far }.
+   */
+  function rewrite(css, list, from, to, into, how) {
+    var text = "";
+    var found = { all: 0, far: 0 };
+    var open = [];
+    var top = { rules: !!how.sheet, start: true, at: false, holds: false };
+    var levels = [top];
+
+    function flush() {
+      if (text) into.push(text);
+      text = "";
+    }
+
+    function address(value) {
+      var trimmed = urlTrim(value);
+      var here = trimmed.charAt(0) === "#";
+      found.all++;
+      if (!here) found.far++;
+      if (here || /^(data|blob):/i.test(trimmed) || !how.answer) {
+        text += 'url("' + cssString(value) + '")';
+        return;
+      }
+      var at = resolve(how.base, trimmed);
+      if (!at) {
+        text += 'url("data:,")';
+        return;
+      }
+      flush();
+      into.push({ path: at.path });
+    }
+
+    function unread() {
+      found.all++;
+      found.far++;
+      text += "url(\u0001)";
+    }
+
+    for (var i = from; i < to; i++) {
+      var t = list[i];
+      var type = t.type;
+      var inner = open.length ? open[open.length - 1] : null;
+      var level = levels[levels.length - 1];
+      // Not inside a bracket or a function, where a rule may begin or end
+      var bare = !inner || !!inner.level;
+
+      if (type === "comment") {
+        text += "/**/";
+        continue;
+      }
+      if (type === "space") {
+        text += css.slice(t.from, t.to);
+        continue;
+      }
+
+      if (bare && level.rules && level.start && type !== "cdo" && type !== "cdc") {
+        level.start = false;
+        level.at = type === "at";
+        level.holds = false;
+        var name = type === "at" ? t.value.toLowerCase() : "";
+        var first = levels.length === 1;
+        var own = (first && (name === "import" || name === "namespace")) || name === "font-face";
+        var end = own ? ruleEnd(list, i, to, !first) : i;
+        // A namespace with a block is no namespace, and is read as any other rule is
+        if (name === "namespace" && list[end - 1].type === "}") own = false;
+        if (own) {
+          flush();
+          if (name === "import") {
+            var href = importing(list, i, end);
+            var target = href === null ? null : resolve(how.base, urlTrim(href));
+            var file = target && entry(target.path);
+            if (file) into.push({ imp: file.name });
+          } else {
+            // A namespace's address is a name and nothing to fetch, so it is not answered
+            var part = [];
+            rewrite(css, list, i, end, part, { base: how.base, answer: name === "font-face" });
+            into.push(name === "font-face" ? { face: part } : part.join(""));
+          }
+          i = end - 1;
+          level.start = true;
+          continue;
+        }
+        level.holds = HOLDERS.test(name);
+      }
+
+      if (type === "{") {
+        text += "{";
+        var block = bare ? { rules: level.rules && level.at && level.holds, start: true, at: false, holds: false } : null;
+        open.push({ close: "}", level: block });
+        if (block) levels.push(block);
+        continue;
+      }
+      if (type === "}" || type === ")" || type === "]") {
+        text += type;
+        if (inner && inner.close === type) {
+          open.pop();
+          if (inner.level) {
+            levels.pop();
+            levels[levels.length - 1].start = true;
+          }
+        }
+        continue;
+      }
+      if (type === ";") {
+        text += ";";
+        if (bare && level.at) level.start = true;
+        continue;
+      }
+      if (type === "url") {
+        address(t.value);
+        continue;
+      }
+      if (type === "bad-url") {
+        unread();
+        continue;
+      }
+      if (type === "string") {
+        // A picture offered at several sizes may be named by its address in quotes alone
+        if (inner && inner.sets) address(t.value);
+        else text += t.closed ? css.slice(t.from, t.to) : '"' + cssString(t.value) + '"';
+        continue;
+      }
+      if (type === "function") {
+        var fn = t.value.toLowerCase();
+        if (fn === "url" || fn === "src") {
+          var arg = after(list, i, to);
+          var shut = closedAt(list, i, to);
+          if (arg < shut && list[arg].type === "string") address(list[arg].value);
+          else unread();
+          i = shut - 1;
+          continue;
+        }
+        // A size of a picture named by what is only known when the page is drawn
+        if (inner && inner.sets && (fn === "var" || fn === "env" || fn === "attr")) {
+          unread();
+          i = closedAt(list, i, to) - 1;
+          continue;
+        }
+        text += css.slice(t.from, t.to);
+        open.push({ close: ")", sets: fn === "image-set" || fn === "-webkit-image-set" || fn === "image" });
+        continue;
+      }
+      if (type === "(" || type === "[") {
+        text += type;
+        open.push({ close: closerOf(type) });
+        continue;
+      }
+      if (how.sheet && type === ":" && i + 1 < to) {
+        var next = list[i + 1];
+        var called = next.type === "ident" || next.type === "function" ? next.value.toLowerCase() : "";
+        // :root is the page's root and not the book's, so it is the html element the chapter is given
+        if (next.type === "ident" && called === "root") {
+          text += "html";
+          i++;
+          continue;
+        }
+        // The element the shadow tree hangs on is Gander's, and a book has no business with it
+        if (called === "host" || (next.type === "function" && called === "host-context")) {
+          text += ":not(*)";
+          i = next.type === "function" ? closedAt(list, i + 1, to) - 1 : i + 1;
+          continue;
+        }
+      }
+      if (how.sheet && type === "ident" && EPUB_ONLY.test(t.value)) {
+        var k = after(list, i, to);
+        if (k < to && list[k].type === ":") {
+          text += t.value.slice(6);
+          continue;
+        }
+      }
+      text += css.slice(t.from, t.to);
+    }
+
+    // A rule the text leaves begun, given an empty block so it ends where the text does
+    var unfinished = how.sheet && !top.start && !(open.length && open[0].level);
+    for (var o = open.length - 1; o >= 0; o--) text += open[o].close;
+    if (unfinished) text += "{}";
+    flush();
+    return found;
+  }
+
+  /* The style of one element, read as any stylesheet is: { parts, found }, as rewrite() has them */
+  function inStyle(style, base, answer) {
+    var css = prepared(style);
+    var list = tokens(css);
+    var parts = [];
+    var found = rewrite(css, list, 0, list.length, parts, { base: base, answer: answer });
+    return { parts: parts, found: found };
+  }
+
+  /* A stylesheet's text in parts, as rewrite() writes them */
+  function parsed(source, base) {
+    var css = prepared(source);
+    var list = tokens(css);
+    var parts = [];
+    rewrite(css, list, 0, list.length, parts, { base: base, sheet: true, answer: true });
+    return parts;
+  }
+
+  /* A stylesheet in the zip in parts, by its name there, read once for the whole book */
+  function partsOf(name) {
+    if (!readSheets[name]) {
+      readSheets[name] = text(name).then(function (css) {
+        return parsed(css, name);
+      }, function () {
+        return [];
       });
+    }
+    return readSheets[name];
+  }
+
+  /*
+   * Parts with each address answered from the zip, from [store], as { css, faces }: the
+   * text, and the font rules among the parts, each of which is kept only where a font is
+   * behind it. One the book does not hold, or one that did not unscramble, would only be a
+   * rule the engine complains it cannot decode.
+   */
+  function answered(parts, store) {
+    var wanted = [];
+    (function want(list) {
+      list.forEach(function (part) {
+        if (part.face) want(part.face);
+        else if (part.path !== undefined) wanted.push(part.path);
+      });
+    })(parts);
+    return Promise.all(wanted.map(function (path) { return objectUrl(path, store); })).then(function (made) {
+      var urlOf = bag();
+      for (var i = 0; i < wanted.length; i++) urlOf[wanted[i]] = made[i];
+      function written(part) {
+        return typeof part === "string" ? part : 'url("' + (urlOf[part.path] || "data:,") + '")';
+      }
+      var css = "";
+      var fonts = "";
+      parts.forEach(function (part) {
+        if (!part.face) {
+          css += written(part);
+          return;
+        }
+        var rule = part.face.map(written).join("");
+        if (/url\("(blob:|data:[^,])/i.test(rule)) fonts += rule + "\n";
+      });
+      return { css: css, faces: fonts };
     });
   }
 
   /*
-   * A stylesheet with the ones it imports written into it, each read from where it lives, so
-   * the addresses in one are worked out against its own folder. [seen] is every file already
-   * written into the sheet this is part of, and each goes in once: that is how one that
-   * imports itself comes to an end, and how eight that each import the next ten times over
-   * come to eight readings and not ten million. [deep] is how many imports led here.
+   * A stylesheet as the shadow tree can use it, { css, faces }, with the sheets it imports
+   * written into it: [source] read against [base], or the sheet called [name] in the zip.
+   * Its @font-face rules are taken out, since a shadow tree ignores them, and put in the
+   * page's own head by show().
+   *
+   * A sheet imported from more than one place goes in once, at the last of them, which is
+   * where the engine's cascade has its rules stand: a rule later on beats the same rule
+   * earlier. So each is read once however often it is imported, and eight that each import
+   * the next ten times come to eight readings, not ten million. One that imports a sheet it
+   * was itself imported by is not followed back, as the engine does not follow it.
    */
-  function gathered(css, base, seen, deep) {
-    var asked = [];
-    var marked = plain(css).replace(IMPORT_IN_CSS, function (whole, quote, href) {
-      var at = resolve(base, href);
-      var ok = at && deep < 8 && !seen[at.path] && entry(at.path);
-      if (ok) seen[at.path] = true;
-      asked.push(ok
-        ? text(at.path).then(function (inner) {
-          return gathered(inner, at.path, seen, deep + 1);
-        }, function () { return ""; })
-        : Promise.resolve(""));
-      return "/*vw-import-" + (asked.length - 1) + "*/";
-    });
-    return urls(marked, base, shared).then(function (own) {
-      return Promise.all(asked).then(function (inner) {
-        return own.replace(/\/\*vw-import-(\d+)\*\//g, function (whole, n) {
-          return inner[Number(n)] || "";
+  function fitted(source, base, name) {
+    var known = bag();
+
+    function reach(found, deep) {
+      var wanted = [];
+      found.forEach(function (parts) {
+        parts.forEach(function (part) {
+          if (part.imp !== undefined && !(part.imp in known) && deep < 8) {
+            known[part.imp] = null;
+            wanted.push(part.imp);
+          }
         });
       });
-    });
-  }
-
-  /*
-   * A stylesheet as the shadow tree can use it: { css, faces }. Its @font-face rules are
-   * taken out, since a shadow tree ignores them, and put in the page's own head by show().
-   * One left with no font behind it is dropped: a font that did not unscramble, or one the
-   * book does not hold, would only be a rule the engine complains it cannot decode. :root is
-   * the page's root and not the book's, so it is written as the html element the chapter is
-   * given.
-   */
-  function fitted(css, base) {
-    var seen = {};
-    seen[base] = true;
-    return gathered(css, base, seen, 0).then(function (whole) {
-      var fonts = "";
-      var rest = whole.replace(FACE_IN_CSS, function (rule) {
-        if (/url\("(blob:|data:[^,])/i.test(rule)) fonts += rule + "\n";
-        return "";
+      if (!wanted.length) return null;
+      return Promise.all(wanted.map(partsOf)).then(function (got) {
+        for (var i = 0; i < wanted.length; i++) known[wanted[i]] = got[i];
+        return reach(got, deep + 1);
       });
-      return { css: unprefixed(rest.replace(/:root\b/g, "html")), faces: fonts };
-    });
-  }
+    }
 
-  /*
-   * A stylesheet with the properties EPUB once had names of its own for under the names the
-   * engine knows them by. It still answers to some of the old ones, -epub-writing-mode among
-   * them, and these are the ones it does not, so a book that hyphenates by -epub-hyphens
-   * would otherwise go unhyphenated.
-   */
-  function unprefixed(css) {
-    return css.replace(/-epub-(hyphens|line-break|text-align-last|text-underline-position)(\s*:)/gi, "$1$2");
+    var root;
+    return new Promise(function (done) {
+      done(name ? partsOf(name) : parsed(source, base));
+    }).then(function (parts) {
+      root = parts;
+      if (name) known[name] = root;
+      return reach([root], 0);
+    }).then(function () {
+      // Gone through from the end, so that each sheet is met at the last place it stands
+      var placed = bag();
+      var through = bag();
+      var out = [];
+      (function visit(parts, at) {
+        if (at) placed[at] = through[at] = true;
+        for (var i = parts.length - 1; i >= 0; i--) {
+          var part = parts[i];
+          var to = part.imp;
+          if (to === undefined) out.push(part);
+          else if (known[to] && !placed[to] && !through[to]) visit(known[to], to);
+        }
+        if (at) through[at] = false;
+      })(root, name);
+      return answered(out.reverse(), shared);
+    }).catch(function () {
+      return { css: "", faces: "" };
+    });
   }
 
   function sheet(path) {
     if (!sheets[path]) {
-      sheets[path] = text(path).then(function (css) {
-        return fitted(css, path);
-      }).catch(function () {
-        return { css: "", faces: "" };
-      });
+      var file = entry(path);
+      sheets[path] = file ? fitted(null, null, file.name) : Promise.resolve({ css: "", faces: "" });
     }
     return sheets[path];
   }
@@ -1212,8 +1691,8 @@ var vwEpub = (function () {
         var style = el.getAttribute("data-vw-style");
         if (style === null) return;
         el.removeAttribute("data-vw-style");
-        jobs.push(urls(plain(style), base, held).then(function (css) {
-          return function () { el.setAttribute("style", css); };
+        jobs.push(answered(inStyle(style, base, true).parts, held).then(function (got) {
+          return function () { el.setAttribute("style", got.css); };
         }));
       })(els[i]);
     }
@@ -2119,10 +2598,23 @@ var vwEpub = (function () {
    * shows the address, for the reader to copy: Gander opens no web address, here or in any
    * other viewer, and nothing a document says is handed on to a browser.
    */
+  /*
+   * The link a tap on [el] would have the engine follow: the nearest a or area above it with
+   * an address. An a with none is a name for a place and not a link, and a summary nearer
+   * than any link opens and closes its details, which is all such a tap does.
+   */
+  function linkAt(el) {
+    for (var a = el; a && a !== shadow; a = a.parentNode) {
+      if (a.nodeType !== 1) continue;
+      if (LINK.test(local(a)) && (a.hasAttribute("href") || a.hasAttributeNS(XLINK, "href"))) return a;
+      if (local(a) === "summary") return null;
+    }
+    return null;
+  }
+
   shadow.addEventListener("click", function (e) {
-    var a = e.target;
-    while (a && a !== shadow && !(a.nodeType === 1 && LINK.test(local(a)))) a = a.parentNode;
-    if (!a || a === shadow) return;
+    var a = linkAt(e.target);
+    if (!a) return;
     // First, and whatever the link says of itself, so that no tap in a book is ever the
     // engine's to follow: it would follow one to Gander's own pages, which the app allows
     e.preventDefault();
@@ -2143,6 +2635,11 @@ var vwEpub = (function () {
       if (back && shown === back.i && near(back.past)) forget();
       else remember(from);
     });
+  });
+
+  // A middle click is not a click, and would open the link in a page of its own
+  shadow.addEventListener("auxclick", function (e) {
+    if (linkAt(e.target)) e.preventDefault();
   });
 
   var reporting = false;
