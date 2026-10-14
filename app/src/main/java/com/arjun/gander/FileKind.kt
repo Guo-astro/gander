@@ -122,6 +122,8 @@ enum class FileKind(val page: String) {
             MIME_XLSX,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
             "application/vnd.ms-excel",
+            "application/vnd.ms-excel.sheet.macroenabled.12",
+            "application/vnd.ms-excel.sheet.binary.macroenabled.12",
             "text/csv",
             MIME_ODS,
         )
@@ -147,8 +149,14 @@ enum class FileKind(val page: String) {
             "application/vnd.ms-pki.stl",
         )
 
-        /** Text whose type is not text/. SubRip's is the one Android 10 and later give a .srt. */
-        private val textMimes = setOf("application/json", "application/xml", "application/x-subrip")
+        /**
+         * Text whose type is not text/. SubRip's is the one Android 10 and later give a .srt,
+         * and the last three are what they give a .js, a .rb and a .sql.
+         */
+        private val textMimes = setOf(
+            "application/json", "application/xml", "application/x-subrip",
+            "application/javascript", "application/x-ruby", "application/x-sql",
+        )
 
         /**
          * An .m3u playlist, which Android labels as audio. It is a list of where its tracks
@@ -177,9 +185,10 @@ enum class FileKind(val page: String) {
          *
          * The type is lowercased first. MIME types are case-insensitive, and the spellings
          * that reach Gander differ: Android 10 and later report every type in lower case,
-         * while the registered one for a .docm or a .pptm says macroEnabled, and an app that
-         * passes on the type a file was sent with can hand over either. That is also why the
-         * manifest, whose matching is case-sensitive, claims those two in both spellings.
+         * while the registered one for a .docm, a .pptm, a .xlsm or a .xlsb says macroEnabled,
+         * and an app that passes on the type a file was sent with can hand over either. That
+         * is also why the manifest, whose matching is case-sensitive, claims those in both
+         * spellings.
          */
         fun detect(ext: String, mime: String?): FileKind = route(ext, mime?.lowercase())
 

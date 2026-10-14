@@ -29,6 +29,10 @@
   slides went in by a fifth to two fifths before, a photo from a phone's camera by about nine
   times, and a small picture not at all. A sheet keeps its own double tap, which goes in
   further. A second tap held and dragged still zooms with one finger, and a pinch is as it was.
+- Gander is among the apps offered for a macro-enabled or binary Excel workbook (.xlsm, .xlsb)
+  and for a .js, .rb or .sql file, in a file manager's Open with and in the share sheet. On
+  Android 10 and later it was missing for these five, though it opened each from its own Open
+  button.
 
 ## 2.4 (2026-10-12)
 
