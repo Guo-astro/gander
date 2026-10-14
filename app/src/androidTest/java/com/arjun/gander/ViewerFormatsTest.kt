@@ -12,6 +12,7 @@ import androidx.test.espresso.web.webdriver.DriverAtoms.getText
 import androidx.test.espresso.web.webdriver.Locator
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
@@ -34,6 +35,8 @@ class ViewerFormatsTest {
 
     @get:Rule
     val retry = RetryRule()
+
+    private val target get() = InstrumentationRegistry.getInstrumentation().targetContext
 
     @Before
     fun setUp() {
@@ -139,8 +142,24 @@ class ViewerFormatsTest {
     // the strip above it: that names the chapter once the zip, the book's list of chapters
     // and its contents have all been read.
     @Test
-    fun aBookOpensAtItsFirstChapter() =
+    fun aBookOpensAtItsFirstChapter() {
+        unread("harbour.epub")
         expect("harbour.epub", "#epub-where", "Title page")
+    }
+
+    /**
+     * Forgets where a book was left, so it opens as one never read. BookDeviceTest leaves this
+     * one at chapter 2, and Gander reopens a book where it was left, across installs too.
+     */
+    private fun unread(fixture: String) {
+        val uri = DeviceFixtures.uriFor(fixture)
+        val resolver = target.contentResolver
+        // Measured as the viewer measures it, or the key would be another book's
+        val length = resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+        val key = checkNotNull(Positions.keyFor(resolver, uri, length)) { "$fixture could not be read" }
+        // The top of the first chapter is not kept, so leaving the book there drops its line
+        Positions.save(target, key, 1, 2, Positions.Place(0, 0))
+    }
 
     /**
      * WebGL on the device's own graphics driver, which no browser test stands in for. The
