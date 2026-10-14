@@ -199,7 +199,7 @@ open class ViewerActivity : AppCompatActivity() {
     internal var documentChrome: DocumentChrome? = null
         private set
 
-    /** A PDF's double tap. See [DoubleTapZoom]. */
+    /** The double tap of a document's pages or a picture in the WebView. See [DoubleTapZoom]. */
     private var doubleTapZoom: DoubleTapZoom? = null
 
     /**
@@ -1578,8 +1578,14 @@ open class ViewerActivity : AppCompatActivity() {
         imageView.setBackgroundColor(Color.BLACK)
         imageView.setMinimumScaleType(SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE)
         imageView.maxScale = 12f
+        // The library's own double tap went to a picture pixel a dp, nine times a phone's photo
+        // and a small picture not at all, so it goes to twice the fit as a page's does
+        imageView.setDoubleTapZoomDuration(DOUBLE_TAP_MS)
+        imageView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitDoubleTap(imageView) }
         imageView.orientation = Thumbs.exifRotation(contentResolver, uri)
         imageView.setOnImageEventListener(object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
+            override fun onReady() = fitDoubleTap(imageView)
+
             override fun onImageLoadError(e: Exception) {
                 // Some formats decode fine in the WebView even when the region decoder gives up
                 container.removeAllViews()
@@ -1588,6 +1594,11 @@ open class ViewerActivity : AppCompatActivity() {
         })
         container.addView(imageView, matchParent())
         imageView.setImage(ImageSource.uri(uri))
+    }
+
+    /** Twice the picture as it fits the view now, which changes as the phone turns. */
+    private fun fitDoubleTap(view: SubsamplingScaleImageView) {
+        if (view.isReady) view.setDoubleTapZoomScale(DOUBLE_TAP_ZOOM * view.minScale)
     }
 
     /**
@@ -1945,8 +1956,8 @@ open class ViewerActivity : AppCompatActivity() {
             documentChrome = DocumentChrome(this, ::touchExplorationOn, ::tellPage, ::keepThumbBelowBar)
                 .apply { float() }
         }
-        // Only pdf.html turns the WebView's own double tap off, so only a PDF gets this one
-        doubleTapZoom = if (kind == FileKind.PDF) DoubleTapZoom(this, web) else null
+        // Only where the page turns the WebView's own double tap off, or both would zoom
+        doubleTapZoom = if (kind.zoomedOnDoubleTap) DoubleTapZoom(this, web) else null
         // Not consumed: the document still takes every touch
         web.setOnTouchListener { _, event ->
             documentChrome?.touched(event)

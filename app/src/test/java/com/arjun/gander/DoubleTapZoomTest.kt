@@ -20,7 +20,7 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadows.ShadowChoreographer
 
 /**
- * A double tap on a PDF, against a stand-in for the WebView.
+ * A double tap on a document's pages or a picture, against a stand-in for the WebView.
  *
  * The stand-in zooms the way WebView.zoomBy does, about the middle of the view and no further
  * than its limits, and throws at what the real one throws at. The real thing is tested on a

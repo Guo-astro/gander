@@ -24,9 +24,11 @@
   tells from the file's first bytes, and the line under the file's name says "Shown as text,
   unknown format". A file that is not text keeps the card and its **View as text** button. So
   does a `.ppt`, whose card says how to get it opened.
-- A double tap on a PDF zooms in to twice the width of the page, about the place you tapped,
-  and the next double tap puts the page back. It went in by only a fifth before. A second tap
-  held and dragged still zooms with one finger, and a pinch is as it was.
+- A double tap zooms a PDF, a Word, OpenDocument or Rich Text page, a slide or a picture in to
+  twice its width, about the place you tapped, and the next double tap puts it back. Pages and
+  slides went in by a fifth to two fifths before, a photo from a phone's camera by about nine
+  times, and a small picture not at all. A sheet keeps its own double tap, which goes in
+  further. A second tap held and dragged still zooms with one finger, and a pinch is as it was.
 
 ## 2.4 (2026-10-12)
 

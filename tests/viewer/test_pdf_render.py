@@ -466,19 +466,3 @@ def test_the_band_keeps_a_page_you_scroll_back_over(viewer, page):
     after_frames(page, 3)
 
     assert canvas_widths(page)[0] > 300, "the first page was thrown away and rebuilt"
-
-
-# ---------------------------------------------------------------------------
-# The double tap, which the app zooms and Chromium must not
-# ---------------------------------------------------------------------------
-
-def test_the_page_turns_chromiums_own_double_tap_zoom_off(viewer, page):
-    """
-    One half of a contract with DoubleTapZoom.kt, which zooms a PDF's double tap
-    from the app. Without this rule Chromium zooms the same double tap as well.
-    """
-    viewer("pdf.html", "six-pages.pdf")
-    wait_for_pdf(page)
-    assert page.evaluate(
-        "() => getComputedStyle(document.documentElement).touchAction"
-    ) == "manipulation"

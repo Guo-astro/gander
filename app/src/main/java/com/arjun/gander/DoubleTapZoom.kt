@@ -20,6 +20,9 @@ import kotlin.math.sqrt
  */
 internal const val DOUBLE_TAP_ZOOM = 2f
 
+/** How long a double tap's zoom takes, which is what Chromium gives its own. */
+internal const val DOUBLE_TAP_MS = 250
+
 /**
  * Where a double tap takes a document drawn at [zoom] times its fitted width: in from the fitted
  * page or near it, and back to the fitted page from further in.
@@ -55,11 +58,13 @@ internal interface ZoomSurface {
 }
 
 /**
- * A double tap on a PDF zooms in about the place tapped, and the next one zooms back out.
+ * A double tap on a document's pages or a picture zooms in about the place tapped, and the next
+ * one zooms back out.
  *
  * The WebView's own double tap fits the block under the finger to the screen, which suits a web
- * page's columns. A PDF page is one block as wide as the screen, so it went in by a fifth.
- * pdf.html turns that one off with touch-action, and this is what a double tap does instead.
+ * page's columns. A PDF page is one block as wide as the screen, so it went in by a fifth. The
+ * pages [FileKind.zoomedOnDoubleTap] names turn that one off with touch-action, and this is what
+ * a double tap does instead.
  */
 internal class DoubleTapZoom(context: Context, private val surface: ZoomSurface) {
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -113,7 +118,7 @@ internal class DoubleTapZoom(context: Context, private val surface: ZoomSurface)
         val placeY = (surface.scrolledY() + y) / from
         cancel()
         running = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = ZOOM_MS
+            duration = DOUBLE_TAP_MS.toLong()
             interpolator = DecelerateInterpolator()
             addUpdateListener {
                 // By ratio, so the page grows at an even rate rather than fastest at the start
@@ -139,9 +144,6 @@ internal class DoubleTapZoom(context: Context, private val surface: ZoomSurface)
     }
 
     private companion object {
-        /** What Chromium gives its own double tap zoom. */
-        const val ZOOM_MS = 250L
-
         /** A little under the fitted page, as a zoom. */
         const val UNDER = 0.9f
     }

@@ -393,4 +393,25 @@ class FileKindTest {
     fun onlyPdfAndWordTurnOverAtNight() {
         assertThat(FileKind.entries.filter { it.turnsOver }).containsExactly(PDF, DOCX)
     }
+
+    /** Pages and pictures. A sheet keeps the WebView's own, which goes further in on a cell. */
+    @Test
+    fun pagesAndPicturesInTheWebViewHaveTheAppsDoubleTap() {
+        assertThat(FileKind.entries.filter { it.zoomedOnDoubleTap })
+            .containsExactly(PDF, DOCX, PROSE, PPTX, IMAGE_WEB)
+    }
+
+    /**
+     * The two halves of that double tap. A page whose kind the app zooms must turn Chromium's
+     * own off, or both zoom, and no other page may, or its double tap would do nothing.
+     */
+    @Test
+    fun aPageTurnsChromiumsDoubleTapOffExactlyWhereTheAppZoomsItsOwn() {
+        FileKind.entries.filter { it.page.isNotEmpty() }.forEach { kind ->
+            val css = File("src/main/assets/viewer/${kind.page}").readText()
+            val off = "html { touch-action: manipulation; }" in css
+            assertThat("${kind.page} turns it off: $off")
+                .isEqualTo("${kind.page} turns it off: ${kind.zoomedOnDoubleTap}")
+        }
+    }
 }

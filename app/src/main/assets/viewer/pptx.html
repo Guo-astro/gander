@@ -15,6 +15,11 @@
      everything else; app.css multiplies it back up by this. See the token there. */
   :root { --vw-zoom: 2.75; }
 
+  /* Turns off Chromium's own double tap zoom, which fits the block under the finger to the
+     screen and so took most of a slide in by a fifth. DoubleTapZoom.kt zooms a double tap
+     instead, and would zoom twice without this line. A pinch is as it was. */
+  html { touch-action: manipulation; }
+
   /* Warm, and lightness-matched to the Blue Grey 900 it replaces: L* 20.1 against
      20.0, so a slide stands off its ground exactly as far as it did. */
   body { background: #343029; }

@@ -13,6 +13,11 @@
      everything else; app.css multiplies it back up by this. See the token there. */
   :root { --vw-zoom: 2.75; }
 
+  /* Turns off Chromium's own double tap zoom, which fits the block under the finger to the
+     screen and so took a picture in by a fifth. DoubleTapZoom.kt zooms a double tap instead,
+     and would zoom twice without this line. A pinch is as it was. */
+  html { touch-action: manipulation; }
+
   /* Height on both: body centres its image against the full viewport, and its
      100% only resolves if html has a height to resolve against. */
   html, body { height: 100%; }

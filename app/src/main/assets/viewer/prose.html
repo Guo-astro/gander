@@ -13,6 +13,12 @@
      drawn at the width of its paper and the WebView zooms that to fit. See --vw-zoom in
      app.css for what this number is. */
   :root { --vw-zoom: 2.75; }
+
+  /* Turns off Chromium's own double tap zoom, which fits the block under the finger to the
+     screen and so took a page in by a fifth, or a paragraph by a quarter. DoubleTapZoom.kt
+     zooms a double tap instead, and would zoom twice without this line. A pinch is as it
+     was. */
+  html { touch-action: manipulation; }
 </style>
 <script src="lib/jszip3.min.js"></script>
 </head>
