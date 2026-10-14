@@ -44,10 +44,10 @@ var vwEpub = (function () {
    * covers. Neither is a lock on the book. Both are published, and are there so that a font
    * does not come out of the zip whole when someone unzips it: see unscrambled().
    */
-  var SCRAMBLES = {
+  var SCRAMBLES = Object.assign(bag(), {
     "http://www.idpf.org/2008/embedding": { key: "idpf", length: 1040 },
     "http://ns.adobe.com/pdf/enc#RC": { key: "adobe", length: 1024 }
-  };
+  });
 
   /* How a font file begins: TrueType, OpenType, a collection, and the two web wrappings */
   var FONT_START = /^(\x00\x01\x00\x00|OTTO|true|typ1|ttcf|wOFF|wOF2)$/;
@@ -79,13 +79,13 @@ var vwEpub = (function () {
   };
 
   /* By extension, for a file the package gives no type or a wrong one */
-  var TYPES = {
+  var TYPES = Object.assign(bag(), {
     png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
     webp: "image/webp", svg: "image/svg+xml", avif: "image/avif", bmp: "image/bmp",
     mp3: "audio/mpeg", m4a: "audio/mp4", ogg: "audio/ogg", wav: "audio/wav",
     mp4: "video/mp4", webm: "video/webm",
     ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2"
-  };
+  });
 
   /*
    * What a chapter starts from inside the shadow tree. These come before the book's
@@ -172,6 +172,9 @@ var vwEpub = (function () {
   /* What a tap may be a link through: a link, and a part of a picture that is one */
   var LINK = /^(a|area)$/;
 
+  /* What the engine takes for a control, a tap on which a summary leaves alone */
+  var CONTROLS = /^(button|fieldset|input|output|select|textarea)$/;
+
   /* The addresses outside a book that a reader is shown, the ones vwDisarmLinks() leaves a
      Word document: a web page, somebody to write to and a number to ring */
   var OUTSIDE = /^(https?|mailto|tel):/i;
@@ -182,7 +185,8 @@ var vwEpub = (function () {
 
   /*
    * A map with nothing in it to begin with, not even what every object has. The keys are a
-   * book's own names, and a link to "constructor" must find nothing.
+   * book's own names, or are looked up by them, and a link, a scrambling or a file named
+   * "constructor" must find nothing.
    */
   function bag() {
     return Object.create(null);
@@ -1304,6 +1308,15 @@ var vwEpub = (function () {
     return to;
   }
 
+  /* Whether the rule from token [i] to [end] has a block of its own */
+  function blocked(list, i, end) {
+    for (var j = i + 1; j < end; j++) {
+      if (list[j].type === "{") return true;
+      if (closerOf(list[j].type)) j = closedAt(list, j, end) - 1;
+    }
+    return false;
+  }
+
   /* The next token after [i] that is not a space or a comment */
   function after(list, i, to) {
     for (i++; i < to && (list[i].type === "space" || list[i].type === "comment"); i++);
@@ -1324,6 +1337,9 @@ var vwEpub = (function () {
 
   /* Rules that hold rules, inside which a font rule may begin as at the top of a sheet */
   var HOLDERS = /^(media|supports|document|-moz-document|layer|container|scope|starting-style)$/i;
+
+  /* What a picture offered at several sizes may be written with besides an address: a picture, and a size */
+  var PICTURED = /^((-webkit-|-moz-)?(image-set|image|cross-fade|element|gradient|(repeating-)?(linear|radial|conic)-gradient)|type|calc|min|max|clamp)$/;
 
   /*
    * The properties EPUB once had names of its own for, which the engine still answers to
@@ -1416,12 +1432,16 @@ var vwEpub = (function () {
             var target = href === null ? null : resolve(how.base, urlTrim(href));
             var file = target && entry(target.path);
             if (file) into.push({ imp: file.name });
-          } else {
+          } else if (name === "namespace" || blocked(list, i, end)) {
             // A namespace's address is a name and nothing to fetch, so it is not answered
             var part = [];
             rewrite(css, list, i, end, part, { base: how.base, answer: name === "font-face" });
+            // Ended, so that the rules an import puts after one a sheet ends in stay out of it
+            if (name === "namespace" && list[end - 1].type !== ";") part.push(";");
             into.push(name === "font-face" ? { face: part } : part.join(""));
           }
+          // A font rule with no block of its own is none, and is left out as the engine leaves
+          // it out: written as it was, it would take the next font rule for its block
           i = end - 1;
           level.start = true;
           continue;
@@ -1476,8 +1496,9 @@ var vwEpub = (function () {
           i = shut - 1;
           continue;
         }
-        // A size of a picture named by what is only known when the page is drawn
-        if (inner && inner.sets && (fn === "var" || fn === "env" || fn === "attr")) {
+        // A size of a picture named by anything but a picture or a size, as var(), if() and a
+        // book's own functions are, is only known when the page is drawn
+        if (inner && inner.sets && !PICTURED.test(fn)) {
           unread();
           i = closedAt(list, i, to) - 1;
           continue;
@@ -1629,19 +1650,18 @@ var vwEpub = (function () {
       if (name) known[name] = root;
       return reach([root], 0);
     }).then(function () {
-      // Gone through from the end, so that each sheet is met at the last place it stands
+      // Gone through from the end, so that each sheet is met at the last place it stands. A
+      // sheet is placed as it is entered, so one that imports its own importer stops there
       var placed = bag();
-      var through = bag();
       var out = [];
       (function visit(parts, at) {
-        if (at) placed[at] = through[at] = true;
+        if (at) placed[at] = true;
         for (var i = parts.length - 1; i >= 0; i--) {
           var part = parts[i];
           var to = part.imp;
           if (to === undefined) out.push(part);
-          else if (known[to] && !placed[to] && !through[to]) visit(known[to], to);
+          else if (known[to] && !placed[to]) visit(known[to], to);
         }
-        if (at) through[at] = false;
       })(root, name);
       return answered(out.reverse(), shared);
     }).catch(function () {
@@ -2599,15 +2619,28 @@ var vwEpub = (function () {
    * other viewer, and nothing a document says is handed on to a browser.
    */
   /*
-   * The link a tap on [el] would have the engine follow: the nearest a or area above it with
-   * an address. An a with none is a name for a place and not a link, and a summary nearer
-   * than any link opens and closes its details, which is all such a tap does.
+   * The link a tap on [el] is inside: the nearest a or area above it with an address. An a
+   * with none is a name for a place and not a link.
    */
   function linkAt(el) {
     for (var a = el; a && a !== shadow; a = a.parentNode) {
-      if (a.nodeType !== 1) continue;
-      if (LINK.test(local(a)) && (a.hasAttribute("href") || a.hasAttributeNS(XLINK, "href"))) return a;
-      if (local(a) === "summary") return null;
+      if (a.nodeType === 1 && LINK.test(local(a)) && (a.hasAttribute("href") || a.hasAttributeNS(XLINK, "href"))) return a;
+    }
+    return null;
+  }
+
+  /*
+   * The details a tap on [el] inside [link] opens or closes, as the engine has it, or null
+   * where the tap is the link's: one whose own summary, its first, is nearer than the link,
+   * unless what was tapped is a control. A summary in no details, or not the first of its
+   * own, does nothing, and the engine follows the link around it.
+   */
+  function detailsAt(el, link) {
+    if (CONTROLS.test(local(el))) return null;
+    for (var s = el; s && s !== link; s = s.parentNode) {
+      if (s.nodeType !== 1 || local(s) !== "summary" || !s.parentNode || local(s.parentNode) !== "details") continue;
+      for (var first = s.parentNode.firstElementChild; first && local(first) !== "summary"; first = first.nextElementSibling);
+      if (first === s) return s.parentNode;
     }
     return null;
   }
@@ -2618,6 +2651,12 @@ var vwEpub = (function () {
     // First, and whatever the link says of itself, so that no tap in a book is ever the
     // engine's to follow: it would follow one to Gander's own pages, which the app allows
     e.preventDefault();
+    // Which also keeps the engine from opening a details the tap was on, so that is done here
+    var details = detailsAt(e.target, a);
+    if (details) {
+      details.open = !details.open;
+      return;
+    }
     var href = a.getAttribute("href") || a.getAttributeNS(XLINK, "href");
     if (!href) return;
     var at = resolve(spine[shown].path, href);
