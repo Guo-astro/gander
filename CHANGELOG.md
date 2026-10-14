@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.5 (2026-10-14)
 
 - An EPUB book opens (#50, asked for by @0xlne). Gander reads it a chapter at a time, with
   the book's own contents list, Previous and Next under each chapter, the links between
