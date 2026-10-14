@@ -211,8 +211,8 @@ class FormatRegistryTest {
     /**
      * A filter matches a type exactly, case and all. Android 10 and later report a .docm, a
      * .pptm, a .xlsm or a .xlsb in lower case, and the registered spelling says macroEnabled,
-     * so each is claimed both ways. Without one of the two lines Gander is missing from the chooser for
-     * whichever spelling that was, in the one place nothing else would notice.
+     * so each is claimed both ways. Without one of the two lines Gander is missing from the
+     * chooser for whichever spelling that was, in the one place nothing else would notice.
      */
     @Test
     fun theMacroEnabledTypesAreOfferedInBothSpellings() {
