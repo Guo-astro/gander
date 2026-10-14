@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from helpers import status_text
 from test_epub import go_to, little_book, open_book, style_of, wait_for_book, wait_for_heading
 
 XHTML = 'xmlns="http://www.w3.org/1999/xhtml"'
@@ -627,12 +628,14 @@ def test_a_sheet_is_imported_however_the_import_is_written(viewer, page, made, s
     "h1 { color: rgb(1, 2, 3); } h2",
     "h1 { color: rgb(1, 2, 3); } /* a note",
     'h1 { color: rgb(1, 2, 3); content: "a quote',
+    "h1 { color: rgb(1, 2, 3); } @namespace svg url(http://www.w3.org/2000/svg)",
+    'h1 { color: rgb(1, 2, 3); } @namespace svg "http://www.w3.org/2000/svg"',
 ])
 def test_a_sheet_imported_unfinished_leaves_the_rest_whole(viewer, page, made, inner):
     """
     The engine reads an imported sheet to its own end, where whatever it left open closes.
-    Written into the sheet that imports it, a block, a rule, a comment or a quote it leaves
-    open must close there too, and not take in the rules after the import.
+    Written into the sheet that imports it, a block, a rule, a comment, a quote or a
+    namespace it leaves open must close there too, and not take in the rules after the import.
     """
     book = little_book(made, "unfinished.epub",
                        [("", '<link rel="stylesheet" href="a.css"/>', "<body><h1>Unfinished</h1><p>after</p></body>")],
@@ -700,6 +703,19 @@ SPELLINGS = {
     "image-set in a drawing's attribute": ("", f'<body><h1>Spelled</h1><svg {SVG} width="60" height="20">'
                                                '<rect width="20" height="20" mask="image-set(url(leak-mask.png) 1x)" '
                                                'cursor="image-set(\'leak-cursor.png\' 1x), auto"/></svg></body>', {}),
+    "if() in image-set": (LINKED, PLAIN, {"reach.css": '.a { background-image: image-set(if(else: "leak-if.png") 1x) }'}),
+    "if() with a media test in image-set": (LINKED, PLAIN, {
+        "reach.css": '.a { background-image: image-set(if(media(width > 1px): "leak-ifmedia.png"; else: "x.png") 1x) }'}),
+    "a book's own function in image-set": (LINKED, PLAIN, {
+        "reach.css": '@function --f() { result: "leak-fn.png"; }\n.a { background-image: image-set(--f() 1x) }'}),
+    "a book's own function handing on what it is given": (LINKED, PLAIN, {
+        "reach.css": '@function --pick(--x) { result: var(--x); }\n.a { background-image: image-set(--pick("leak-arg.png") 1x) }'}),
+    "a book's own function in a style element": (
+        '<style>@function --g() { result: "leak-fnstyle.png"; } .a { background-image: image-set(--g() 1x) }</style>', PLAIN, {}),
+    "if() in image-set in a style": ("", '<body><h1>Spelled</h1><div class="a" style="background-image: '
+                                         'image-set(if(else: \'leak-ifattr.png\') 1x)">a</div></body>', {}),
+    "if() in image-set in the body's style": ("", '<body style="background-image: image-set(if(else: \'leak-ifbody.png\') 1x)">'
+                                                  '<h1>Spelled</h1></body>', {}),
 }
 
 
@@ -757,3 +773,105 @@ def test_a_namespace_keeps_its_name(viewer, page, made):
     open_book(viewer, page, book)
     wait_for_heading(page, "Named space")
     assert in_book(page, "return getComputedStyle(root.querySelector('#r')).fill") == "rgb(1, 2, 3)"
+
+
+# Each a link around a summary that takes no tap, and whether its details is open after one
+WRAPPED = {
+    "a summary in no details": ('<p><a href="text.html?name=spoof"><summary id="t">tap</summary></a></p>', None),
+    "a details' second summary": ('<a href="text.html?name=spoof"><details id="d" open="open"><summary>one</summary>'
+                                  '<summary id="t">two</summary></details></a>', True),
+    "an output in a details' summary": ('<a href="text.html?name=spoof"><details id="d"><summary>'
+                                        '<output id="t">tap</output></summary></details></a>', False),
+    "a fieldset in a details' summary": ('<a href="text.html?name=spoof"><details id="d"><summary>'
+                                         '<fieldset id="t">tap</fieldset></summary></details></a>', False),
+}
+
+
+@pytest.mark.parametrize("how", sorted(WRAPPED))
+def test_a_link_around_a_summary_that_takes_no_tap_is_still_not_followed(viewer, page, made, how):
+    """
+    A summary takes a tap from the link around it only where it opens its details: as the
+    first summary of one, and not through a control inside it. Anywhere else the tap is the
+    link's, which the engine would follow, to Gander's own pages too, so the reader takes it.
+    A middle click opens nothing either.
+    """
+    html, opened = WRAPPED[how]
+    book = little_book(made, "wrapped.epub", [("", "", "<body><h1>Wrapped</h1>" + html + "</body>")])
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Wrapped")
+    here = page.url
+    page.click("#book #t")
+    page.wait_for_timeout(500)
+    assert page.url == here
+    assert "Wrapped" in page.text_content("#book h1")
+    if opened is not None:
+        assert in_book(page, "return root.querySelector('#d').open") == opened
+
+    at = in_book(page, "const r = root.querySelector('#t').getBoundingClientRect(); return [r.left + 4, r.top + r.height / 2];")
+    page.mouse.click(at[0], at[1], button="middle")
+    page.wait_for_timeout(500)
+    assert len(page.context.pages) == 1
+
+
+@pytest.mark.parametrize("unblocked", [
+    '@font-face src: url("data:font/ttf;base64,AAAA")',
+    '@media screen { @font-face src: url("data:font/ttf;base64,AAAA") }',
+])
+def test_a_font_rule_with_no_block_takes_none_of_the_next(viewer, page, made, unblocked):
+    """
+    A font rule with no block of its own is none, and the engine drops it. Kept as it was
+    written, it would take the next sheet's font rule for its block, and a font the book
+    has would be lost with it.
+    """
+    from reportlab.pdfbase import pdfmetrics
+    vera = (Path(pdfmetrics.__file__).parent.parent / "fonts" / "Vera.ttf").read_bytes()
+    book = little_book(
+        made, "unblocked.epub",
+        [("", '<link rel="stylesheet" href="a.css"/><link rel="stylesheet" href="b.css"/>', "<body><h1>Unblocked</h1></body>")],
+        extra={
+            "a.css": unblocked,
+            "b.css": '@font-face { font-family: "Book Face"; src: url("face.ttf"); }\nh1 { font-family: "Book Face", monospace; }\n',
+            "face.ttf": vera,
+        },
+    )
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Unblocked")
+    page.wait_for_function(
+        "() => [...document.fonts].some(f => f.family.includes('Book Face') && f.status === 'loaded')",
+        timeout=10000,
+    )
+
+
+@pytest.mark.parametrize("algorithm", ["constructor", "__proto__"])
+def test_a_lock_named_like_what_every_object_has_still_locks(viewer, page, made, algorithm):
+    """
+    Two scramblings are known by name, and a chapter under any other is locked. One named
+    after what every object has is no scrambling, and the chapter must not be unscrambled
+    into nonsense by it but said to be locked.
+    """
+    encryption = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" '
+        'xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData>'
+        f'<enc:EncryptionMethod Algorithm="{algorithm}"/>'
+        '<enc:CipherData><enc:CipherReference URI="c0.xhtml"/></enc:CipherData>'
+        '</enc:EncryptedData></encryption>'
+    )
+    book = little_book(made, "named-lock.epub", [("", "", "<body><h1>Locked away</h1></body>")],
+                       extra={"META-INF/encryption.xml": encryption})
+    viewer("epub.html", book)
+    page.wait_for_selector(".vw-error", timeout=15000)
+    assert "This book is locked" in status_text(page)
+
+
+def test_a_file_named_like_what_every_object_has_is_no_known_kind(viewer, page, made, fixture_path):
+    """
+    A file the package gives no type is known by its ending, and one ending in "constructor"
+    is no kind of file at all, so it is not handed to the engine as one.
+    """
+    book = little_book(made, "kinds.epub", [("", "", '<body><h1>Kinds</h1><p><img id="p" src="pic.constructor" alt=""/></p></body>')],
+                       extra={"pic.constructor": fixture_path("tiny.png").read_bytes()})
+    open_book(viewer, page, book)
+    wait_for_heading(page, "Kinds")
+    page.wait_for_timeout(300)
+    assert not (in_book(page, "return root.querySelector('#p').getAttribute('src')") or "").startswith("blob:")
