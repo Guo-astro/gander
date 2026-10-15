@@ -6,6 +6,9 @@
   background Gander can't draw yet, such as a pattern (#53, thanks @PROTON-DARK, who sent the
   deck). Gander drew both see-through, so the grey behind them showed and dark text on them was
   hard to read.
+- A Word table whose cells are marked to run left to right, the usual way, now reads across.
+  Gander turned the text in every such cell on its side (thanks @XZY123lol, who brought this
+  over from 4PDA in #52).
 
 ## 2.5 (2026-10-14)
 

@@ -856,6 +856,37 @@ def word_lines() -> None:
     written(target)
 
 
+def cell_directions() -> None:
+    """
+    One table row whose cells set each text direction docx-preview reads: lrTb, which in Word
+    is plain left-to-right text and which it took for vertical, tbRl and btLr, which are
+    vertical, and none at all.
+    """
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    doc = Document()
+    doc.add_paragraph("Willowmere readings, by the way each cell's text runs.")
+    cells = (("Left to right", "lrTb"), ("Downwards", "tbRl"), ("Upwards", "btLr"), ("Unset", None))
+    table = doc.add_table(rows=1, cols=len(cells))
+    table.style = "Table Grid"
+    for cell, (text, direction) in zip(table.rows[0].cells, cells):
+        cell.text = text
+        if direction:
+            way = OxmlElement("w:textDirection")
+            way.set(qn("w:val"), direction)
+            cell._tc.get_or_add_tcPr().append(way)
+    fix_core_properties(doc)
+    target = OUT / "cell-directions.docx"
+    doc.save(str(target))
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert all(body.count(f'<w:textDirection w:val="{d}"/>') == 1 for _, d in cells if d)
+    normalize_zip(target)
+    written(target)
+
+
 SHEET_ROWS = [
     ("Item", "Quarter", "Amount"),
     ("Surveying", "Q3", 4200),
@@ -3619,7 +3650,8 @@ def epubs() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines,
+                 cell_directions, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,
                  photo_formats, zips, prose, workbooks, models, epubs):

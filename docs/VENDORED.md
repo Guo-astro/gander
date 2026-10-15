@@ -113,12 +113,13 @@ so neither sets a floor today.
 
 docx-preview stays as upstream ships it, so `docx.js`, `docx-pages.js` and `docx-lines.js`
 change it from outside, through the `h` option, which it calls as the renderer's own method.
-From there they replace eight renderer methods by name: `renderRun` (subscript runs drawn
+From there they replace nine renderer methods by name: `renderRun` (subscript runs drawn
 twice, docxjs#233, and the page-number fields), `splitBySection`, `groupByPageBreaks`,
 `createPageElement`, `renderHeaderFooter`, `renderParagraph` and `renderTableRow` (Word's
-own pages, issue #47), and `styleToString` (lines as Word sets them). The names survive
-minification. Check that each still exists in a new file, with the same arguments, before
-upgrading.
+own pages, issue #47), `styleToString` (lines as Word sets them), and `renderTableCell` (a
+cell whose text direction is `lrTb`, Word's plain left-to-right text, drawn on its side). The
+names survive minification. Check that each still exists in a new file, with the same
+arguments, before upgrading.
 
 `docx-lines.js` also rewrites the style objects `h` receives for `p` and `span`, so it reads
 the three forms `parseSpacing` writes for `line-height`: a bare number for "auto",
@@ -137,6 +138,10 @@ They also read the shapes of the parsed document: a break whose `break` is
 and the page count Word saved, `document.extendedPropsPart.props.pages`.
 `test_docx_pages.py` fails if the pages stop splitting or numbering. Once upstream
 releases the fix for #233 (PR #234), `drawRunsOnce` can go.
+
+`test_docx.py` fails if a cell set `lrTb` is drawn vertical, or a cell set `tbRl` or `btLr`
+is not. `drawLrTbAcross` can go once a release reads `lrTb` as horizontal text; upstream's
+main branch still read it as vertical at c533f38 (21 September 2026).
 
 ## PPTXjs's one change
 

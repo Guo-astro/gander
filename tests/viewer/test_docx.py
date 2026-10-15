@@ -185,3 +185,30 @@ def test_the_runs_are_still_lowered_and_raised(viewer, page):
     assert page.evaluate("() => document.querySelector('#container sub').textContent") \
         .startswith("3")
     assert page.evaluate("() => document.querySelector('#container sup sup').textContent") == "1"
+
+
+# ---------------------------------------------------------------------------
+# The way a cell's text runs: see drawLrTbAcross in docx.js
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text, mode", [
+    ("Left to right", "horizontal-tb"),
+    ("Unset", "horizontal-tb"),
+    ("Downwards", "vertical-rl"),
+    ("Upwards", "vertical-rl"),
+])
+def test_a_cell_runs_the_way_word_says(viewer, page, text, mode):
+    """
+    docx-preview took lrTb, Word's plain left-to-right text, for vertical text, which set
+    a table that wrote it on its cells on its side. The vertical directions stay vertical.
+    """
+    viewer("docx.html", "cell-directions.docx")
+    wait_for_document(page)
+    wait_until_done(page)
+    drawn = page.evaluate(
+        "(t) => { const td = [...document.querySelectorAll('#container td')]"
+        ".find(c => c.textContent.trim() === t);"
+        "return td ? getComputedStyle(td).writingMode : 'no such cell'; }",
+        text,
+    )
+    assert drawn == mode
