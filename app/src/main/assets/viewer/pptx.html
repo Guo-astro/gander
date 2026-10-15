@@ -84,8 +84,8 @@
   #result .slide { margin: 14px auto; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
 
   /* PowerPoint draws a slide with no background on white, and PPTXjs draws none for a
-     background it cannot read, such as a pattern. A slide's own background is set on it
-     inline and covers this. */
+     background it cannot read, such as a pattern. A slide's own background is drawn on a
+     layer inside it, which covers this. */
   #result .slide { background-color: #fff; }
 
   /*
