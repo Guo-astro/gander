@@ -686,3 +686,37 @@ def test_a_deck_drawn_whole_has_no_box(viewer, page, name):
     if name == "charted.pptx":
         assert page.query_selector("#result [id^='chart'] svg") is not None
     assert missing(page) == []
+
+
+# ---------------------------------------------------------------------------
+# What a slide is drawn on: see #result .slide in pptx.html
+# ---------------------------------------------------------------------------
+
+def ground(page, n):
+    """The commonest colour near slide [n]'s bottom right corner, where nothing is drawn."""
+    slide = page.query_selector_all("#result .slide")[n]
+    shot = Image.open(io.BytesIO(slide.screenshot())).convert("RGB")
+    patch = shot.crop((shot.width - 120, shot.height - 80, shot.width - 40, shot.height - 30))
+    return max(patch.getcolors(1 << 16))[1]
+
+
+def test_a_slide_with_no_background_is_white(viewer, page):
+    """PowerPoint draws it on white, where PPTXjs drew it see-through on the page's grey (#53)."""
+    viewer("pptx.html", "grounds.pptx")
+    wait_for_deck(page, 3)
+    assert ground(page, 1) == (255, 255, 255)
+
+
+def test_a_background_pptxjs_cannot_draw_is_not_see_through(viewer, page):
+    """A pattern on the master, as on the deck in #53. It comes out light, not the page's grey."""
+    viewer("pptx.html", "grounds.pptx")
+    wait_for_deck(page, 3)
+    colour = ground(page, 0)
+    assert min(colour) >= 0xE0, colour
+
+
+def test_a_slide_keeps_its_own_background(viewer, page):
+    viewer("pptx.html", "grounds.pptx")
+    wait_for_deck(page, 3)
+    colour = ground(page, 2)
+    assert all(abs(a - b) <= 4 for a, b in zip(colour, (0x1F, 0x38, 0x64))), colour

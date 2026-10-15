@@ -36,6 +36,7 @@ function makeElement(spec) {
   if (this && this.renderRun && !this.vwRunsOnce) {
     vwSplitAsWordDid(this);
     drawRunsOnce(this);
+    drawLrTbAcross(this);
     vwWordLines(this);
   }
   var custom = vwWordElement(spec);
@@ -56,6 +57,21 @@ function drawRunsOnce(renderer) {
       span.appendChild(raised);
     }
     return span;
+  };
+}
+
+/*
+ * docx-preview draws a cell whose text direction is lrTb, Word's plain left-to-right text, as
+ * vertical. lrTb is the only direction it makes vertical-lr, so that one is taken back off.
+ */
+function drawLrTbAcross(renderer) {
+  var draw = renderer.renderTableCell;
+  renderer.renderTableCell = function (cell) {
+    if (cell.cssStyle && cell.cssStyle["writing-mode"] === "vertical-lr") {
+      delete cell.cssStyle["writing-mode"];
+      delete cell.cssStyle.transform;
+    }
+    return draw.call(this, cell);
   };
 }
 

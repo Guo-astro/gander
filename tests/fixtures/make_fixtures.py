@@ -856,6 +856,37 @@ def word_lines() -> None:
     written(target)
 
 
+def cell_directions() -> None:
+    """
+    One table row whose cells set each text direction docx-preview reads: lrTb, which in Word
+    is plain left-to-right text and which it took for vertical, tbRl and btLr, which are
+    vertical, and none at all.
+    """
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    doc = Document()
+    doc.add_paragraph("Willowmere readings, by the way each cell's text runs.")
+    cells = (("Left to right", "lrTb"), ("Downwards", "tbRl"), ("Upwards", "btLr"), ("Unset", None))
+    table = doc.add_table(rows=1, cols=len(cells))
+    table.style = "Table Grid"
+    for cell, (text, direction) in zip(table.rows[0].cells, cells):
+        cell.text = text
+        if direction:
+            way = OxmlElement("w:textDirection")
+            way.set(qn("w:val"), direction)
+            cell._tc.get_or_add_tcPr().append(way)
+    fix_core_properties(doc)
+    target = OUT / "cell-directions.docx"
+    doc.save(str(target))
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert all(body.count(f'<w:textDirection w:val="{d}"/>') == 1 for _, d in cells if d)
+    normalize_zip(target)
+    written(target)
+
+
 SHEET_ROWS = [
     ("Item", "Quarter", "Amount"),
     ("Surveying", "Q3", 4200),
@@ -1543,6 +1574,42 @@ def undrawn() -> None:
             z.writestr(name, data)
     normalize_zip(path)
     written(path)
+
+
+def grounds() -> None:
+    """
+    Issue #53: a master whose background is a pattern, as the reported deck's is, which
+    PPTXjs cannot draw. The first slide takes it, the second says it has no background,
+    and the third has its own dark blue. PPTXjs drew the first two see-through.
+    """
+    from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.dml import MSO_PATTERN, MSO_THEME_COLOR
+    from pptx.util import Inches, Pt
+
+    prs = Presentation()
+    pattern = prs.slide_master.background.fill
+    pattern.patterned()
+    pattern.pattern = MSO_PATTERN.LIGHT_HORIZONTAL
+    pattern.fore_color.theme_color = MSO_THEME_COLOR.BACKGROUND_2
+    pattern.back_color.theme_color = MSO_THEME_COLOR.BACKGROUND_1
+    for text, ink in (("On the master's pattern", "1F3864"), ("No background", "1F3864"),
+                      ("Its own dark blue", "FFFFFF")):
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        box = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(8), Inches(1))
+        run = box.text_frame.paragraphs[0].add_run()
+        run.text = text
+        run.font.size = Pt(28)
+        run.font.color.rgb = RGBColor.from_string(ink)
+    prs.slides[1].background.fill.background()
+    own = prs.slides[2].background.fill
+    own.solid()
+    own.fore_color.rgb = RGBColor.from_string("1F3864")
+    fix_core_properties(prs)
+    target = OUT / "grounds.pptx"
+    prs.save(str(target))
+    normalize_zip(target)
+    written(target)
 
 
 # What [Content_Types].xml declares each format's main part to be. The rest of a
@@ -3583,9 +3650,10 @@ def epubs() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines, xlsx, pptx,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines,
+                 cell_directions, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
-                 symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, relatives, texts, images, audio,
+                 symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,
                  photo_formats, zips, prose, workbooks, models, epubs):
         step()
     total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
