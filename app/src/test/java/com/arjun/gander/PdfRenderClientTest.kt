@@ -3,10 +3,8 @@ package com.arjun.gander
 import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
-import android.os.Binder
 import android.os.DeadObjectException
 import android.os.Looper
-import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -46,12 +44,14 @@ class PdfRenderClientTest {
     @Before
     fun setUp() {
         shadowOf(app).setComponentNameAndServiceForBindService(component, renderer)
+        mayHandOver = { true }
     }
 
     @After
     fun tearDown() {
         renderer.release.countDown()
         pool.shutdownNow()
+        mayHandOver = ::readOnlyFile
     }
 
     private fun <T> off(call: () -> T): Future<T> = pool.submit(Callable(call))
@@ -144,31 +144,51 @@ class PdfRenderClientTest {
     }
 
     /**
-     * Read through the AIDL proxy, an answer opening with a header would be parsed as one, and an
-     * exception rethrown on Gander's thread. Refused unread, either is a file that won't open.
+     * A call with a reply would let the renderer choose what Gander reads back, and what Android
+     * rethrows on Gander's thread. Every call is oneway, and answers as bytes on a pipe.
      */
     @Test
-    fun anAnswerThatIsNotPlainIsRefusedUnread() {
-        val headed = object : Binder() {
-            override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
-                // StrictMode's reply header, holding no violations, and then a page count
-                reply?.apply { writeInt(-128); writeInt(4); writeInt(0); writeInt(7) }
-                return true
-            }
-        }
-        shadowOf(app).setComponentNameAndServiceForBindService(component, headed)
-        assertThat(opened()).isEqualTo(PdfRenderService.OPEN_DAMAGED)
+    fun everyCallIsOnewaySoTheRendererWritesNoReply() {
+        opened()
+        off { client.pageSize(0); client.render(0, 10, 20) }.answer()
+        assertThat(listOf(renderer.opens.get(), renderer.sized.get(), renderer.drawn.size))
+            .containsExactly(1, 1, 1)
+        assertThat(renderer.replied).isEmpty()
+    }
 
-        // Robolectric writes what a local binder throws into the reply, as Android does
-        shadowOf(app).setComponentNameAndServiceForBindService(component, renderer)
-        val throwing = PdfRenderClient(app, Intent(app, PdfRenderService::class.java)) { gone += it }
-        renderer.onOpen = { throw IllegalStateException("from the renderer") }
-        throwing.bind()
-        val pages = off { throwing.open(document()) }
+    /** An answer a byte short or over, or none, from a renderer still there, is no answer. */
+    @Test
+    fun anAnswerOfTheWrongLengthIsNone() {
+        client.bind()
         looper.idle()
-        assertThat(pages.answer()).isEqualTo(PdfRenderService.OPEN_DAMAGED)
+        renderer.bytes = { it - 1 }
+        assertThat(off { client.open(document()) }.answer()).isEqualTo(PdfRenderService.OPEN_DAMAGED)
+        renderer.bytes = { it + 1 }
+        assertThat(off { client.open(document()) }.answer()).isEqualTo(PdfRenderService.OPEN_DAMAGED)
+        renderer.bytes = { it }
+        assertThat(off { client.open(document()) }.answer()).isEqualTo(3)
+        renderer.bytes = { it - 1 }
+        assertThat(off { client.pageSize(0) }.answer()).isNull()
+        renderer.bytes = { it }
+        renderer.onOpen = { throw IllegalStateException("from the renderer") }
+        assertThat(off { client.open(document()) }.answer()).isEqualTo(PdfRenderService.OPEN_DAMAGED)
         looper.idle()
         assertThat(gone).isEmpty()
+    }
+
+    /**
+     * A descriptor the renderer could write through, or a pipe or socket, is never handed over.
+     * Which ones those are, Robolectric can't tell, so the check itself runs on a device.
+     */
+    @Test
+    fun aDescriptorTheCheckRefusesIsNeverHandedOver() {
+        client.bind()
+        looper.idle()
+        mayHandOver = { false }
+        assertThat(off { client.open(document()) }.answer()).isEqualTo(PdfRenderService.OPEN_UNREADABLE)
+        assertThat(renderer.opens.get()).isEqualTo(0)
+        mayHandOver = { true }
+        assertThat(off { client.open(document()) }.answer()).isEqualTo(3)
     }
 
     // ---------------------------------------------------------------

@@ -1,6 +1,11 @@
 package com.arjun.gander
 
+import android.os.IBinder
+import android.os.Parcel
 import android.os.ParcelFileDescriptor
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -11,7 +16,7 @@ internal class FakeRenderer : IPdfRenderer.Stub() {
     @Volatile var size = (595L shl 32) or 842L
     @Volatile var dead = false
 
-    /** How many bytes to send for a page that takes the given number. */
+    /** How many bytes to send for an answer that takes the given number. */
     @Volatile var bytes: (Int) -> Int = { it }
     @Volatile var onOpen: () -> Unit = {}
     @Volatile var onRender: () -> Unit = {}
@@ -20,24 +25,40 @@ internal class FakeRenderer : IPdfRenderer.Stub() {
     val release = CountDownLatch(1)
     val opens = AtomicInteger()
     val sized = AtomicInteger()
-    val drawn: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+    val drawn: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
-    override fun open(document: ParcelFileDescriptor?): Int {
+    /** Each call that came with a reply to write, which none should. */
+    val replied: MutableList<Int> = Collections.synchronizedList(mutableListOf())
+
+    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+        if (reply != null || flags and IBinder.FLAG_ONEWAY == 0) replied += code
+        return super.onTransact(code, data, reply, flags)
+    }
+
+    override fun open(document: ParcelFileDescriptor?, answer: ParcelFileDescriptor?) {
         opens.incrementAndGet()
         document?.close()
         onOpen()
-        return pages
+        reply(answer, ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(pages).array())
     }
 
-    override fun pageSize(page: Int): Long {
+    override fun pageSize(page: Int, answer: ParcelFileDescriptor?) {
         sized.incrementAndGet()
-        return size
+        reply(answer, ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(size).array())
     }
 
-    override fun render(page: Int, width: Int, height: Int, sink: ParcelFileDescriptor?) {
+    override fun render(page: Int, width: Int, height: Int, answer: ParcelFileDescriptor?) {
         drawn += "$page ${width}x$height"
         onRender()
-        ParcelFileDescriptor.AutoCloseOutputStream(sink!!).use { it.write(page(bytes(4 * width * height))) }
+        reply(answer, page(4 * width * height))
+    }
+
+    /** Writes [answer], cut short or run over as [bytes] says, and closes the pipe. */
+    private fun reply(pipe: ParcelFileDescriptor?, answer: ByteArray) {
+        val sent = bytes(answer.size)
+        ParcelFileDescriptor.AutoCloseOutputStream(pipe!!).use {
+            it.write(if (sent <= answer.size) answer.copyOf(sent) else answer + page(sent - answer.size))
+        }
     }
 
     override fun pingBinder(): Boolean = !dead

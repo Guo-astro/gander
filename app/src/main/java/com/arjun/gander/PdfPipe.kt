@@ -1,14 +1,50 @@
 package com.arjun.gander
 
 import android.graphics.Bitmap
+import android.os.ParcelFileDescriptor
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
+import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Gander's side of PdfRenderService's pipe. Nothing the renderer says is taken on trust: the
+ * Gander's side of PdfRenderService's pipes. Nothing the renderer says is taken on trust: the
  * size to draw is worked out and capped here, and so is the number of bytes to read back.
  */
+
+/**
+ * Whether [document] is a regular file open for reading alone, the one kind of descriptor the
+ * renderer is handed: not a pipe or a socket, and not one it could write through.
+ */
+internal fun readOnlyFile(document: ParcelFileDescriptor): Boolean = try {
+    OsConstants.S_ISREG(Os.fstat(document.fileDescriptor).st_mode) &&
+        accessMode(document.fd) == OsConstants.O_RDONLY
+} catch (e: ErrnoException) {
+    false
+} catch (e: IOException) {
+    false
+}
+
+/**
+ * How [fd] was opened, O_RDONLY, O_WRONLY or O_RDWR, from the flags the kernel lists for it in
+ * octal. fcntl would say as much, but Android has it public only from 11.
+ */
+private fun accessMode(fd: Int): Int? = File("/proc/self/fdinfo/$fd").readLines()
+    .firstOrNull { it.startsWith("flags:") }
+    ?.substringAfter(':')?.trim()?.toIntOrNull(8)
+    ?.and(OsConstants.O_ACCMODE)
+
+/**
+ * What [PdfRenderClient.open] asks of a descriptor before handing it over, [readOnlyFile]. Unit
+ * tests put a stand-in here, since Robolectric says every descriptor is neither a regular file
+ * nor writable.
+ */
+@androidx.annotation.VisibleForTesting
+internal var mayHandOver: (ParcelFileDescriptor) -> Boolean = ::readOnlyFile
 
 /**
  * The size in pixels to draw a page of [pageWidth] x [pageHeight] points at, [width] pixels
@@ -32,10 +68,10 @@ internal fun drawSize(width: Int, pageWidth: Int, pageHeight: Int): IntArray? {
 }
 
 /**
- * One page from the renderer's pipe: exactly [count] bytes, the number worked out here from the
- * size asked for, or null when the pipe ends early or holds more than that.
+ * An answer from the renderer's pipe: exactly [count] bytes, the number worked out here from what
+ * was asked, or null when the pipe ends early or holds more than that.
  */
-internal fun readPage(input: InputStream, count: Int): ByteArray? {
+internal fun readAnswer(input: InputStream, count: Int): ByteArray? {
     val bytes = ByteArray(count)
     var have = 0
     while (have < count) {
@@ -47,8 +83,8 @@ internal fun readPage(input: InputStream, count: Int): ByteArray? {
 }
 
 /**
- * A page from [readPage] as a bitmap. Its blue, green, red and alpha bytes are each pixel's ARGB
- * int read little-endian.
+ * A page from [readAnswer] as a bitmap. Its blue, green, red and alpha bytes are each pixel's
+ * ARGB int read little-endian.
  */
 internal fun pageBitmap(bytes: ByteArray, width: Int, height: Int): Bitmap {
     val pixels = IntArray(width * height)

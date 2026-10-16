@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -15,6 +16,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.graphics.get
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -164,7 +166,21 @@ class PdfSpikeActivity : Activity() {
             " renderOutOfRange=${client.render(pages, 100, 100)}" +
             " renderTooWide=${client.render(0, PdfRenderService.MAX_SIDE + 1, 10)}" +
             " renderTooMany=${client.render(0, 4000, 4000)}" +
-            " renderZero=${client.render(0, 0, 100)}"
+            " renderZero=${client.render(0, 0, 100)}" + refusedDescriptors()
+
+    /**
+     * What open makes of a descriptor the renderer could write through, and of a pipe: both
+     * OPEN_UNREADABLE (-2), without asking the renderer.
+     */
+    private fun refusedDescriptors(): String {
+        val file = File(cacheDir, "edge.pdf").apply { writeText("%PDF-1.7\n") }
+        val writable = client.open(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_WRITE))
+        val (source, sink) = ParcelFileDescriptor.createPipe()
+        sink.close()
+        val pipe = client.open(source)
+        file.delete()
+        return " openWritable=$writable openPipe=$pipe"
+    }
 
     private fun pdfsIn(tree: Uri): List<Uri> = runCatching {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(

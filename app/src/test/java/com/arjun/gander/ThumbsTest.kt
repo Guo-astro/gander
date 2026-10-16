@@ -15,6 +15,7 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.util.Locale
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,6 +40,13 @@ class ThumbsTest {
         FixtureProvider.install()
         Thumbs.resetForTests()
         File(context.cacheDir, "thumbs").deleteRecursively()
+        // Robolectric can't say a descriptor is a file open for reading: see mayHandOver
+        mayHandOver = { true }
+    }
+
+    @After
+    fun tearDown() {
+        mayHandOver = ::readOnlyFile
     }
 
     // ---------------------------------------------------------------

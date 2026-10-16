@@ -44,24 +44,24 @@ class PdfPipeTest {
     }
 
     // ---------------------------------------------------------------
-    // readPage
+    // readAnswer
     // ---------------------------------------------------------------
 
     @Test
     fun exactlyTheBytesWorkedOutAreAPage() {
         val page = ByteArray(16) { it.toByte() }
-        assertThat(readPage(ByteArrayInputStream(page), 16)).isEqualTo(page)
+        assertThat(readAnswer(ByteArrayInputStream(page), 16)).isEqualTo(page)
     }
 
     @Test
     fun aPipeThatEndsEarlyIsNoPage() {
-        assertThat(readPage(ByteArrayInputStream(ByteArray(15)), 16)).isNull()
-        assertThat(readPage(ByteArrayInputStream(ByteArray(0)), 16)).isNull()
+        assertThat(readAnswer(ByteArrayInputStream(ByteArray(15)), 16)).isNull()
+        assertThat(readAnswer(ByteArrayInputStream(ByteArray(0)), 16)).isNull()
     }
 
     @Test
     fun aPipeHoldingMoreThanThePageIsNoPage() {
-        assertThat(readPage(ByteArrayInputStream(ByteArray(17)), 16)).isNull()
+        assertThat(readAnswer(ByteArrayInputStream(ByteArray(17)), 16)).isNull()
     }
 
     // ---------------------------------------------------------------

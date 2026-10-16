@@ -14,6 +14,8 @@ import android.os.SystemClock
 import androidx.annotation.MainThread
 import androidx.annotation.WorkerThread
 import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -110,25 +112,26 @@ internal class PdfRenderClient(
 
     /**
      * Hands [document] to the renderer and closes Gander's copy. The page count, one of
-     * PdfRenderService's OPEN_ codes, or [GONE].
+     * PdfRenderService's OPEN_ codes, or [GONE]. Only a regular file open for reading alone is
+     * handed over, so a provider's looser descriptor never lets the renderer write to a file or
+     * talk through a socket: anything else is OPEN_UNREADABLE.
      */
     @WorkerThread
     fun open(document: ParcelFileDescriptor): Int {
         pages = 0
         val answer = document.use { pfd ->
-            ask { remote ->
-                transact(remote, IPdfRenderer.Stub.TRANSACTION_open, { data ->
-                    data.writeInt(1)
-                    pfd.writeToParcel(data, 0)
-                    // The parcel holds a copy of its own until it is sent
-                    pfd.close()
-                }) { it.readInt() }
+            if (!mayHandOver(pfd)) return PdfRenderService.OPEN_UNREADABLE
+            call(IPdfRenderer.Stub.TRANSACTION_open, 4) { data ->
+                data.writeInt(1)
+                pfd.writeToParcel(data, 0)
+                // The parcel holds a copy of its own until it is sent
+                pfd.close()
             }
         } ?: return if (over) GONE else PdfRenderService.OPEN_DAMAGED
-        return when (answer) {
-            in 1..MAX_PAGES -> answer.also { pages = it }
+        return when (val count = ByteBuffer.wrap(answer).order(ByteOrder.LITTLE_ENDIAN).int) {
+            in 1..MAX_PAGES -> count.also { pages = it }
             PdfRenderService.OPEN_PASSWORD, PdfRenderService.OPEN_UNREADABLE,
-            PdfRenderService.OPEN_NOT_PDF, PdfRenderService.OPEN_DAMAGED -> answer
+            PdfRenderService.OPEN_NOT_PDF, PdfRenderService.OPEN_DAMAGED -> count
             // No pages, or a number no renderer gives
             else -> PdfRenderService.OPEN_DAMAGED
         }
@@ -138,11 +141,8 @@ internal class PdfRenderClient(
     @WorkerThread
     fun pageSize(page: Int): IntArray? {
         if (page !in 0 until pages) return null
-        val size = ask { remote ->
-            transact(remote, IPdfRenderer.Stub.TRANSACTION_pageSize, { it.writeInt(page) }) {
-                it.readLong()
-            }
-        } ?: return null
+        val answer = call(IPdfRenderer.Stub.TRANSACTION_pageSize, 8) { it.writeInt(page) } ?: return null
+        val size = ByteBuffer.wrap(answer).order(ByteOrder.LITTLE_ENDIAN).long
         val width = (size ushr 32).toInt()
         val height = size.toInt()
         return if (width > 0 && height > 0) intArrayOf(width, height) else null
@@ -158,6 +158,19 @@ internal class PdfRenderClient(
             height !in 1..PdfRenderService.MAX_SIDE ||
             width.toLong() * height > PdfRenderService.MAX_PIXELS
         ) return null
+        return call(IPdfRenderer.Stub.TRANSACTION_render, 4 * width * height) { data ->
+            data.writeInt(page)
+            data.writeInt(width)
+            data.writeInt(height)
+        }
+    }
+
+    /**
+     * Sends call [code] with the arguments [write] puts in, then a pipe for the answer, and reads
+     * exactly [count] bytes back. Null when there is no renderer, it died during the call or it
+     * answered anything but [count] bytes.
+     */
+    private fun call(code: Int, count: Int, write: (Parcel) -> Unit): ByteArray? {
         val (source, sink) = try {
             ParcelFileDescriptor.createPipe()
         } catch (e: IOException) {
@@ -166,17 +179,15 @@ internal class PdfRenderClient(
         ParcelFileDescriptor.AutoCloseInputStream(source).use { input ->
             sink.use {
                 return ask { remote ->
-                    send(remote, IPdfRenderer.Stub.TRANSACTION_render) { data ->
-                        data.writeInt(page)
-                        data.writeInt(width)
-                        data.writeInt(height)
+                    send(remote, code) { data ->
+                        write(data)
                         data.writeInt(1)
                         sink.writeToParcel(data, 0)
                         // Gander's copy of the write end has to go, or the pipe could never end
                         sink.close()
                     }
                     val bytes = try {
-                        readPage(input, 4 * width * height)
+                        readAnswer(input, count)
                     } catch (e: IOException) {
                         null
                     }
@@ -217,31 +228,11 @@ internal class PdfRenderClient(
     }
 
     /**
-     * A call and its answer, by hand rather than through the AIDL proxy: reading a reply that
-     * carries an exception or a header builds whatever objects the renderer names, in Gander's
-     * process, so anything but a plain answer is refused unread.
+     * A oneway call, by hand rather than through the AIDL proxy. A call with a reply would let
+     * the renderer choose what Gander reads back: an exception or a header that builds whatever
+     * objects it names, or a binder status Android rethrows in Gander as an error no caller
+     * expects. A oneway call has no reply, and its answer comes as bytes on the pipe.
      */
-    private fun <T> transact(
-        remote: IBinder,
-        code: Int,
-        write: (Parcel) -> Unit,
-        read: (Parcel) -> T,
-    ): T? {
-        val data = Parcel.obtain()
-        val reply = Parcel.obtain()
-        try {
-            data.writeInterfaceToken(IPdfRenderer.DESCRIPTOR)
-            write(data)
-            if (!remote.transact(code, data, reply, 0)) return null
-            if (reply.readInt() != 0) return null
-            return read(reply)
-        } finally {
-            reply.recycle()
-            data.recycle()
-        }
-    }
-
-    /** A oneway call, which has no answer to read. */
     private fun send(remote: IBinder, code: Int, write: (Parcel) -> Unit) {
         val data = Parcel.obtain()
         try {

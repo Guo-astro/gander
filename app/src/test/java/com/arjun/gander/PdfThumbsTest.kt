@@ -59,11 +59,14 @@ class PdfThumbsTest {
         shadowOf(app).setComponentNameAndServiceForBindServiceForIntent(
             Intent().setComponent(service), service, renderer
         )
+        // Robolectric can't say a descriptor is a file open for reading: see mayHandOver
+        mayHandOver = { true }
     }
 
     @After
     fun tearDown() {
         thumbs.shutdown()
+        mayHandOver = ::readOnlyFile
     }
 
     /** Runs the main thread until [done], in real time, since the lane runs in it. */

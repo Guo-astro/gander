@@ -2,7 +2,8 @@
 """Runs PdfRenderClient against a renderer that fails, on one device, and prints what came back.
 
 Each case opens one PDF through the spike with a fault for FaultyPdfRenderService: a renderer
-that crashes or hangs while opening or drawing, or draws slowly. Two cases need su, so they run
+that is killed, crashes as native code does (segv) or hangs while opening or drawing, or draws
+slowly. A segv case also fails if Android puts up a crash dialog for it. Two cases need su, so they run
 only where the shell has it, as on a google_apis emulator: "frozen" stops Gander and the
 renderer partway through a slow page, as Android's freezer does in the background, and
 "reclaimed" kills an idle renderer as Android does for memory. Only those kills go through su:
@@ -28,7 +29,7 @@ PKG = "com.arjun.gander.debug"
 SPIKE = f"{PKG}/com.arjun.gander.PdfSpikeActivity"
 NAME = "gander-test-faults.pdf"
 DOWNLOAD = "/sdcard/Download"
-CASES = "plain,crash-open,crash-draw,hang-open,hang-draw,slow-draw,frozen,reclaimed"
+CASES = "plain,crash-open,crash-draw,segv-open,segv-draw,hang-open,hang-draw,slow-draw,frozen,reclaimed"
 
 
 def sh(cmd):
@@ -77,6 +78,12 @@ def processes():
         if len(parts) >= 3 and (parts[2] == PKG or parts[2].startswith(PKG + ":")):
             (isolated if re.match(r"u\d+_i\d+", parts[1]) else own).append(parts[0])
     return own, isolated
+
+
+def crash_dialog():
+    """The words of a crash dialog on screen, if Android put one up."""
+    found = [t for t in ui.texts() if re.search(r"keeps stopping|has stopped|isn.t responding", t, re.I)]
+    return found[0] if found else None
 
 
 def media_id(name):
@@ -161,13 +168,17 @@ def main():
             bound = processes()[1]
             report(case, "drew=1" in result and not first(lines, "GONE") and len(bound) == 1,
                    f"renderer while bound {bound}; {result.split(': ', 1)[-1]}")
-        elif case.startswith("crash-"):
+        elif case.startswith("crash-") or case.startswith("segv-"):
             lines = wait_for("GONE", seen, 30)
             gone = first(lines, "GONE") or ""
             alive = leftover()
             result = first(spike_lines()[seen:], "RESULT") or ""
-            report(case, "crashed=true" in gone and not alive,
-                   f"{gone.split(': ', 1)[-1]}; renderers left {alive}; {result.split(': ', 1)[-1]}")
+            # Gander carried on, which its RESULT line shows, with no dialog over it
+            dialog = crash_dialog() if case.startswith("segv-") else None
+            report(case, "crashed=true" in gone and not alive and not dialog and
+                   (bool(result) or case.startswith("crash-")),
+                   f"{gone.split(': ', 1)[-1]}; renderers left {alive}; dialog {dialog}; "
+                   f"{result.split(': ', 1)[-1]}")
         elif case.startswith("hang-"):
             began = wait_for("BIND" if case == "hang-open" else "OPENED", seen, 30)
             began_at = stamp(first(began, "BIND" if case == "hang-open" else "OPENED") or "")

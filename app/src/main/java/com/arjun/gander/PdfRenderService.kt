@@ -23,23 +23,52 @@ import java.nio.ByteOrder
  * PdfRenderer is PDFium, native code reading a file someone else made, so it runs here in an
  * isolated process (see the manifest), which has no storage, network or Gander data of its
  * own. All it can reach is what Gander hands it: one document's descriptor in, one pipe per
- * page out. Gander treats whatever comes back as untrusted and counts the bytes itself.
+ * answer out. Gander treats whatever comes back as untrusted and counts the bytes itself.
  */
 open class PdfRenderService : Service() {
 
-    // PdfRenderer allows one open page at a time, and binder calls arrive on several threads.
+    // PdfRenderer allows one open page at a time. Calls come one by one but on any binder
+    // thread, and onDestroy on the main one.
     private val lock = Any()
     private var renderer: PdfRenderer? = null
 
     private val binder = object : IPdfRenderer.Stub() {
-        override fun open(document: ParcelFileDescriptor?): Int = openDocument(document)
+        override fun open(document: ParcelFileDescriptor?, answer: ParcelFileDescriptor?) {
+            if (answer == null) {
+                document?.close()
+                return
+            }
+            reply(answer) { littleEndian(4).putInt(openDocument(document)) }
+        }
 
-        override fun pageSize(page: Int): Long = sizeOf(page)
+        override fun pageSize(page: Int, answer: ParcelFileDescriptor?) {
+            if (answer != null) reply(answer) { littleEndian(8).putLong(sizeOf(page)) }
+        }
 
-        override fun render(page: Int, width: Int, height: Int, sink: ParcelFileDescriptor?) {
-            if (sink != null) draw(page, width, height, sink)
+        override fun render(page: Int, width: Int, height: Int, answer: ParcelFileDescriptor?) {
+            if (answer != null) draw(page, width, height, answer)
         }
     }
+
+    /**
+     * Writes the bytes [answer] gives to [pipe] and closes it. If they can't be had, the pipe
+     * still closes, so Gander's read ends at once rather than at its time limit.
+     */
+    private fun reply(pipe: ParcelFileDescriptor, answer: () -> ByteBuffer) {
+        ParcelFileDescriptor.AutoCloseOutputStream(pipe).use { out ->
+            try {
+                out.write(answer().array())
+            } catch (e: IOException) {
+                // Gander closed its end, having stopped waiting: nothing to tell it
+                Log.i(TAG, "answer not delivered: ${e.message}")
+            } catch (e: RuntimeException) {
+                // PdfRenderer's word for a page PDFium can't load, among others
+                Log.w(TAG, "no answer", e)
+            }
+        }
+    }
+
+    private fun littleEndian(size: Int): ByteBuffer = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
 
     override fun onBind(intent: Intent): IBinder = binder
 
