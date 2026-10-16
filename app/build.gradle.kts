@@ -81,6 +81,12 @@ android {
         jvmTarget = "17"
     }
 
+    buildFeatures {
+        // IPdfRenderer.aidl is how Gander talks to the isolated PDF renderer, and AGP 8
+        // builds no AIDL unless asked.
+        aidl = true
+    }
+
     lint {
         // Warnings are frozen into the baseline below, so that a new one fails the
         // build while the existing ones stay visible in the report rather than

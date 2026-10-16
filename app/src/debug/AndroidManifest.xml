@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- The isolated PDF renderer's spike, in debug builds only: see PdfSpikeActivity.
+             Exported so that adb and the spike's helper app can hand it a document. Its own
+             action keeps it out of every chooser. -->
+        <activity
+            android:name=".PdfSpikeActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.arjun.gander.PDF_SPIKE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.arjun.gander.PDF_SPIKE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -208,5 +208,14 @@
             android:authorities="${applicationId}.archive"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <!-- Draws PDFs where pdf.js can't run: see PdfRenderService. An isolated process has a
+             uid of its own with no storage, no network and no way into Gander's files, so
+             PDFium reading a hostile file reaches only the descriptor it was handed. Not
+             exported, so nothing but Gander can bind it. -->
+        <service
+            android:name=".PdfRenderService"
+            android:isolatedProcess="true"
+            android:exported="false" />
     </application>
 </manifest>

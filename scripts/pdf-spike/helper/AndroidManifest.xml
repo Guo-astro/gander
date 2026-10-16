@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Another app, for the isolated renderer's spike: it hands Gander a PDF from its own private
+     storage, the case where the descriptor PdfRenderService reads belongs to a stranger's data. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.arjun.gander.spikehelper">
+
+    <application android:label="Gander spike helper">
+        <activity
+            android:name=".Go"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <provider
+            android:name=".Files"
+            android:authorities="com.arjun.gander.spikehelper.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
