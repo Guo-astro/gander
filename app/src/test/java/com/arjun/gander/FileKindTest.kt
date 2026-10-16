@@ -8,6 +8,7 @@ import com.arjun.gander.FileKind.IMAGE_WEB
 import com.arjun.gander.FileKind.MD
 import com.arjun.gander.FileKind.MODEL
 import com.arjun.gander.FileKind.PDF
+import com.arjun.gander.FileKind.PDF_SIMPLE
 import com.arjun.gander.FileKind.PLAYER
 import com.arjun.gander.FileKind.PPTX
 import com.arjun.gander.FileKind.PROSE
@@ -123,11 +124,16 @@ class FileKindTest {
         assertThat(EXPECTED).hasSize(103)
     }
 
+    /**
+     * Every kind is some extension's but two: UNSUPPORTED, which is what nothing else is, and a
+     * PDF's simple view, which the viewer picks by the phone and the file, never by a name. See
+     * pdfRoute.
+     */
     @Test
-    fun everyKindIsReachableFromSomeExtensionExceptUnsupported() {
+    fun everyKindButTheTwoChosenOtherwiseIsReachableFromSomeExtension() {
         val reached = EXPECTED.values.toSet()
-        val unreachable = FileKind.entries.toSet() - reached - UNSUPPORTED
-        assertThat(unreachable).isEmpty()
+        val unreachable = FileKind.entries.toSet() - reached
+        assertThat(unreachable).containsExactly(UNSUPPORTED, PDF_SIMPLE)
     }
 
     // ---------------------------------------------------------------
@@ -382,10 +388,10 @@ class FileKindTest {
         assertThat(ARCHIVE.page).isEmpty()
     }
 
-    /** The three whose pages report themselves and take Go to page. */
+    /** The three whose pages report themselves and take Go to page, a PDF in either view. */
     @Test
     fun onlyPdfWordAndBooksArePaged() {
-        assertThat(FileKind.entries.filter { it.paged }).containsExactly(PDF, DOCX, EPUB)
+        assertThat(FileKind.entries.filter { it.paged }).containsExactly(PDF, PDF_SIMPLE, DOCX, EPUB)
     }
 
     /** Night mode is for paper. A book's page follows the phone's theme and has none. */
@@ -398,7 +404,7 @@ class FileKindTest {
     @Test
     fun pagesAndPicturesInTheWebViewHaveTheAppsDoubleTap() {
         assertThat(FileKind.entries.filter { it.zoomedOnDoubleTap })
-            .containsExactly(PDF, DOCX, PROSE, PPTX, IMAGE_WEB)
+            .containsExactly(PDF, PDF_SIMPLE, DOCX, PROSE, PPTX, IMAGE_WEB)
     }
 
     /**

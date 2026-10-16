@@ -12,8 +12,10 @@ class PrintTest {
     @Test
     fun onlyAPdfAndThePaperDocumentsPrint() {
         val printing = FileKind.entries.filter { printRoute(it) != null }
-        assertThat(printing).containsExactly(FileKind.PDF, FileKind.DOCX, FileKind.PROSE)
+        assertThat(printing)
+            .containsExactly(FileKind.PDF, FileKind.PDF_SIMPLE, FileKind.DOCX, FileKind.PROSE)
         assertThat(printRoute(FileKind.PDF)).isEqualTo(PrintRoute.FILE)
+        assertThat(printRoute(FileKind.PDF_SIMPLE)).isEqualTo(PrintRoute.FILE)
         assertThat(printRoute(FileKind.DOCX)).isEqualTo(PrintRoute.PAGE)
         assertThat(printRoute(FileKind.PROSE)).isEqualTo(PrintRoute.PAGE)
     }

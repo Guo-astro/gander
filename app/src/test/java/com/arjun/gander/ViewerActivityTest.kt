@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
@@ -230,6 +231,122 @@ class ViewerActivityTest {
         // After the title bar's height, which the channel carries as it opens
         val bar = PortCommand.barHeight(word.get().documentChrome!!.heightDp())
         assertThat(channels[0][0].outgoingMessages).containsExactly(bar, "i1").inOrder()
+    }
+
+    // ---------------------------------------------------------------
+    // A PDF where pdf.js can't run
+    // ---------------------------------------------------------------
+
+    /** The WebView a Huawei phone without Google's services is held to. Its version won't read. */
+    private fun lockedWebView() = ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
+        packageName = "com.huawei.webview"
+        versionName = "14.0.0.331"
+    })
+
+    /** An Android System WebView below pdf.js's floor, which Play could update past it. */
+    private fun oldWebView() = ShadowWebView.setCurrentWebViewPackage(PackageInfo().apply {
+        packageName = "com.google.android.webview"
+        versionName = "114.0.5735.196"
+    })
+
+    /** [body], with the renderer's check of a descriptor answering [whole], which Robolectric can't. */
+    private fun <T> handingOver(whole: Boolean, body: () -> T): T {
+        mayHandOver = { whole }
+        try {
+            return body()
+        } finally {
+            mayHandOver = ::readOnlyFile
+        }
+    }
+
+    private fun ActivityController<ViewerActivity>.toolbarItem(id: Int) =
+        get().findViewById<MaterialToolbar>(R.id.toolbar).menu.findItem(id)
+
+    /**
+     * Nothing the reader does will raise a locked WebView, so a PDF goes straight to the simple
+     * view. Its pages are pictures, with no words to search, and it prints as the file itself.
+     */
+    @Test
+    fun aPdfOnALockedWebViewOpensInTheSimpleView() {
+        lockedWebView()
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_PRINTING, true)
+        val viewer = handingOver(true) { open("six-pages.pdf") }
+        assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
+        assertThat(viewer.toolbarItem(R.id.action_search).isVisible).isFalse()
+        assertThat(viewer.toolbarItem(R.id.action_print).isVisible).isTrue()
+    }
+
+    /** It opens at the page the PDF was left at, filed as pdf.js files it. */
+    @Test
+    fun aPdfInTheSimpleViewOpensAtThePageItWasLeftAt() {
+        lockedWebView()
+        val uri = FixtureProvider.uriFor("six-pages.pdf")
+        val length = Fixtures.file("six-pages.pdf").length()
+        Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 4, 6)
+        val viewer = handingOver(true) { view(uri) }
+        assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
+        assertThat(viewer.loadedUrl()).contains("&resume=4")
+    }
+
+    /** One a provider streams can't be handed to the renderer, so it keeps the card. */
+    @Test
+    fun aPdfTheRendererCantBeHandedKeepsTheCard() {
+        lockedWebView()
+        val viewer = handingOver(false) { open("six-pages.pdf") }
+        assertThat(viewer.pageName()).isEqualTo("pdf.html")
+        assertThat(viewer.loadedUrl()).contains("&locked=1")
+    }
+
+    /**
+     * Nor can a file inside a zip, which is never written out as a file of its own. Android
+     * refuses one stored as it is, a window onto the zip, as a descriptor of its own. One
+     * compressed comes through a pipe, which Robolectric makes a file, so here only the viewer's
+     * own check keeps it from the renderer.
+     */
+    @Test
+    fun aPdfInsideAZipOnALockedWebViewKeepsTheCard() {
+        lockedWebView()
+        for (stored in listOf(true, false)) {
+            val intent = Intent()
+                .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
+                .setData(pdfInAZip(stored))
+            val viewer = handingOver(true) { start(intent) }
+            assertThat("stored $stored: ${viewer.pageName()}").isEqualTo("stored $stored: pdf.html")
+            assertThat(viewer.loadedUrl()).contains("&locked=1")
+        }
+    }
+
+    /** Its page is never served the file, which only the isolated renderer reads. */
+    @Test
+    fun theSimpleViewsPageIsNeverServedTheFile() {
+        lockedWebView()
+        val viewer = handingOver(true) { open("six-pages.pdf") }
+        assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
+        assertThat(viewer.serve("/doc/file.pdf")?.statusCode).isEqualTo(404)
+    }
+
+    /**
+     * A WebView an update would raise keeps the card, which says to update it, until the reader
+     * asks there for the simple view. The viewer is rebuilt to show it, and the ask survives that.
+     */
+    @Test
+    fun aPdfOnAWebViewAnUpdateWouldRaiseKeepsTheCardUntilTheReaderAsks() {
+        oldWebView()
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.pageName()).isEqualTo("pdf.html")
+            assertThat(viewer.loadedUrl()).contains("&webview=114&needs=125")
+            assertThat(viewer.loadedUrl()).doesNotContain("locked")
+
+            viewer.get().askForSimpleView()
+            // The rebuilt viewer asks the provider about the file on a thread of its own
+            val deadline = System.currentTimeMillis() + 10_000
+            while (viewer.pageName() != "pdfsimple.html" && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20)
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+            assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
+        }
     }
 
     /** A photo gets the tiling view, not a WebView. */
@@ -1346,26 +1463,7 @@ class ViewerActivityTest {
      */
     @Test
     fun aPdfInsideAZipKeepsNoReadingPosition() {
-        val pdf = Fixtures.bytes("six-pages.pdf")
-        val file = File.createTempFile("positions", ".zip").apply { deleteOnExit() }
-        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
-            z.putNextEntry(java.util.zip.ZipEntry("six-pages.pdf").apply {
-                method = java.util.zip.ZipEntry.STORED
-                this.size = pdf.size.toLong()
-                compressedSize = pdf.size.toLong()
-                crc = java.util.zip.CRC32().apply { update(pdf) }.value
-            })
-            z.write(pdf)
-            z.closeEntry()
-        }
-        val archive = FixtureProvider.install().add("positions.zip", file)
-        Robolectric.buildContentProvider(ArchiveProvider::class.java)
-            .create(ArchiveProvider.authority(context))
-        val raf = java.io.RandomAccessFile(file, "r")
-        val entry = ZipSource(raf.channel, 0, raf.length(), raf).use {
-            ZipReader.entries(it, java.util.Locale.US).single()
-        }
-        val uri = ArchiveProvider.uriFor(context, archive, entry)
+        val uri = pdfInAZip()
         val length = context.contentResolver.openAssetFileDescriptor(uri, "r")!!.use { it.length }
         Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 4, 6)
 
@@ -1375,6 +1473,35 @@ class ViewerActivityTest {
         val controller = start(intent)
         assertThat(controller.loadedUrl()).contains("viewer/pdf.html")
         assertThat(controller.loadedUrl()).doesNotContain("resume=")
+    }
+
+    /**
+     * six-pages.pdf in a zip of its own, [stored] as it is or compressed, as Gander's URI for it
+     * inside the zip.
+     */
+    private fun pdfInAZip(stored: Boolean = true): Uri {
+        val pdf = Fixtures.bytes("six-pages.pdf")
+        val file = File.createTempFile("pdf", ".zip").apply { deleteOnExit() }
+        java.util.zip.ZipOutputStream(file.outputStream()).use { z ->
+            z.putNextEntry(java.util.zip.ZipEntry("six-pages.pdf").apply {
+                if (stored) {
+                    method = java.util.zip.ZipEntry.STORED
+                    this.size = pdf.size.toLong()
+                    compressedSize = pdf.size.toLong()
+                    crc = java.util.zip.CRC32().apply { update(pdf) }.value
+                }
+            })
+            z.write(pdf)
+            z.closeEntry()
+        }
+        val archive = FixtureProvider.install().add(if (stored) "stored.zip" else "deflated.zip", file)
+        Robolectric.buildContentProvider(ArchiveProvider::class.java)
+            .create(ArchiveProvider.authority(context))
+        val raf = java.io.RandomAccessFile(file, "r")
+        val entry = ZipSource(raf.channel, 0, raf.length(), raf).use {
+            ZipReader.entries(it, java.util.Locale.US).single()
+        }
+        return ArchiveProvider.uriFor(context, archive, entry)
     }
 
     /**

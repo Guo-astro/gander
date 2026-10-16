@@ -64,9 +64,8 @@ class ThumbsTest {
     /** Not on Android 8, where the isolated renderer could still crash Gander or put up a dialog. */
     @Test
     fun aPdfGetsAPictureFromAndroid9On() {
-        assertThat(Thumbs.pdfPictures(26)).isFalse()
-        assertThat(Thumbs.pdfPictures(27)).isFalse()
-        assertThat(Thumbs.pdfPictures(28)).isTrue()
+        assertThat(Thumbs.supported(FileKind.PDF, "pdf", sdk = 27)).isFalse()
+        assertThat(Thumbs.supported(FileKind.PDF, "pdf", sdk = 28)).isTrue()
     }
 
     /**

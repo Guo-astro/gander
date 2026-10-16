@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -324,5 +325,13 @@ internal class PdfRenderClient(
         const val HUNG_MS = 20_000L
 
         private const val TICK_MS = 1_000L
+
+        /**
+         * Whether the renderer is walled off from Gander on Android [sdk]. Not on Android 8. On 8.1
+         * a renderer a hostile file has taken over can post a foreground notification Android
+         * rejects, and Android then crashes Gander's own process for it. On 8.0 and 8.1 a renderer
+         * that merely crashes puts up "Gander has stopped". Android 9 refuses the notification.
+         */
+        fun containedOn(sdk: Int): Boolean = sdk >= Build.VERSION_CODES.P
     }
 }

@@ -8,6 +8,13 @@ enum class FileKind(val page: String) {
     IMAGE(""),
     IMAGE_WEB("imgweb.html"),
     PDF("pdf.html"),
+
+    /**
+     * A PDF on a phone whose WebView pdf.js can't run on, drawn a whole page at a time by
+     * Android's own PdfRenderer in an isolated process. [detect] never says it: which view a PDF
+     * gets takes the phone and the file to decide, not the file's name. See [pdfRoute].
+     */
+    PDF_SIMPLE("pdfsimple.html"),
     PLAYER(""),
     DOCX("docx.html"),
 
@@ -36,12 +43,12 @@ enum class FileKind(val page: String) {
     UNSUPPORTED("unsupported.html");
 
     /**
-     * Counted in pages: its page says which one is on screen. A PDF and a Word document,
-     * since issue #47, also go to one when asked. A book has no pages of its own and counts
-     * equal stretches of its files instead, which the viewer shows as how far through it the
-     * reader is.
+     * Counted in pages: its page says which one is on screen. A PDF, in either view, and a Word
+     * document, since issue #47, also go to one when asked. A book has no pages of its own and
+     * counts equal stretches of its files instead, which the viewer shows as how far through it
+     * the reader is.
      */
-    val paged: Boolean get() = this == PDF || this == DOCX || this == EPUB
+    val paged: Boolean get() = this == PDF || this == PDF_SIMPLE || this == DOCX || this == EPUB
 
     /**
      * Turns its pages over for night mode. Not a book: its page is prose and follows the
@@ -56,7 +63,8 @@ enum class FileKind(val page: String) {
      * sheet's own size, which is further in than this goes.
      */
     val zoomedOnDoubleTap: Boolean
-        get() = this == PDF || this == DOCX || this == PROSE || this == PPTX || this == IMAGE_WEB
+        get() = this == PDF || this == PDF_SIMPLE || this == DOCX || this == PROSE || this == PPTX ||
+            this == IMAGE_WEB
 
     companion object {
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")

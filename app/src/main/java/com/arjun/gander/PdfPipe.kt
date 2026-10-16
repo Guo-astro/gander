@@ -39,11 +39,11 @@ private fun accessMode(fd: Int): Int? = File("/proc/self/fdinfo/$fd").readLines(
     ?.and(OsConstants.O_ACCMODE)
 
 /**
- * What [PdfRenderClient.open] asks of a descriptor before handing it over, [readOnlyFile]. Unit
- * tests put a stand-in here, since Robolectric says every descriptor is neither a regular file
- * nor writable.
+ * What [PdfRenderClient.open] asks of a descriptor before handing it over, [readOnlyFile], and
+ * what the viewer asks before sending a PDF to the simple view. Unit tests put a stand-in here,
+ * since Robolectric says every descriptor is neither a regular file nor writable.
  */
-@androidx.annotation.VisibleForTesting
+@set:androidx.annotation.VisibleForTesting
 internal var mayHandOver: (ParcelFileDescriptor) -> Boolean = ::readOnlyFile
 
 /**

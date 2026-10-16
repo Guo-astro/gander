@@ -17,8 +17,11 @@ package com.arjun.gander
  * Read this before raising it alongside a pdf.js upgrade. Chromium 138 is the
  * last WebView that Android 8.0, 8.1 and 9.0 will ever receive, because 139
  * requires Android 10 and minSdk here is 26. A pdf.js release needing more than
- * 138 therefore does not degrade on API 26 to 28, it ends PDF support there for
- * good. docs/VENDORED.md carries the same warning next to the version fetched.
+ * 138 therefore does not degrade on API 26 to 28, it ends pdf.js there for good.
+ * [pdfRoute] and the card would then have to treat those phones as locked: Android
+ * 9 straight to the simple view, and Android 8, which has none, to a card that
+ * doesn't tell the reader to update. docs/VENDORED.md carries the same warning
+ * next to the version fetched.
  */
 internal const val PDFJS_MIN_CHROMIUM_MAJOR = 125
 
@@ -62,8 +65,9 @@ internal fun searchesInPage(kind: FileKind, major: Int?): Boolean = when (kind) 
     FileKind.DOCX, FileKind.PROSE, FileKind.MD, FileKind.TEXT, FileKind.XLSX, FileKind.PPTX,
     FileKind.EPUB ->
         major == null || major >= HIGHLIGHT_MIN_CHROMIUM_MAJOR
-    FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.MODEL, FileKind.ARCHIVE,
-    FileKind.UNSUPPORTED -> false
+    // The simple view shows pictures of a PDF's pages, with no text in them
+    FileKind.PDF_SIMPLE, FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.MODEL,
+    FileKind.ARCHIVE, FileKind.UNSUPPORTED -> false
 }
 
 /**
@@ -86,6 +90,8 @@ internal fun minChromiumMajor(kind: FileKind): Int? = when (kind) {
     FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PLAYER, FileKind.XLSX, FileKind.PPTX,
     FileKind.PROSE, FileKind.TEXT, FileKind.MODEL, FileKind.EPUB, FileKind.ARCHIVE,
     FileKind.UNSUPPORTED -> null
+    // The view for the engines pdf.js can't run on, so a floor of its own would defeat it
+    FileKind.PDF_SIMPLE -> null
 }
 
 /**
@@ -173,4 +179,37 @@ internal fun webViewFloorParams(kind: FileKind, major: Int?, locked: Boolean): S
     }
     if (major >= floor) return ""
     return "&webview=$major&needs=$floor" + if (locked) "&locked=1" else ""
+}
+
+/** Where a PDF is shown: see [pdfRoute]. */
+internal enum class PdfRoute {
+    /** By pdf.js, in pdf.html. */
+    PDFJS,
+
+    /** Nowhere: pdf.html says the WebView is too old for pdf.js. */
+    CARD,
+
+    /** In the simple view, [FileKind.PDF_SIMPLE], once the viewer has found the file whole. */
+    SIMPLE,
+}
+
+/**
+ * Where a PDF is shown on a WebView of [major], null when it could not be read, from a provider
+ * that is [locked] or not, on Android [sdk], and whether the reader has [asked] for the simple
+ * view.
+ *
+ * By pdf.js wherever it runs, which is wherever [webViewFloorParams] leaves a PDF alone, so the
+ * two can't disagree. Below its floor a locked provider goes straight to the simple view, since
+ * nothing the reader does will bring pdf.js back. An engine an update would raise keeps the card,
+ * and gets the simple view only when the reader asks for it there: the update brings back what
+ * the simple view lacks, text to search, select and follow links in, and annotations such as
+ * filled-in forms, and it patches the engine every other format is drawn by. Never the simple
+ * view on Android 8, where the renderer isn't walled off from Gander: see
+ * [PdfRenderClient.containedOn].
+ */
+internal fun pdfRoute(major: Int?, locked: Boolean, sdk: Int, asked: Boolean): PdfRoute = when {
+    webViewFloorParams(FileKind.PDF, major, locked).isEmpty() -> PdfRoute.PDFJS
+    !PdfRenderClient.containedOn(sdk) -> PdfRoute.CARD
+    locked || asked -> PdfRoute.SIMPLE
+    else -> PdfRoute.CARD
 }

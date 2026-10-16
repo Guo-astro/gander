@@ -248,5 +248,51 @@ class WebViewFloorTest {
     fun theHighlightApiArrivedInChromium105() {
         assertThat(HIGHLIGHT_MIN_CHROMIUM_MAJOR).isEqualTo(105)
     }
+
+    // ---------------------------------------------------------------
+    // Where a PDF goes
+    // ---------------------------------------------------------------
+
+    /** pdf.js wherever it runs, whatever the reader asked for and whoever made the WebView. */
+    @Test
+    fun aPdfGoesToPdfJsWhereverItRuns() {
+        for (asked in listOf(false, true)) {
+            for (sdk in listOf(26, 28, 36)) {
+                assertThat(pdfRoute(PDFJS_MIN_CHROMIUM_MAJOR, locked = false, sdk, asked))
+                    .isEqualTo(PdfRoute.PDFJS)
+                assertThat(pdfRoute(138, locked = true, sdk, asked)).isEqualTo(PdfRoute.PDFJS)
+                // An unreadable version is new enough unless the provider is locked
+                assertThat(pdfRoute(null, locked = false, sdk, asked)).isEqualTo(PdfRoute.PDFJS)
+            }
+        }
+    }
+
+    /** A Huawei phone without Google's services, whose WebView nothing the reader does can raise. */
+    @Test
+    fun aLockedProviderBelowTheFloorGoesStraightToTheSimpleView() {
+        assertThat(pdfRoute(114, locked = true, sdk = 29, asked = false)).isEqualTo(PdfRoute.SIMPLE)
+        assertThat(pdfRoute(null, locked = true, sdk = 36, asked = false)).isEqualTo(PdfRoute.SIMPLE)
+        assertThat(pdfRoute(PDFJS_MIN_CHROMIUM_MAJOR - 1, locked = true, sdk = 28, asked = false))
+            .isEqualTo(PdfRoute.SIMPLE)
+    }
+
+    /** One an update would raise keeps the card, whose button asks for the simple view. */
+    @Test
+    fun anEngineAnUpdateWouldRaiseKeepsTheCardUntilTheReaderAsks() {
+        assertThat(pdfRoute(110, locked = false, sdk = 36, asked = false)).isEqualTo(PdfRoute.CARD)
+        assertThat(pdfRoute(110, locked = false, sdk = 36, asked = true)).isEqualTo(PdfRoute.SIMPLE)
+        assertThat(pdfRoute(PDFJS_MIN_CHROMIUM_MAJOR - 1, locked = false, sdk = 28, asked = true))
+            .isEqualTo(PdfRoute.SIMPLE)
+    }
+
+    /** Android 8 keeps the card whatever happens, since the renderer could reach Gander there. */
+    @Test
+    fun androidEightNeverGetsTheSimpleView() {
+        for (sdk in listOf(26, 27)) {
+            assertThat(pdfRoute(66, locked = true, sdk, asked = false)).isEqualTo(PdfRoute.CARD)
+            assertThat(pdfRoute(null, locked = true, sdk, asked = true)).isEqualTo(PdfRoute.CARD)
+            assertThat(pdfRoute(110, locked = false, sdk, asked = true)).isEqualTo(PdfRoute.CARD)
+        }
+    }
 }
 

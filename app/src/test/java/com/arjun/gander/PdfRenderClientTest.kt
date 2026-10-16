@@ -321,4 +321,12 @@ class PdfRenderClientTest {
         looper.idleFor(Duration.ofMillis(PdfRenderClient.HUNG_MS + 2_000))
         assertThat(gone).containsExactly(true)
     }
+
+    /** Android 8 lets a renderer crash Gander or put up a dialog in its name; 9 doesn't. */
+    @Test
+    fun theRendererIsWalledOffFromAndroid9On() {
+        assertThat(PdfRenderClient.containedOn(26)).isFalse()
+        assertThat(PdfRenderClient.containedOn(27)).isFalse()
+        assertThat(PdfRenderClient.containedOn(28)).isTrue()
+    }
 }

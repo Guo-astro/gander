@@ -19,13 +19,13 @@ import java.util.concurrent.Executors
 /**
  * How a file of this kind prints, or null if it doesn't. Issue #45.
  *
- * A PDF goes to the printer as the file itself. The paper documents print as the WebView
- * draws them, with the print rules in their pages.
+ * A PDF, in either view, goes to the printer as the file itself. The paper documents print as
+ * the WebView draws them, with the print rules in their pages.
  */
 internal enum class PrintRoute { FILE, PAGE }
 
 internal fun printRoute(kind: FileKind): PrintRoute? = when (kind) {
-    FileKind.PDF -> PrintRoute.FILE
+    FileKind.PDF, FileKind.PDF_SIMPLE -> PrintRoute.FILE
     FileKind.DOCX, FileKind.PROSE -> PrintRoute.PAGE
     // A book has one chapter on its page at a time, so printing the page would print that
     // chapter and call it the book.

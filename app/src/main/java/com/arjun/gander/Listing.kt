@@ -108,7 +108,7 @@ internal val ADD_COLOR = 0xFFAF2D18.toInt()
 internal fun badgeFor(name: String, mime: String?): Pair<String, Int> {
     val ext = name.substringAfterLast('.', "").lowercase()
     return when (FileKind.detect(ext, mime)) {
-        FileKind.PDF -> PDF_BADGE
+        FileKind.PDF, FileKind.PDF_SIMPLE -> PDF_BADGE
         FileKind.DOCX, FileKind.PROSE, FileKind.EPUB -> DOC_BADGE
         FileKind.XLSX -> XLS_BADGE
         FileKind.PPTX -> PPT_BADGE

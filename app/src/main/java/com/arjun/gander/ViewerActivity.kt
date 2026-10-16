@@ -11,6 +11,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
@@ -35,6 +36,7 @@ import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -90,6 +92,7 @@ open class ViewerActivity : AppCompatActivity() {
         private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
         private const val STATE_PLAYER_POSITION = "player_position"
         private const val STATE_FULL_SCREEN = "full_screen"
+        private const val STATE_SIMPLE_VIEW = "simple_view"
         private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /** The keys a WebView scrolls a document by. */
@@ -184,6 +187,9 @@ open class ViewerActivity : AppCompatActivity() {
     @androidx.annotation.VisibleForTesting
     internal var printLocked = false
         private set
+
+    /** Whether the reader asked for a PDF's simple view, which the viewer is rebuilt to show. */
+    private var simpleAsked = false
 
     /** Where a video or a track picks up when the viewer is rebuilt around it, as a change of theme does. */
     private var playerStartAt = 0L
@@ -312,6 +318,7 @@ open class ViewerActivity : AppCompatActivity() {
         outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
         player?.let { outState.putLong(STATE_PLAYER_POSITION, it.currentPosition) }
         videoChrome?.held?.let { outState.putInt(STATE_FULL_SCREEN, it) }
+        outState.putBoolean(STATE_SIMPLE_VIEW, simpleAsked)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -327,6 +334,7 @@ open class ViewerActivity : AppCompatActivity() {
         playerStartAt = savedInstanceState?.getLong(STATE_PLAYER_POSITION) ?: 0L
         playerHeld = savedInstanceState?.takeIf { it.containsKey(STATE_FULL_SCREEN) }
             ?.getInt(STATE_FULL_SCREEN)
+        simpleAsked = savedInstanceState?.getBoolean(STATE_SIMPLE_VIEW) == true
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         toolbar.setNavigationOnClickListener { finish() }
@@ -385,6 +393,11 @@ open class ViewerActivity : AppCompatActivity() {
         }
 
         val detected = detect(ext, mime)
+        // A PDF bound for the simple view goes there once the file is found to be one it can be
+        // handed, and to the card saying pdf.js can't run here otherwise
+        if (detected == FileKind.PDF && pdfRouteHere() == PdfRoute.SIMPLE) {
+            return whetherWhole(uri) { whole -> show(if (whole) FileKind.PDF_SIMPLE else detected) }
+        }
         if (!FileKind.isUnknown(detected, ext)) return show(detected)
         // A file of no known format that reads as text opens as text, with no card to tap
         // through, and the line under its name says so. Issue #51.
@@ -395,18 +408,58 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
+     * Where a PDF goes on this phone: see [pdfRoute]. Asked before the WebView is made, so the
+     * engine is read from the user agent a WebView starts with, which is the one it keeps, since
+     * Gander never sets its own.
+     */
+    private fun pdfRouteHere(): PdfRoute = pdfRoute(
+        webViewChromiumMajor(runCatching { WebSettings.getDefaultUserAgent(this) }.getOrNull()),
+        webViewProviderIsLocked(),
+        Build.VERSION.SDK_INT,
+        simpleAsked,
+    )
+
+    /**
+     * Opens the PDF on show again in the simple view, when the reader asks for it on the card
+     * saying pdf.js can't run here. Rebuilt rather than swapped in place, because the search,
+     * night mode and print the viewer sets up around a page are decided by which view it is.
+     */
+    internal fun askForSimpleView() {
+        simpleAsked = true
+        recreate()
+    }
+
+    /**
      * Tells [then] whether the file reads as text. Its first bytes are read off the main
      * thread, as a picture's are, since a provider can be slow to hand over even those. One
      * that cannot be read is not text, and gets the card it always had.
      */
-    private fun whetherText(uri: Uri, then: (Boolean) -> Unit) {
+    private fun whetherText(uri: Uri, then: (Boolean) -> Unit) = offMain(then) { app ->
+        runCatching { app.contentResolver.openInputStream(uri)?.use(::readsAsText) }.getOrNull() == true
+    }
+
+    /**
+     * Tells [then] whether the file can be handed to the simple view's renderer, which is given
+     * a whole file opened for reading alone, the way [PdfRenderClient.open] checks it: not a file
+     * inside a zip, nor one its provider streams through a pipe.
+     */
+    private fun whetherWhole(uri: Uri, then: (Boolean) -> Unit) = offMain(then) { app ->
+        !ArchiveProvider.isEntry(app, uri) &&
+            runCatching { app.contentResolver.openFileDescriptor(uri, "r")?.use(mayHandOver) }
+                .getOrNull() == true
+    }
+
+    /**
+     * Asks [ask] off the main thread and hands its answer to [then] on it, unless the viewer has
+     * gone by then.
+     */
+    private fun <T> offMain(then: (T) -> Unit, ask: (Context) -> T) {
         val app = applicationContext
         val main = Handler(Looper.getMainLooper())
         val worker = documentLoader ?: Executors.newSingleThreadExecutor()
         worker.execute {
-            val text = runCatching { app.contentResolver.openInputStream(uri)?.use(::readsAsText) }
-                .getOrNull() == true
-            main.post { if (!isDestroyed) then(text) }
+            val answer = ask(app)
+            main.post { if (!isDestroyed) then(answer) }
         }
         (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
@@ -1269,8 +1322,9 @@ open class ViewerActivity : AppCompatActivity() {
         val web = webView
         val blocked = webViewFloorParamsFor(kind, web?.settings?.userAgentString).isNotEmpty()
         // A 3D model is a picture drawn on a canvas, and the only words on its page are its
-        // size, so there is nothing in it to find
-        val wordless = kind == FileKind.MODEL
+        // size, so there is nothing in it to find. Nor in a PDF's simple view, which shows
+        // pictures of its pages.
+        val wordless = kind == FileKind.MODEL || kind == FileKind.PDF_SIMPLE
         if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked || wordless) {
             // No WebView at all, or a WebView too old to carry a message channel. The
             // second is close to unreachable: message channels landed long before the
@@ -1923,8 +1977,11 @@ open class ViewerActivity : AppCompatActivity() {
                 val url = request.url
                 // The document is served here rather than through WebViewAssetLoader
                 // because a PathHandler is only given the path, and answering range
-                // requests needs the Range header off the request itself.
-                if (url.scheme == "https" && url.host == ASSET_HOST &&
+                // requests needs the Range header off the request itself. Never to the
+                // simple view's page: its WebView is one too old for pdf.js, and nothing on
+                // that page needs the file, which only the isolated renderer reads.
+                if (kind != FileKind.PDF_SIMPLE &&
+                    url.scheme == "https" && url.host == ASSET_HOST &&
                     url.path?.startsWith("/doc/") == true
                 ) {
                     return docResponse(uri, mime, documentTotal, request.requestHeaders["Range"])
@@ -1986,9 +2043,11 @@ open class ViewerActivity : AppCompatActivity() {
         // drawing a page nobody asked to see. Issue #25. Never for a file inside a zip:
         // the position is filed on the phone under a fingerprint of the file, nothing in a
         // zip is written to the phone, and one under a password would leave a fingerprint
-        // of what the password was keeping.
-        val keepsPosition = (kind == FileKind.PDF || kind == FileKind.EPUB) &&
-            !ArchiveProvider.isEntry(this, uri)
+        // of what the password was keeping. A PDF's two views file it under the same
+        // fingerprint, so the page left in one is the page the other opens at.
+        val keepsPosition =
+            (kind == FileKind.PDF || kind == FileKind.PDF_SIMPLE || kind == FileKind.EPUB) &&
+                !ArchiveProvider.isEntry(this, uri)
         positionKey = null
 
         // Both looked up off the main thread, since both ask the provider, and the page's

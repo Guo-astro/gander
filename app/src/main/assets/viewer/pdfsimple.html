@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- The policy in ViewerPolicy.kt, which says why each part is there. ViewerPolicyTest
+     keeps this copy word for word the same as that one, in every page. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<title>PDF document</title>
+<!-- A PDF where pdf.js can't run, a picture of each page drawn by Android's PdfRenderer in an
+     isolated process: see FileKind.PDF_SIMPLE. No viewport meta, as in pdf.html, so a pinch
+     has the same range here as there. -->
+<link rel="stylesheet" href="app.css">
+<style>
+  /* The surround pdf.html reads a page against, so the two views look alike around it. */
+  body { background: #48443D; }
+  /* The app zooms a double tap itself, in DoubleTapZoom.kt, as it does in pdf.html. */
+  html { touch-action: manipulation; }
+</style>
+</head>
+<body>
+</body>
+</html>
