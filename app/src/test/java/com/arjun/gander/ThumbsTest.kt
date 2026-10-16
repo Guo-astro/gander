@@ -188,12 +188,18 @@ class ThumbsTest {
         val into = ImageView(context).apply { visibility = View.GONE }
         val badge = View(context)
         Thumbs.load(context, uri, ext, into, badge)
-        // Real time, not SystemClock: Robolectric's clock stands still unless a test moves it,
-        // so a deadline on that one never arrives and a thumbnail that never comes hangs the run
-        // rather than failing it.
+        idleUntil("no thumbnail for $uri") { into.visibility == View.VISIBLE }
+    }
+
+    /**
+     * Runs the main thread until [done], for up to ten seconds of real time, not SystemClock:
+     * Robolectric's clock stands still unless a test moves it, so a deadline on that one never
+     * arrives and a thumbnail that never comes hangs the run rather than failing it.
+     */
+    private fun idleUntil(what: String, done: () -> Boolean) {
         val deadline = System.nanoTime() + 10_000_000_000
-        while (into.visibility != View.VISIBLE) {
-            check(System.nanoTime() < deadline) { "no thumbnail for $uri" }
+        while (!done()) {
+            check(System.nanoTime() < deadline) { what }
             shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(20)
         }
@@ -225,23 +231,33 @@ class ThumbsTest {
                 Thumbs.load(context, FixtureProvider.uriNamed("six-pages.pdf", name), "pdf", it, View(context))
             }
         }
-        val deadline = System.nanoTime() + 10_000_000_000
-        while (renderer.entered.count > 0) {
-            check(System.nanoTime() < deadline) { "the first PDF was never drawn" }
-            shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(20)
-        }
+        idleUntil("the first PDF was never drawn") { renderer.entered.count == 0L }
         // Time for a second to open beside it, were it allowed to
         Thread.sleep(300)
         assertThat(renderer.opens.get()).isEqualTo(1)
 
         renderer.release.countDown()
-        while (rows.any { it.visibility != View.VISIBLE }) {
-            check(System.nanoTime() < deadline) { "a PDF was never drawn" }
-            shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(20)
-        }
+        idleUntil("a PDF was never drawn") { rows.all { it.visibility == View.VISIBLE } }
         assertThat(renderer.opens.get()).isEqualTo(2)
+    }
+
+    /** A PDF whose thumbnail is on disk already doesn't wait while the renderer draws another. */
+    @Test
+    fun aPdfKeptOnDiskDoesNotWaitForTheRenderer() {
+        val renderer = thumbnailRenderer()
+        renderer.onRender = { renderer.entered.countDown(); renderer.release.await() }
+        val drawing = ImageView(context).apply { visibility = View.GONE }
+        Thumbs.load(context, FixtureProvider.uriNamed("six-pages.pdf", "drawing.pdf"), "pdf", drawing, View(context))
+        idleUntil("the first PDF was never drawn") { renderer.entered.count == 0L }
+
+        val kept = FixtureProvider.uriNamed("six-pages.pdf", "kept.pdf")
+        cacheFileFor(kept.toString()).apply {
+            parentFile?.mkdirs()
+            writeBytes(Fixtures.bytes("tiny.png"))
+        }
+        loadAndWait(kept, "pdf")
+        assertThat(drawing.visibility).isEqualTo(View.GONE)
+        renderer.release.countDown()
     }
 
     /** A stand-in for PdfThumbService, bound in its place and nothing else's. */

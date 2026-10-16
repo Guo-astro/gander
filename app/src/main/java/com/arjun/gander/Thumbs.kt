@@ -74,20 +74,29 @@ object Thumbs {
         val kind = FileKind.detect(ext, null)
         val onDisk = !ArchiveProvider.isEntry(appCtx, uri)
         val pdf = if (kind == FileKind.PDF) pdfs ?: PdfThumbs(appCtx, SIZE).also { pdfs = it } else null
-        val job = Runnable {
-            val bmp = (if (onDisk) fromDisk(appCtx, key) else null)
-                ?: generate(appCtx, uri, kind, key, pdf)?.also { if (onDisk) toDisk(appCtx, key, it) }
-                ?: return@Runnable
-            mem.put(key, bmp)
-            main.post {
-                if (into.tag == key) {
-                    into.setImageBitmap(bmp)
-                    into.visibility = View.VISIBLE
-                    badge.visibility = View.GONE
-                }
+        executor.execute {
+            val cached = if (onDisk) fromDisk(appCtx, key) else null
+            if (cached != null) return@execute show(key, cached, into, badge)
+            val make = Runnable {
+                val bmp = generate(appCtx, uri, kind, key, pdf) ?: return@Runnable
+                if (onDisk) toDisk(appCtx, key, bmp)
+                show(key, bmp, into, badge)
+            }
+            // A PDF takes its turn for the renderer, which holds one document at a time. One
+            // already on disk didn't need it, so it never waits behind the others.
+            if (pdf != null) pdf.queue(make) else make.run()
+        }
+    }
+
+    private fun show(key: String, bmp: Bitmap, into: ImageView, badge: View) {
+        mem.put(key, bmp)
+        main.post {
+            if (into.tag == key) {
+                into.setImageBitmap(bmp)
+                into.visibility = View.VISIBLE
+                badge.visibility = View.GONE
             }
         }
-        if (pdf != null) pdf.queue(job) else executor.execute(job)
     }
 
     /**
