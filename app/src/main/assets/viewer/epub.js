@@ -212,9 +212,11 @@ var vwEpub = (function () {
   var spine = [];
   /* A chapter's place in the spine, by path */
   var index = bag();
-  /* The contents list: { label, depth, at, frag }, at being -1 for a heading that goes nowhere */
+  /* The contents list: { label, depth, at, frag }, label a caption (see captionOf) and at
+     being -1 for a heading that goes nowhere */
   var contents = [];
-  var bookTitle = "";
+  /* A caption too, or null */
+  var bookTitle = null;
   var total = 0;
 
   var shown = -1;
@@ -574,8 +576,7 @@ var vwEpub = (function () {
     }
     if (!spine.length) throw new Error("The book lists no chapters.");
 
-    var named = all(doc, "title")[0];
-    bookTitle = caption(named);
+    bookTitle = captionOf(all(doc, "title")[0]);
 
     // The identifier the package calls its own, or failing that its first
     var own = doc.documentElement.getAttribute("unique-identifier");
@@ -602,9 +603,12 @@ var vwEpub = (function () {
   // The contents list, from the newer kind of book's nav file or the older kind's NCX
   // ---------------------------------------------------------------------------------------
 
-  /* Copy only text and inherited language/direction, never a publisher's markup or styles. */
-  function caption(el) {
-    var out = { label: el ? clean(el.textContent) : "", dir: "", lang: null };
+  /*
+   * A label's words, and the direction and language the book gives them, as { text, dir,
+   * lang }: never its markup or styles, which would reach the page's own parts.
+   */
+  function captionOf(el) {
+    var out = { text: el ? clean(el.textContent) : "", dir: "", lang: null };
     for (; el; el = el.parentElement) {
       var dir = (el.getAttribute("dir") || "").trim().toLowerCase();
       if (!out.dir && /^(ltr|rtl|auto)$/.test(dir)) out.dir = el.vwDir || dir;
@@ -621,13 +625,20 @@ var vwEpub = (function () {
       }
       if (out.lang === null) out.lang = el.hasAttribute("lang") ? el.getAttribute("lang") : el.getAttribute("xml:lang");
     }
-    return { textContent: out.label, dir: out.dir || "auto", lang: out.lang || "" };
+    return { text: out.text, dir: out.dir || "auto", lang: out.lang || "" };
+  }
+
+  /* Puts a caption on one of the page's own parts, or clears it */
+  function putCaption(el, c) {
+    el.textContent = c ? c.text : "";
+    el.dir = c ? c.dir : "auto";
+    el.lang = c ? c.lang : "";
   }
 
   function listed(el, depth, base, href, out) {
-    var label = caption(el);
-    if (!label.textContent && /^(a|span)$/.test(local(el))) label.textContent = calledBy(el);
-    if (!label.textContent) return;
+    var label = captionOf(el);
+    if (!label.text && /^(a|span)$/.test(local(el))) label.text = calledBy(el);
+    if (!label.text) return;
     var at = href ? resolve(base, href) : null;
     var place = at && index[at.path] !== undefined ? index[at.path] : -1;
     out.push({ label: label, depth: depth, at: place, frag: at && place >= 0 ? at.frag : "" });
@@ -704,7 +715,7 @@ var vwEpub = (function () {
       contents = found;
       if (contents.length) return;
       for (var i = 0; i < spine.length; i++) {
-        contents.push({ label: { textContent: "Part " + (i + 1), dir: "auto", lang: "" }, depth: 0, at: i, frag: "" });
+        contents.push({ label: { text: "Part " + (i + 1), dir: "auto", lang: "" }, depth: 0, at: i, frag: "" });
       }
     });
   }
@@ -2275,9 +2286,10 @@ var vwEpub = (function () {
   // Putting a chapter on the page
   // ---------------------------------------------------------------------------------------
 
-  /* The name the contents give the chapter on the page, or the nearest one before it */
+  /* The name the contents give the chapter on the page, or the nearest one before it, as a
+     caption, or null */
   function nameOf(i) {
-    var best = "";
+    var best = null;
     var bestAt = -1;
     for (var k = 0; k < contents.length; k++) {
       var at = contents[k].at;
@@ -2339,7 +2351,7 @@ var vwEpub = (function () {
     page.appendChild(html);
     onPage = body;
 
-    Object.assign(where, caption(null), nameOf(i));
+    putCaption(where, nameOf(i));
     prev.disabled = i <= 0;
     next.disabled = i >= spine.length - 1;
     if (!quiet) place(to);
@@ -2475,7 +2487,7 @@ var vwEpub = (function () {
   // ---------------------------------------------------------------------------------------
 
   function buildContents() {
-    Object.assign(document.getElementById("epub-title"), bookTitle);
+    putCaption(document.getElementById("epub-title"), bookTitle);
     // An epic in two thousand short chapters lists every one, so the limit is well past that
     for (var i = 0; i < contents.length && i < 20000; i++) {
       var li = document.createElement("li");
@@ -2484,7 +2496,9 @@ var vwEpub = (function () {
         el.type = "button";
         el.setAttribute("data-n", i);
       }
-      Object.assign(el, contents[i].label);
+      putCaption(el, contents[i].label);
+      // From the side the entry's words start on. The prefixed name, as WebView 66 has no
+      // padding-inline-start
       el.style.webkitPaddingStart = (12 + 16 * Math.min(contents[i].depth, 4)) + "px";
       li.appendChild(el);
       list.appendChild(li);

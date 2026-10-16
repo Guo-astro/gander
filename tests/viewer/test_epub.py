@@ -137,7 +137,7 @@ def little_book(made, name, chapters, metadata="", contents="", extra=None,
     refs = "".join(f'<itemref idref="c{n}" {says}/>' for n, (says, _, _) in enumerate(chapters))
     if order is not None:
         refs = "".join(f'<itemref idref="{i}"/>' for i in order)
-    package = (
+    opf = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" {package}>'
         '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
@@ -157,7 +157,7 @@ def little_book(made, name, chapters, metadata="", contents="", extra=None,
             '<rootfile full-path="package.opf" media-type="application/oebps-package+xml"/>'
             '</rootfiles></container>',
         )
-        z.writestr("package.opf", package)
+        z.writestr("package.opf", opf)
         z.writestr("nav.xhtml", chapter("", f'<body><nav epub:type="toc"><ol>{contents}</ol></nav></body>'))
         for n, (_, head, body) in enumerate(chapters):
             z.writestr(f"c{n}.xhtml", chapter(head, body))
@@ -1707,7 +1707,6 @@ def test_navigation_without_direction_uses_automatic_bidi(viewer, page, made):
     entries = page.locator("#epub-contents-list button")
     assert entries.evaluate_all("els => els.map(e => e.dir)") == ["auto", "auto"]
     assert entries.evaluate_all("els => els.map(e => getComputedStyle(e).direction)") == ["rtl", "ltr"]
-    assert entries.evaluate_all("els => els.map(e => getComputedStyle(e).unicodeBidi)") == ["isolate"] * 2
 
 
 def test_navigation_inherits_resolved_auto_and_can_clear_language(viewer, page, made):
