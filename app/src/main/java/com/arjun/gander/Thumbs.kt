@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.LruCache
@@ -42,10 +43,20 @@ object Thumbs {
     private var pdfs: PdfThumbs? = null
 
     fun supported(kind: FileKind, ext: String): Boolean = when (kind) {
-        FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PDF -> true
+        FileKind.IMAGE, FileKind.IMAGE_WEB -> true
+        FileKind.PDF -> pdfPictures(Build.VERSION.SDK_INT)
         FileKind.PLAYER -> !FileKind.isAudioExt(ext)
         else -> false
     }
+
+    /**
+     * Whether a PDF gets a picture on Android [sdk]. The picture comes from an isolated renderer,
+     * which on Android 8 can still reach Gander. On 8.1 a renderer a hostile file has taken over
+     * can post a foreground notification Android rejects, and Android then crashes Gander's own
+     * process for it, at every launch while the file is in view. On 8.0 and 8.1 a renderer that
+     * merely crashes puts up "Gander has stopped". Android 9 refuses the notification.
+     */
+    internal fun pdfPictures(sdk: Int): Boolean = sdk >= Build.VERSION_CODES.P
 
     /**
      * Which files inside a zip get one. A photo, however it is packed, since decoding one from
