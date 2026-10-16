@@ -1636,19 +1636,32 @@ def test_a_long_contents_list_is_shown_whole(viewer, page, made):
     assert page.evaluate("document.querySelectorAll('#epub-contents-list button').length") == 2100
 
 
-@pytest.mark.parametrize("direction,fixed", [
-    ("rtl", False), ("ltr", False), ("default", False), (None, False), ("invalid", False), ("rtl", True),
+@pytest.mark.parametrize("direction,language,fixed,mirrored", [
+    ("rtl", "en", False, True),
+    ("ltr", "ar", False, False),
+    ("default", "ar-EG", False, True),
+    (None, "ur", False, True),
+    (None, "pa-Arab", False, True),
+    (None, "zh-Hant", False, False),
+    ("rtl", "en", True, True),
 ])
-def test_spine_progression_only_mirrors_the_turn_controls(viewer, page, made, direction, fixed):
+def test_next_is_on_the_left_in_a_book_read_right_to_left(viewer, page, made, direction, language,
+                                                         fixed, mirrored):
+    """
+    Where the spine says so, or says nothing and the book's language is written right to left.
+    Not Chinese or Japanese, which Gander lays out in rows read left to right. The chapter's
+    own text keeps its direction either way.
+    """
     book = little_book(made, "progression.epub", [
         ('properties="rendition:layout-pre-paginated"' if fixed else "",
          '<meta name="viewport" content="width=600,height=800"/>',
          '<body><h1>الأول</h1><p dir="ltr">English 123</p></body>'),
         ("", "", "<body><h1>الثاني</h1></body>"),
-    ], spine=f'page-progression-direction="{direction}"' if direction else "", html='dir="rtl" lang="ar"')
+    ], spine=f'page-progression-direction="{direction}"' if direction else "", html='dir="rtl" lang="ar"',
+        language=language)
     open_book(viewer, page, fixture=book)
     prev, next = page.locator("#epub-prev"), page.locator("#epub-next")
-    assert (next.bounding_box()["x"] < prev.bounding_box()["x"]) == (direction == "rtl")
+    assert (next.bounding_box()["x"] < prev.bounding_box()["x"]) == mirrored
     assert prev.is_disabled() and next.is_enabled()
     assert style_of(page, "body", "direction") == "rtl"
     assert style_of(page, "p", "direction") == "ltr"

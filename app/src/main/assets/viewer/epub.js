@@ -512,6 +512,18 @@ var vwEpub = (function () {
     return type === "application/xhtml+xml" || type === "image/svg+xml";
   }
 
+  /*
+   * Whether a language tag is for writing that runs right to left: by its script where it
+   * names one, as Punjabi in Arabic letters does, or else by the language. Chinese and
+   * Japanese are left out, since Gander lays their columns out in rows read left to right.
+   */
+  function writtenRightToLeft(tag) {
+    var m = /^([a-z]{2,3})(?:[-_]([a-z]{4}))?(?:[-_]|$)/i.exec(tag || "");
+    if (!m) return false;
+    if (m[2]) return /^(adlm|arab|hebr|nkoo|rohg|syrc|thaa)$/i.test(m[2]);
+    return /^(ar|ckb|dv|fa|he|ks|ps|sd|ug|ur|yi)$/i.test(m[1]);
+  }
+
   function readPackage(doc, path) {
     var byId = bag();
     var insteadOf = bag();
@@ -594,7 +606,10 @@ var vwEpub = (function () {
     bookTitle = captionOf(all(doc, "title")[0]);
 
     var spineEl = all(doc, "spine")[0];
-    turnBar.dir = spineEl && spineEl.getAttribute("page-progression-direction") === "rtl" ? "rtl" : "ltr";
+    var goes = spineEl ? clean(spineEl.getAttribute("page-progression-direction")).toLowerCase() : "";
+    // A book that doesn't say, as an EPUB 2 one never can, goes the way its language is
+    // written, as Readium takes it
+    turnBar.dir = goes === "rtl" || (goes !== "ltr" && writtenRightToLeft(host.lang)) ? "rtl" : "ltr";
     var declared = spineEl && byId[spineEl.getAttribute("toc")];
     return { nav: nav, ncx: declared || ncx };
   }
