@@ -576,8 +576,6 @@ var vwEpub = (function () {
     }
     if (!spine.length) throw new Error("The book lists no chapters.");
 
-    bookTitle = captionOf(all(doc, "title")[0]);
-
     // The identifier the package calls its own, or failing that its first
     var own = doc.documentElement.getAttribute("unique-identifier");
     var ids = all(doc, "identifier");
@@ -592,6 +590,8 @@ var vwEpub = (function () {
     }
     var tongue = all(doc, "language")[0];
     if (tongue && clean(tongue.textContent)) host.lang = clean(tongue.textContent);
+    // After the language, which the title takes where the package names none
+    bookTitle = captionOf(all(doc, "title")[0]);
 
     var spineEl = all(doc, "spine")[0];
     turnBar.dir = spineEl && spineEl.getAttribute("page-progression-direction") === "rtl" ? "rtl" : "ltr";
@@ -625,7 +625,8 @@ var vwEpub = (function () {
       }
       if (out.lang === null) out.lang = el.hasAttribute("lang") ? el.getAttribute("lang") : el.getAttribute("xml:lang");
     }
-    return { text: out.text, dir: out.dir || "auto", lang: out.lang || "" };
+    // A label that names no language is in the book's, as a chapter is
+    return { text: out.text, dir: out.dir || "auto", lang: out.lang === null ? host.lang : out.lang };
   }
 
   /* Puts a caption on one of the page's own parts, or clears it */

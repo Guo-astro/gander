@@ -113,12 +113,15 @@ def box_of(page, selector):
 
 def little_book(made, name, chapters, metadata="", contents="", extra=None,
                 identifier="urn:uuid:00000000-0000-4000-8000-000000000054", listed="", order=None,
-                spine="", html="", package="", title_xml="<dc:title>A Little Book</dc:title>"):
+                spine="", html="", package="", title_xml="<dc:title>A Little Book</dc:title>",
+                language="en"):
     """
     A book written for one test, for what no committed one has: [chapters] is a list of
     (what its place in the reading order says of it, what goes in its head, its body), and
     [extra] any other files by name. [listed] is what the package lists beside the chapters,
     and [order] the reading order by id where it is not simply the chapters, c0 onward.
+    [spine], [html] and [package] are attributes for those elements, the nav file's html
+    included, [title_xml] is the title's element and [language] the book's language.
     """
     import io
     import zipfile
@@ -143,7 +146,7 @@ def little_book(made, name, chapters, metadata="", contents="", extra=None,
         '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
         '<dc:identifier>not the one the package calls its own</dc:identifier>'
         f'<dc:identifier id="uid">{identifier}</dc:identifier>'
-        f'{title_xml}<dc:language>en</dc:language>{metadata}</metadata>'
+        f'{title_xml}<dc:language>{language}</dc:language>{metadata}</metadata>'
         '<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>'
         f'{items}{listed}</manifest><spine {spine}>{refs}</spine></package>\n'
     )
@@ -1699,14 +1702,17 @@ def test_empty_book_title_does_not_use_the_toc_label_fallback(viewer, page, made
 
 
 def test_navigation_without_direction_uses_automatic_bidi(viewer, page, made):
+    """And labels that name no language, the title among them, are in the book's"""
     book = little_book(made, "auto.epub", [("", "", "<body><p>Text</p></body>")],
         contents='<li><a href="c0.xhtml">الأول (1)</a></li><li><a href="c0.xhtml">English (2)</a></li>',
-        spine='page-progression-direction="rtl"', html='dir="invalid"')
+        spine='page-progression-direction="rtl"', html='dir="invalid"', language="ar")
     open_book(viewer, page, fixture=book)
+    assert page.get_attribute("#epub-title", "lang") == "ar"
     page.click("#epub-contents-open")
     entries = page.locator("#epub-contents-list button")
     assert entries.evaluate_all("els => els.map(e => e.dir)") == ["auto", "auto"]
     assert entries.evaluate_all("els => els.map(e => getComputedStyle(e).direction)") == ["rtl", "ltr"]
+    assert entries.evaluate_all("els => els.map(e => e.lang)") == ["ar", "ar"]
 
 
 def test_navigation_inherits_resolved_auto_and_can_clear_language(viewer, page, made):
@@ -1720,7 +1726,8 @@ def test_navigation_inherits_resolved_auto_and_can_clear_language(viewer, page, 
     page.click("#epub-contents-open")
     entries = page.locator("#epub-contents-list button, #epub-contents-list span")
     assert entries.evaluate_all("els => els.map(e => e.dir)") == ["ltr", "rtl", "rtl", "rtl", "ltr"]
-    assert entries.evaluate_all("els => els.map(e => e.lang)") == ["en", "", "", "", ""]
+    # An empty language is kept as the book wrote it; only one never named is the book's
+    assert entries.evaluate_all("els => els.map(e => e.lang)") == ["en", "", "", "en", "en"]
 
 
 def test_navigation_metadata_is_not_markup(viewer, page, made):
