@@ -191,6 +191,7 @@ class PdfRenderClientTest {
         assertThat(opened()).isEqualTo(PdfRenderClient.GONE)
         looper.idle()
         assertThat(gone).containsExactly(true)
+        assertThat(client.hung).isFalse()
         // Unbound, so that Android doesn't start another renderer in its place
         assertThat(unbound()).hasSize(1)
         shadowOf(app).boundServiceConnections.forEach { it.onServiceDisconnected(component) }
@@ -256,6 +257,7 @@ class PdfRenderClientTest {
         assertThat(gone).isEmpty()
         looper.idleFor(Duration.ofSeconds(5))
         assertThat(gone).containsExactly(true)
+        assertThat(client.hung).isTrue()
         assertThat(unbound()).hasSize(1)
         // Its process ended, so the pipe ends with nothing in it
         renderer.dead = true

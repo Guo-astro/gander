@@ -26,11 +26,13 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * The renderer may crash on a hostile file, hang in PDFium or be reclaimed by Android. Each ends
  * in [onGone], once and on the main thread, and every call after it fails at once. [onGone] is
- * told whether the renderer was working at the time, which a reclaimed one is not.
+ * told whether the renderer was working at the time, which a reclaimed one is not. It is given up
+ * as hung once calls have waited [hungMs] with no answer.
  */
 internal class PdfRenderClient(
     private val context: Context,
     private val service: Intent,
+    private val hungMs: Long = HUNG_MS,
     private val onGone: (crashed: Boolean) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
@@ -80,6 +82,11 @@ internal class PdfRenderClient(
 
     /** Whether the renderer is gone or the client closed, so that every call fails at once. */
     val gone: Boolean get() = over
+
+    /** Whether the renderer went by being given up as hung, rather than by dying. */
+    @Volatile
+    var hung = false
+        private set
 
     /** Starts the renderer's process. */
     @MainThread
@@ -247,7 +254,7 @@ internal class PdfRenderClient(
     }
 
     /**
-     * Gives the renderer up as hung once calls have waited [HUNG_MS] with no answer. Only time
+     * Gives the renderer up as hung once calls have waited [hungMs] with no answer. Only time
      * Gander spends running counts, since the two are frozen together in the background and
      * thaw in no set order.
      */
@@ -269,7 +276,12 @@ internal class PdfRenderClient(
             else stalled + minOf(now - lastTick, 2 * TICK_MS)
             lastTick = now
             lastAnswers = answered
-            if (stalled >= HUNG_MS) lost(crashed = true) else main.postDelayed(this, TICK_MS)
+            if (stalled < hungMs) {
+                main.postDelayed(this, TICK_MS)
+                return
+            }
+            hung = true
+            lost(crashed = true)
         }
     }
 

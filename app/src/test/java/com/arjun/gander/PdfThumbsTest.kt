@@ -121,21 +121,59 @@ class PdfThumbsTest {
     }
 
     /**
-     * A renderer that dies on a file, as PDFium might on a hostile one, costs that file its
-     * picture and nothing more: it isn't handed over again, and the next file gets a renderer of
-     * its own, bound once the dead one is unbound.
+     * A renderer that dies on a file twice, as PDFium might on a hostile one, costs that file its
+     * picture and nothing more: it isn't handed over again, and each try and the next file get a
+     * renderer of their own, bound once the dead one is unbound.
      */
     @Test
     fun aFileTheRendererDiedOnIsNotHandedOverAgain() {
         renderer.onOpen = { throw DeadObjectException() }
         assertThat(draw("hostile")).isNull()
+        assertThat(renderer.opens.get()).isEqualTo(2)
         assertThat(draw("hostile")).isNull()
-        assertThat(renderer.opens.get()).isEqualTo(1)
+        assertThat(renderer.opens.get()).isEqualTo(2)
 
         renderer.onOpen = {}
         assertThat(draw("next")).isNotNull()
+        assertThat(renderer.opens.get()).isEqualTo(3)
+        assertThat(log).containsExactly("bind", "unbind", "bind", "unbind", "bind").inOrder()
+    }
+
+    /** A renderer that died during a file for some other reason costs that file nothing. */
+    @Test
+    fun aFileIsNotBlamedForOneDeath() {
+        var opens = 0
+        renderer.onOpen = { if (opens++ == 0) throw DeadObjectException() }
+        assertThat(draw("unlucky")).isNotNull()
         assertThat(renderer.opens.get()).isEqualTo(2)
         assertThat(log).containsExactly("bind", "unbind", "bind").inOrder()
+    }
+
+    /**
+     * A renderer stuck on a file is given up after half the viewer's wait, and the file isn't
+     * tried again, since everything behind it would wait as long a second time.
+     */
+    @Test
+    fun aFileTheRendererHungOnIsGivenUpSoonerAndNotRetried() {
+        renderer.onRender = { renderer.entered.countDown(); renderer.release.await() }
+        val stuck = ask("stuck")
+        waitFor { renderer.entered.count == 0L }
+        looper.idleFor(Duration.ofMillis(PdfThumbs.HUNG_MS - 2_000))
+        assertThat(log).containsExactly("bind")
+        looper.idleFor(Duration.ofSeconds(3))
+        waitFor { log.size == 2 }
+        // Its process ended on the unbind, so the pipe ends with nothing in it
+        renderer.dead = true
+        renderer.bytes = { 0 }
+        renderer.release.countDown()
+        assertThat(stuck()).isNull()
+        assertThat(renderer.opens.get()).isEqualTo(1)
+
+        renderer.dead = false
+        renderer.bytes = { it }
+        assertThat(draw("stuck")).isNull()
+        assertThat(draw("next")).isNotNull()
+        assertThat(renderer.opens.get()).isEqualTo(2)
     }
 
     /** A locked file is asked about once, and the renderer that answered is kept. */

@@ -34,6 +34,7 @@ internal class PdfThumbs(private val context: Context, private val width: Int) {
 
     // The lane's alone
     private val refused = HashSet<String>()
+    private val retried = HashSet<String>()
 
     /** Runs [job] once the pictures asked for before it are done. It may call [draw]. */
     fun queue(job: Runnable) {
@@ -53,9 +54,9 @@ internal class PdfThumbs(private val context: Context, private val width: Int) {
     }
 
     /**
-     * The first page of [uri], [width] across, or null. A file the renderer drew nothing of, by
-     * refusing it or by dying or hanging on it, isn't handed over again while Gander runs: the
-     * answer would be the same, and a lost renderer has to be replaced each time.
+     * The first page of [uri], [width] across, or null. A file the renderer refused, hung on or
+     * died on twice isn't handed over again while Gander runs: the answer would be the same, and
+     * a lost renderer has to be replaced each time.
      */
     @WorkerThread
     fun draw(uri: Uri, key: String): Bitmap? {
@@ -63,8 +64,13 @@ internal class PdfThumbs(private val context: Context, private val width: Int) {
         val document = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
         val renderer = renderer?.takeUnless { it.gone } ?: start()
         val picture = firstPage(renderer, document)
-        if (picture == null) refused += key
-        return picture
+        if (picture != null) return picture
+        // A renderer can die during one file of something else, such as closing the document
+        // before it or Android reclaiming it, so the file gets one more try on a new renderer. A
+        // hang gets none, since the files behind it would wait as long again.
+        if (renderer.gone && !renderer.hung && retried.add(key)) return draw(uri, key)
+        refused += key
+        return null
     }
 
     private fun firstPage(renderer: PdfRenderClient, document: ParcelFileDescriptor): Bitmap? {
@@ -80,7 +86,7 @@ internal class PdfThumbs(private val context: Context, private val width: Int) {
     private fun start(): PdfRenderClient {
         val old = renderer
         // Nothing to do when one goes: the next picture finds it gone and starts another
-        val fresh = PdfRenderClient(context, Intent(context, PdfThumbService::class.java)) {}
+        val fresh = PdfRenderClient(context, Intent(context, PdfThumbService::class.java), HUNG_MS) {}
         renderer = fresh
         main.post {
             // Unbound first, or Android would hand the new binding the old renderer, hung or
@@ -113,5 +119,12 @@ internal class PdfThumbs(private val context: Context, private val width: Int) {
     companion object {
         /** How long the renderer is kept once no picture is waiting for it. */
         const val IDLE_MS = 10_000L
+
+        /**
+         * How long the renderer may go without answering before it is given up as hung: half
+         * what the viewer allows a page, since a thumbnail is one small picture and every file
+         * behind a hung one waits as long.
+         */
+        const val HUNG_MS = 10_000L
     }
 }
