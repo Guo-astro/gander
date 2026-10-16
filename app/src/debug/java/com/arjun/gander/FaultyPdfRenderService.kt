@@ -30,8 +30,12 @@ class FaultyPdfRenderService : PdfRenderService() {
         when (fault) {
             "crash-$at" -> Process.killProcess(Process.myPid())
             // A crash as Android sees PDFium's, which a kill is not: the signal goes through the
-            // crash reporter, as a fault in native code does
-            "segv-$at" -> Os.kill(Process.myPid(), OsConstants.SIGSEGV)
+            // crash reporter, as a fault in native code does. The thread goes no further, as a
+            // faulting one wouldn't, while the reporter dumps the process.
+            "segv-$at" -> {
+                Os.kill(Process.myPid(), OsConstants.SIGSEGV)
+                while (true) SystemClock.sleep(60_000)
+            }
             "hang-$at" -> {
                 while (true) SystemClock.sleep(60_000)
             }
