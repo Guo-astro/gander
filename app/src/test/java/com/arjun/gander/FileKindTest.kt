@@ -397,7 +397,7 @@ class FileKindTest {
     /** Night mode is for paper. A book's page follows the phone's theme and has none. */
     @Test
     fun onlyPdfAndWordTurnOverAtNight() {
-        assertThat(FileKind.entries.filter { it.turnsOver }).containsExactly(PDF, DOCX)
+        assertThat(FileKind.entries.filter { it.turnsOver }).containsExactly(PDF, PDF_SIMPLE, DOCX)
     }
 
     /** Pages and pictures. A sheet keeps the WebView's own, which goes further in on a cell. */

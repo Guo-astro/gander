@@ -8,15 +8,106 @@
 <title>PDF document</title>
 <!-- A PDF where pdf.js can't run, a picture of each page drawn by Android's PdfRenderer in an
      isolated process: see FileKind.PDF_SIMPLE. No viewport meta, as in pdf.html, so a pinch
-     has the same range here as there. -->
+     has the same range here as there and a page is laid out at the same 980 CSS px. -->
 <link rel="stylesheet" href="app.css">
 <style>
   /* The surround pdf.html reads a page against, so the two views look alike around it. */
   body { background: #48443D; }
   /* The app zooms a double tap itself, in DoubleTapZoom.kt, as it does in pdf.html. */
   html { touch-action: manipulation; }
+
+  /* The strip between two pages, which pdfsimple.js counts into where each page lies. */
+  :root { --pg-gap: 8px; }
+
+  /*
+   * The pages, with those not laid out standing as two spacers, one above and one below: see
+   * lay() in pdfsimple.js. A document shorter than the screen sits in the middle of it, as in
+   * pdf.html, which says why this is a column flex box and why border-box.
+   */
+  #pages {
+    box-sizing: border-box;
+    padding: 8px 0;
+    min-height: 100vh;
+    min-height: calc(100vh - var(--vw-top, 0px));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    /* Pictures, with no words to select */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #pages > * { flex: none; }
+
+  /* A page: white paper until its picture comes, as tall as pdfsimple.js says it is. */
+  .pg {
+    position: relative;
+    display: block;
+    margin: 0 auto var(--pg-gap);
+    background: #fff;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+    width: 100%;
+    overflow: hidden;
+  }
+  /* No touch reaches a picture, so a long press can't pick one up or offer to save it. */
+  .pg > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* A page the renderer could not draw. */
+  .pg-note {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    transform: translateY(-50%);
+    text-align: center;
+    padding: 0 calc(16px * var(--vw-zoom));
+    font-size: calc(15px * var(--vw-zoom));
+    color: #5E5A52;
+  }
+
+  /* Said at the foot of a document longer than one column of pages can hold. */
+  .vw-cut {
+    margin: calc(8px * var(--vw-zoom)) calc(16px * var(--vw-zoom)) calc(16px * var(--vw-zoom));
+    text-align: center;
+    font-size: calc(15px * var(--vw-zoom));
+    color: #E7E2D9;
+  }
+
+  /*
+   * Night mode. The pictures come turned over from Gander, so all this does is pdf.html's part
+   * around them: the paper of a page not drawn yet, the black surround, a line along each page's
+   * edge, and the cards. pdf.html says why each is what it is.
+   */
+  html.vw-night {
+    --pg-edge: calc(1px * var(--vw-zoom));
+    --pg-edge-colour: #474747;
+  }
+  html.vw-night body { background: #000; }
+  html.vw-night .pg {
+    background: #000;
+    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour);
+  }
+  html.vw-night .pg.vw-last {
+    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour),
+                0 var(--pg-edge) 0 var(--pg-edge-colour);
+  }
+  html.vw-night .pg-note { color: #A39E94; }
+  html.vw-night .vw-status { background: #2D2A23; color: #E7E2D9; }
+  html.vw-night .vw-status.vw-error { background: #8C1D18; color: #F9DEDC; }
+
+  /* pdf.html's, for the same reason: with no viewport meta, app.css's cards are scaled back up. */
+  :root { --vw-zoom: 2.75; }
 </style>
 </head>
 <body>
+<div id="vw-status" class="vw-status vw-wait">Opening document…</div>
+<div id="pages"></div>
+<script src="app.js"></script>
+<script src="pdfsimple.js"></script>
 </body>
 </html>

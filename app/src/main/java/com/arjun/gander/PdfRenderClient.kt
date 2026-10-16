@@ -15,8 +15,10 @@ import android.os.SystemClock
 import androidx.annotation.MainThread
 import androidx.annotation.WorkerThread
 import java.io.IOException
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -30,7 +32,8 @@ import java.util.concurrent.atomic.AtomicLong
  * The renderer may crash on a hostile file, hang in PDFium or be reclaimed by Android. Each ends
  * in [onGone], once and on the main thread, and every call after it fails at once. [onGone] is
  * told whether the renderer was working at the time, which a reclaimed one is not. It is given up
- * as hung once calls have waited [hungMs] with no answer.
+ * as hung once calls have waited [hungMs] with no answer, or one call has taken [CALL_TIMES]
+ * that long, which a renderer sending a byte at a time would otherwise get away with.
  */
 internal class PdfRenderClient(
     private val context: Context,
@@ -56,10 +59,15 @@ internal class PdfRenderClient(
 
     // Main thread only
     private var bound = false
+
+    // Closed by Gander, rather than lost: read off the main thread by an open it cut short
+    @Volatile
     private var closed = false
 
-    // The hang watch: the calls waiting on the renderer, and the answers it has given
+    // The hang watch: the calls waiting on the renderer and how long each has run, and the
+    // answers it has given, counted as they arrive
     private val waiting = AtomicInteger()
+    private val running = ConcurrentHashMap<AtomicLong, Unit>()
     private val answers = AtomicLong()
     private val watching = AtomicBoolean()
     private var lastTick = 0L
@@ -113,9 +121,10 @@ internal class PdfRenderClient(
 
     /**
      * Hands [document] to the renderer and closes Gander's copy. The page count, one of
-     * PdfRenderService's OPEN_ codes, or [GONE]. Only a regular file open for reading alone is
-     * handed over, so a provider's looser descriptor never lets the renderer write to a file or
-     * talk through a socket: anything else is OPEN_UNREADABLE.
+     * PdfRenderService's OPEN_ codes, [GONE], or [CLOSED] when Gander closed the client first.
+     * Only a regular file open for reading alone is handed over, so a provider's looser
+     * descriptor never lets the renderer write to a file or talk through a socket: anything else
+     * is OPEN_UNREADABLE.
      */
     @WorkerThread
     fun open(document: ParcelFileDescriptor): Int {
@@ -128,7 +137,11 @@ internal class PdfRenderClient(
                 // The parcel holds a copy of its own until it is sent
                 pfd.close()
             }
-        } ?: return if (over) GONE else PdfRenderService.OPEN_DAMAGED
+        } ?: return when {
+            closed -> CLOSED
+            over -> GONE
+            else -> PdfRenderService.OPEN_DAMAGED
+        }
         return when (val count = ByteBuffer.wrap(answer).order(ByteOrder.LITTLE_ENDIAN).int) {
             in 1..MAX_PAGES -> count.also { pages = it }
             PdfRenderService.OPEN_PASSWORD, PdfRenderService.OPEN_UNREADABLE,
@@ -151,27 +164,50 @@ internal class PdfRenderClient(
 
     /**
      * Page [page] drawn at [width] x [height] in rows of blue, green, red and alpha bytes, top row
-     * first: exactly the bytes that takes, or null.
+     * first, with [flags] of PdfRenderService's RENDER_ bits: exactly the bytes that takes, or
+     * null.
      */
     @WorkerThread
-    fun render(page: Int, width: Int, height: Int): ByteArray? {
+    fun render(page: Int, width: Int, height: Int, flags: Int = 0): ByteArray? =
+        renderInto(page, width, height, flags) { readAnswer(it, 4 * width * height) }
+
+    /**
+     * The same page handed to [read] as it arrives, rather than held whole: at the renderer's
+     * caps a page is 32 MB. [read] is given a stream of exactly the bytes the page takes and is
+     * told nothing more, and what it makes of them is the answer, unless the renderer sent fewer
+     * or more, which makes it null.
+     */
+    @WorkerThread
+    fun <T : Any> renderInto(
+        page: Int,
+        width: Int,
+        height: Int,
+        flags: Int,
+        read: (InputStream) -> T?,
+    ): T? {
         if (page !in 0 until pages || width !in 1..PdfRenderService.MAX_SIDE ||
             height !in 1..PdfRenderService.MAX_SIDE ||
             width.toLong() * height > PdfRenderService.MAX_PIXELS
         ) return null
-        return call(IPdfRenderer.Stub.TRANSACTION_render, 4 * width * height) { data ->
+        val count = 4 * width * height
+        return call(IPdfRenderer.Stub.TRANSACTION_render, { data ->
             data.writeInt(page)
             data.writeInt(width)
             data.writeInt(height)
+            data.writeInt(flags)
+        }) { input ->
+            val counted = Counted(input, count)
+            val made = read(counted)
+            if (made != null && counted.left == 0 && input.read() == -1) made else null
         }
     }
 
     /**
-     * Sends call [code] with the arguments [write] puts in, then a pipe for the answer, and reads
-     * exactly [count] bytes back. Null when there is no renderer, it died during the call or it
-     * answered anything but [count] bytes.
+     * Sends call [code] with the arguments [write] puts in, then a pipe for the answer, which
+     * [read] reads. Null when there is no renderer, it died during the call or [read] made
+     * nothing of the answer.
      */
-    private fun call(code: Int, count: Int, write: (Parcel) -> Unit): ByteArray? {
+    private fun <T : Any> call(code: Int, write: (Parcel) -> Unit, read: (InputStream) -> T?): T? {
         val (source, sink) = try {
             ParcelFileDescriptor.createPipe()
         } catch (e: IOException) {
@@ -187,18 +223,22 @@ internal class PdfRenderClient(
                         // Gander's copy of the write end has to go, or the pipe could never end
                         sink.close()
                     }
-                    val bytes = try {
-                        readAnswer(input, count)
+                    val answer = try {
+                        read(input)
                     } catch (e: IOException) {
                         null
                     }
                     // A pipe that ended early from a renderer no longer there is a crash partway
-                    if (bytes == null && !remote.pingBinder()) lost()
-                    bytes
+                    if (answer == null && !remote.pingBinder()) lost()
+                    answer
                 }
             }
         }
     }
+
+    /** [call], reading exactly [count] bytes back. */
+    private fun call(code: Int, count: Int, write: (Parcel) -> Unit): ByteArray? =
+        call(code, write) { readAnswer(it, count) }
 
     /**
      * Runs [call] once the renderer is bound, counted by the hang watch while it runs. Null when
@@ -209,6 +249,8 @@ internal class PdfRenderClient(
             "the renderer is asked off the main thread"
         }
         if (over) return null
+        val ran = AtomicLong()
+        running[ran] = Unit
         waiting.incrementAndGet()
         if (watching.compareAndSet(false, true)) main.post(watch)
         try {
@@ -225,6 +267,29 @@ internal class PdfRenderClient(
         } finally {
             answers.incrementAndGet()
             waiting.decrementAndGet()
+            running.remove(ran)
+        }
+    }
+
+    /**
+     * At most [left] bytes of [input], each read of them an answer to the hang watch, so that a
+     * page that takes a while to come through is not taken for a renderer that has stopped.
+     */
+    private inner class Counted(private val input: InputStream, var left: Int) : InputStream() {
+        override fun read(): Int {
+            val one = ByteArray(1)
+            return if (read(one, 0, 1) < 0) -1 else one[0].toInt() and 0xff
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (len == 0) return 0
+            if (left == 0) return -1
+            val n = input.read(b, off, minOf(len, left))
+            if (n > 0) {
+                left -= n
+                answers.incrementAndGet()
+            }
+            return n
         }
     }
 
@@ -246,9 +311,9 @@ internal class PdfRenderClient(
     }
 
     /**
-     * Gives the renderer up as hung once calls have waited [hungMs] with no answer. Only time
-     * Gander spends running counts, since the two are frozen together in the background and
-     * thaw in no set order.
+     * Gives the renderer up as hung once calls have waited [hungMs] with no answer, or one call has
+     * run [CALL_TIMES] as long. Only time Gander spends running counts, since the two are frozen
+     * together in the background and thaw in no set order.
      */
     private val watch = object : Runnable {
         override fun run() {
@@ -264,11 +329,13 @@ internal class PdfRenderClient(
             }
             val now = SystemClock.uptimeMillis()
             val answered = answers.get()
-            stalled = if (lastTick == 0L || answered != lastAnswers) 0L
-            else stalled + minOf(now - lastTick, 2 * TICK_MS)
+            val step = if (lastTick == 0L) 0L else minOf(now - lastTick, 2 * TICK_MS)
+            stalled = if (lastTick == 0L || answered != lastAnswers) 0L else stalled + step
             lastTick = now
             lastAnswers = answered
-            if (stalled < hungMs) {
+            var longest = 0L
+            for (ran in running.keys) longest = maxOf(longest, ran.addAndGet(step))
+            if (stalled < hungMs && longest < CALL_TIMES * hungMs) {
                 main.postDelayed(this, TICK_MS)
                 return
             }
@@ -311,6 +378,12 @@ internal class PdfRenderClient(
     companion object {
         /** What [open] gives once the renderer is gone, which [onGone] reports. */
         const val GONE = Int.MIN_VALUE
+
+        /** What [open] gives when Gander closed the client before the renderer answered. */
+        const val CLOSED = Int.MIN_VALUE + 1
+
+        /** How many times [hungMs] one call may take, however steadily its answer comes. */
+        const val CALL_TIMES = 3
 
         /**
          * Far more pages than any real file has, so that a renderer lying about the count can't

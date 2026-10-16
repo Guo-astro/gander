@@ -123,6 +123,46 @@ class PdfRenderClientTest {
         assertThat(gone).isEmpty()
     }
 
+    /** A page is read as it comes, exactly its bytes and no more, so none is held whole. */
+    @Test
+    fun aPageIsHandedOverAsItComes() {
+        opened()
+        fun counted() = off {
+            client.renderInto(0, 10, 20, 0) { input ->
+                var n = 0
+                val buffer = ByteArray(7)
+                while (true) {
+                    val got = input.read(buffer)
+                    if (got < 0) break
+                    n += got
+                }
+                n
+            }
+        }.answer()
+        assertThat(counted()).isEqualTo(4 * 10 * 20)
+        renderer.bytes = { it + 1 }
+        assertThat(counted()).isNull()
+        renderer.bytes = { it - 1 }
+        assertThat(counted()).isNull()
+        looper.idle()
+        assertThat(gone).isEmpty()
+    }
+
+    /** What the reader of a page made of it is the answer, and nothing is an answer of none. */
+    @Test
+    fun aPageItsReaderRefusesIsNoPage() {
+        opened()
+        assertThat(off { client.renderInto<String>(0, 10, 20, 0) { null } }.answer()).isNull()
+        assertThat(off { client.renderInto(0, 10, 20, 0) { "read" } }.answer()).isNull()
+    }
+
+    @Test
+    fun theFlagsAskedForReachTheRenderer() {
+        opened()
+        off { client.render(0, 10, 20, PdfRenderService.RENDER_NOTES) }.answer()
+        assertThat(renderer.drawn).containsExactly("0 10x20 flags ${PdfRenderService.RENDER_NOTES}")
+    }
+
     @Test
     fun aPageSizeNoPageHasIsNoSize() {
         opened()
@@ -243,6 +283,7 @@ class PdfRenderClientTest {
         assertThat(renderer.opens.get()).isEqualTo(opens)
     }
 
+    /** An open Gander cut short says so, apart from a renderer that went. */
     @Test
     fun closingEndsWhatWaitsAndReportsNothing() {
         client.bind()
@@ -250,7 +291,7 @@ class PdfRenderClientTest {
         val pages = off { client.open(document()) }
         Thread.sleep(100)
         client.close()
-        assertThat(pages.answer()).isEqualTo(PdfRenderClient.GONE)
+        assertThat(pages.answer()).isEqualTo(PdfRenderClient.CLOSED)
         looper.idle()
         assertThat(gone).isEmpty()
         assertThat(unbound()).hasSize(1)
@@ -320,6 +361,29 @@ class PdfRenderClientTest {
         assertThat(gone).isEmpty()
         looper.idleFor(Duration.ofMillis(PdfRenderClient.HUNG_MS + 2_000))
         assertThat(gone).containsExactly(true)
+    }
+
+    /**
+     * A renderer that answers other calls, or sends a page a byte at a time, still has to finish a
+     * page in three times what a hang is allowed.
+     */
+    @Test
+    fun oneCallThatTakesTooLongIsGivenUpThoughOthersAreAnswered() {
+        opened()
+        renderer.onRender = { renderer.entered.countDown(); renderer.release.await() }
+        off { client.render(0, 10, 20) }
+        assertThat(renderer.entered.await(5, TimeUnit.SECONDS)).isTrue()
+        val limit = PdfRenderClient.CALL_TIMES * PdfRenderClient.HUNG_MS
+        var waited = 0L
+        while (waited + 5_000 < limit) {
+            looper.idleFor(Duration.ofSeconds(5))
+            waited += 5_000
+            assertThat(off { client.pageSize(0) }.answer()).isNotNull()
+        }
+        assertThat(gone).isEmpty()
+        looper.idleFor(Duration.ofSeconds(7))
+        assertThat(gone).containsExactly(true)
+        assertThat(client.hung).isTrue()
     }
 
     /** Android 8 lets a renderer crash Gander or put up a dialog in its name; 9 doesn't. */

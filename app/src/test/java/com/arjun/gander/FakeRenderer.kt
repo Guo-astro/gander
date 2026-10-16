@@ -18,6 +18,9 @@ internal class FakeRenderer : IPdfRenderer.Stub() {
 
     /** How many bytes to send for an answer that takes the given number. */
     @Volatile var bytes: (Int) -> Int = { it }
+
+    /** What a page drawn at a size is, as the renderer's rows of blue, green, red and alpha. */
+    @Volatile var pixels: (page: Int, width: Int, height: Int) -> ByteArray = { _, w, h -> page(4 * w * h) }
     @Volatile var onOpen: () -> Unit = {}
     @Volatile var onRender: () -> Unit = {}
 
@@ -47,10 +50,10 @@ internal class FakeRenderer : IPdfRenderer.Stub() {
         reply(answer, ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(size).array())
     }
 
-    override fun render(page: Int, width: Int, height: Int, answer: ParcelFileDescriptor?) {
-        drawn += "$page ${width}x$height"
+    override fun render(page: Int, width: Int, height: Int, flags: Int, answer: ParcelFileDescriptor?) {
+        drawn += "$page ${width}x$height" + if (flags != 0) " flags $flags" else ""
         onRender()
-        reply(answer, page(4 * width * height))
+        reply(answer, pixels(page, width, height))
     }
 
     /** Writes [answer], cut short or run over as [bytes] says, and closes the pipe. */

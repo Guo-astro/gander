@@ -218,6 +218,21 @@
             android:isolatedProcess="true"
             android:exported="false" />
 
+        <!-- The same renderer three times more, so that up to four viewers each have one of
+             their own, isolated and unexported like it: see RendererSlots. -->
+        <service
+            android:name=".PdfRenderService1"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name=".PdfRenderService2"
+            android:isolatedProcess="true"
+            android:exported="false" />
+        <service
+            android:name=".PdfRenderService3"
+            android:isolatedProcess="true"
+            android:exported="false" />
+
         <!-- The same renderer again, for PDF thumbnails: see PdfThumbs. A second isolated
              service runs in a process of its own, so a browsed folder's files are never read
              beside the document open in the viewer. -->

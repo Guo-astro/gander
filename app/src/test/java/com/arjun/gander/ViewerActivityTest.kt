@@ -1,8 +1,10 @@
 package com.arjun.gander
 
+import android.app.Application
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -24,7 +26,13 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
+import java.nio.ByteBuffer
+import java.time.Duration
+import java.util.concurrent.Callable
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -32,7 +40,9 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
+import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
+import org.robolectric.shadows.ShadowSystemClock
 import org.robolectric.shadows.ShadowToast
 import org.robolectric.shadows.ShadowWebView
 
@@ -55,6 +65,7 @@ class ViewerActivityTest {
         context = ApplicationProvider.getApplicationContext()
         FixtureProvider.install()
         Thumbs.resetForTests()
+        RendererSlots.resetForTests()
     }
 
     @After
@@ -269,6 +280,7 @@ class ViewerActivityTest {
     @Test
     fun aPdfOnALockedWebViewOpensInTheSimpleView() {
         lockedWebView()
+        renderersStandIn()
         shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_PRINTING, true)
         val viewer = handingOver(true) { open("six-pages.pdf") }
         assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
@@ -280,6 +292,7 @@ class ViewerActivityTest {
     @Test
     fun aPdfInTheSimpleViewOpensAtThePageItWasLeftAt() {
         lockedWebView()
+        renderersStandIn()
         val uri = FixtureProvider.uriFor("six-pages.pdf")
         val length = Fixtures.file("six-pages.pdf").length()
         Positions.save(context, Positions.keyFor(context.contentResolver, uri, length)!!, 4, 6)
@@ -320,6 +333,7 @@ class ViewerActivityTest {
     @Test
     fun theSimpleViewsPageIsNeverServedTheFile() {
         lockedWebView()
+        renderersStandIn()
         val viewer = handingOver(true) { open("six-pages.pdf") }
         assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
         assertThat(viewer.serve("/doc/file.pdf")?.statusCode).isEqualTo(404)
@@ -332,6 +346,7 @@ class ViewerActivityTest {
     @Test
     fun aPdfOnAWebViewAnUpdateWouldRaiseKeepsTheCardUntilTheReaderAsks() {
         oldWebView()
+        renderersStandIn()
         handingOver(true) {
             val viewer = open("six-pages.pdf")
             assertThat(viewer.pageName()).isEqualTo("pdf.html")
@@ -346,6 +361,251 @@ class ViewerActivityTest {
                 shadowOf(Looper.getMainLooper()).idle()
             }
             assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // The simple view's pages
+    // ---------------------------------------------------------------
+
+    /** A stand-in for each of the viewer's renderers, bound in its place and nothing else's. */
+    private fun renderersStandIn(): List<FakeRenderer> = RendererSlots.services.map { service ->
+        FakeRenderer().also {
+            val component = ComponentName(context, service)
+            shadowOf(context as Application).setComponentNameAndServiceForBindServiceForIntent(
+                Intent().setComponent(component), component, it
+            )
+        }
+    }
+
+    /**
+     * [path] answered as the WebView asks for it, off the main thread, with the main thread run
+     * meanwhile: the renderer is bound there, and the simple view's lane may need it.
+     */
+    private fun ActivityController<ViewerActivity>.serveOff(path: String): WebResourceResponse? {
+        val web = webView()!!
+        val client = web.webViewClient
+        val request = Request(Uri.parse("https://appassets.androidplatform.net$path"), emptyMap())
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val answer = pool.submit(Callable { client.shouldInterceptRequest(web, request) })
+            val deadline = System.currentTimeMillis() + 10_000
+            while (!answer.isDone && System.currentTimeMillis() < deadline) {
+                shadowOf(Looper.getMainLooper()).idle()
+                Thread.sleep(5)
+            }
+            return answer.get(1, TimeUnit.SECONDS)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    private fun WebResourceResponse.json() = JSONObject(data.readBytes().decodeToString())
+
+    /** A PNG's width and height, from its header. */
+    private fun WebResourceResponse.pngSize(): List<Int> {
+        val png = data.readBytes()
+        return listOf(ByteBuffer.wrap(png, 16, 4).int, ByteBuffer.wrap(png, 20, 4).int)
+    }
+
+    /**
+     * The page learns the document from its own renderer, and gets each page from it as a PNG,
+     * never kept, drawn at the width asked for with the page's highlights and comments.
+     */
+    @Test
+    fun theSimpleViewsPagesComeFromItsOwnRenderer() {
+        lockedWebView()
+        val renderer = renderersStandIn().first()
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            val document = viewer.serveOff("/render/document")!!
+            assertThat(document.statusCode).isEqualTo(200)
+            assertThat(document.mimeType).isEqualTo("application/json")
+            val said = document.json()
+            assertThat(listOf(said.getInt("pages"), said.getInt("width"), said.getInt("height")))
+                .containsExactly(3, 595, 842).inOrder()
+
+            val page = viewer.serveOff("/render/page?n=2&w=600&night=0")!!
+            assertThat(page.statusCode).isEqualTo(200)
+            assertThat(page.mimeType).isEqualTo("image/png")
+            assertThat(page.responseHeaders).containsEntry("Cache-Control", "no-store")
+            assertThat(page.responseHeaders).containsEntry("X-Content-Type-Options", "nosniff")
+            assertThat(page.pngSize()).containsExactly(600, 849).inOrder()
+            assertThat(renderer.drawn).containsExactly("1 600x849 flags ${PdfRenderService.RENDER_NOTES}")
+
+            val sizes = viewer.serveOff("/render/sizes?from=2&to=3")!!.json().getJSONArray("sizes")
+            assertThat(sizes.length()).isEqualTo(2)
+            assertThat(sizes.getJSONArray(1).getInt(1)).isEqualTo(842)
+            viewer.destroy()
+        }
+    }
+
+    /** What it is asked for that no page is, or past what it will draw at once, it doesn't draw. */
+    @Test
+    fun theSimpleViewDrawsOnlyPagesThereAre() {
+        lockedWebView()
+        val renderer = renderersStandIn().first().apply { pages = 20 }
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.serveOff("/render/sizes?from=5&to=20")?.statusCode).isEqualTo(200)
+            for (asked in listOf(
+                "/render/page?n=21&w=600", "/render/page?n=0&w=600", "/render/page?n=x&w=600",
+                "/render/page?n=1", "/render/page?n=1&w=-5", "/render/sizes?from=1&to=21",
+                "/render/sizes?from=2&to=1", "/render/sizes?from=4&to=20", "/render/elsewhere",
+            )) {
+                assertThat("$asked ${viewer.serveOff(asked)?.statusCode}").isEqualTo("$asked 404")
+            }
+            assertThat(renderer.drawn).isEmpty()
+            // A width past the caps is drawn within them
+            assertThat(viewer.serveOff("/render/page?n=1&w=999999999")!!.pngSize()[0])
+                .isAtMost(PdfRenderService.MAX_SIDE)
+            viewer.destroy()
+        }
+    }
+
+    /** No other page is served the renderer, nor has one bound for it. */
+    @Test
+    fun noPageButTheSimpleViewsIsServedItsPages() {
+        val renderer = renderersStandIn().first()
+        val viewer = open("six-pages.pdf")
+        assertThat(viewer.pageName()).isEqualTo("pdf.html")
+        assertThat(viewer.serve("/render/document")?.statusCode).isEqualTo(404)
+        assertThat(viewer.serve("/render/page?n=1&w=600")?.statusCode).isEqualTo(404)
+        assertThat(renderer.opens.get()).isEqualTo(0)
+    }
+
+    /** Night mode turns the simple view's pages over, the whole of each page. */
+    @Test
+    fun theSimpleViewTurnsItsPagesOverAtNight() {
+        lockedWebView()
+        val renderer = renderersStandIn().first()
+        renderer.pixels = { _, w, h -> ByteArray(4 * w * h) { -1 } }
+        Settings.setNight(context, true)
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.toolbarItem(R.id.action_night_mode).isVisible).isTrue()
+            assertThat(viewer.loadedUrl()).contains("&night=1")
+            fun paper(night: Int): Int {
+                val png = viewer.serveOff("/render/page?n=1&w=40&night=$night")!!.data.readBytes()
+                return JdkPng(png).rgb(20, 20)
+            }
+            assertThat(paper(1)).isEqualTo(0x000000)
+            assertThat(paper(0)).isEqualTo(0xffffff)
+            viewer.destroy()
+        }
+    }
+
+    /**
+     * Android's renderer can't open a PDF that needs a password, nor can its printing: the page is
+     * told why, and Print says so rather than send it there.
+     */
+    @Test
+    fun aPdfThatNeedsAPasswordInTheSimpleViewIsNeitherShownNorPrinted() {
+        lockedWebView()
+        renderersStandIn().first().pages = PdfRenderService.OPEN_PASSWORD
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.serveOff("/render/document")!!.json().getString("error")).isEqualTo("password")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertThat(viewer.get().printLocked).isTrue()
+            viewer.destroy()
+        }
+    }
+
+    /** A renderer that dies on a page takes the page with it, and the reader is told. */
+    @Test
+    fun aRendererThatDiesOnAPageLeavesTheCard() {
+        lockedWebView()
+        val renderer = renderersStandIn().first()
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.serveOff("/render/document")?.statusCode).isEqualTo(200)
+            // Half a page, from a renderer that is then gone
+            renderer.onRender = {
+                renderer.dead = true
+                renderer.bytes = { it / 2 }
+            }
+            assertThat(viewer.serveOff("/render/page?n=1&w=100&night=0")?.statusCode).isEqualTo(404)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertThat(viewer.webView()).isNull()
+            assertThat(viewer.get().findViewById<TextView>(R.id.renderGoneTitle).text.toString())
+                .isEqualTo(context.getString(R.string.render_gone_crashed))
+            viewer.destroy()
+        }
+    }
+
+    /** What the simple view can't show is said under the file's name, as Android draws it. */
+    @Test
+    fun theSimpleViewSaysUnderTheNameWhatItCantShow() {
+        lockedWebView()
+        renderersStandIn()
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.underTheName()).isEqualTo(context.getString(R.string.simple_view_line_notes))
+            viewer.destroy()
+        }
+    }
+
+    /** Below 15, Android draws no highlights or comments either. */
+    @Test
+    @Config(sdk = [34])
+    fun theSimpleViewSaysItHasNoNotesBelowAndroid15() {
+        lockedWebView()
+        renderersStandIn()
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.underTheName()).isEqualTo(context.getString(R.string.simple_view_line))
+            viewer.destroy()
+        }
+    }
+
+    /** A debuggable build opens a PDF in the simple view when told to, whatever the WebView. */
+    @Test
+    fun aDebuggableBuildOpensTheSimpleViewWhenAsked() {
+        renderersStandIn()
+        val asked = { Intent(context, ViewerActivity::class.java)
+            .setAction(Intent.ACTION_VIEW)
+            .setDataAndType(FixtureProvider.uriFor("six-pages.pdf"), "application/pdf")
+            .putExtra(ViewerActivity.EXTRA_SIMPLE_VIEW, true) }
+        handingOver(true) {
+            context.applicationInfo.flags = context.applicationInfo.flags or ApplicationInfo.FLAG_DEBUGGABLE
+            start(asked()).apply {
+                assertThat(pageName()).isEqualTo("pdfsimple.html")
+                destroy()
+            }
+            // A release build is not
+            context.applicationInfo.flags = context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE.inv()
+            assertThat(start(asked()).pageName()).isEqualTo("pdf.html")
+        }
+    }
+
+    /**
+     * Every viewer showing a PDF in the simple view has a renderer of its own, so that no two hold
+     * documents in one process. A fifth takes the renderer of the one asked for a page longest
+     * ago, which opens its document again in another when it is next asked for one.
+     */
+    @Test
+    fun eachSimpleViewHasARendererOfItsOwn() {
+        lockedWebView()
+        val renderers = renderersStandIn()
+        fun opens() = renderers.map { it.opens.get() }
+        handingOver(true) {
+            val viewers = (0 until 4).map {
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
+                open("six-pages.pdf").also { viewer ->
+                    assertThat(viewer.serveOff("/render/document")?.statusCode).isEqualTo(200)
+                }
+            }
+            assertThat(opens()).containsExactly(1, 1, 1, 1)
+
+            ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
+            val fifth = open("six-pages.pdf")
+            assertThat(fifth.serveOff("/render/document")?.statusCode).isEqualTo(200)
+            assertThat(opens()).containsExactly(2, 1, 1, 1).inOrder()
+
+            assertThat(viewers[0].serveOff("/render/page?n=1&w=10&night=0")?.statusCode).isEqualTo(200)
+            assertThat(opens()).containsExactly(2, 2, 1, 1).inOrder()
+            (viewers + fifth).forEach { it.destroy() }
         }
     }
 

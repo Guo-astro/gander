@@ -217,8 +217,8 @@ class PdfThumbsTest {
     }
 
     @Test
-    fun bothRenderersAreIsolatedAndUnexported() {
-        listOf(PdfRenderService::class.java, PdfThumbService::class.java).forEach {
+    fun everyRendererIsIsolatedAndUnexported() {
+        (RendererSlots.services + PdfThumbService::class.java).forEach {
             val info = app.packageManager.getServiceInfo(ComponentName(app, it), 0)
             assertThat(info.flags and ServiceInfo.FLAG_ISOLATED_PROCESS).isNotEqualTo(0)
             assertThat(info.exported).isFalse()

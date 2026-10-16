@@ -14,10 +14,14 @@ in DocRangeTest, and forcing a small fixture down the ranged path is the only
 way to exercise it here in under a second.
 """
 
+import io
+import json
 import threading
+import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 REPO = Path(__file__).resolve().parents[2]
 VIEWER = REPO / "app/src/main/assets/viewer"
@@ -72,12 +76,44 @@ def parse_range(header, total):
 
 
 @dataclass
+class Simple:
+    """
+    What the simple view's isolated renderer answers, standing in for SimplePdf.kt: each page's
+    size in points, or the word /render/document gives in place of a document. A page is drawn
+    with Pillow as white paper with a band across its top in a colour of its own, see colour(),
+    and as the paper turned over for night=1, which Gander does to the real pages.
+    """
+    sizes: list = field(default_factory=list)
+    pages: int = 0                              # more pages than sizes, each the last size
+    error: str = None
+    broken: set = field(default_factory=set)   # pages, one based, the renderer can't draw
+    delay: float = 0.0                          # how long each page takes to draw, in seconds
+    drawing: int = 0                            # pages being drawn now
+    most: int = 0                               # the most ever drawn at once
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    @property
+    def count(self):
+        return max(self.pages, len(self.sizes))
+
+    def size(self, n):
+        """Page n's size, one based."""
+        return self.sizes[min(n, len(self.sizes)) - 1]
+
+    @staticmethod
+    def colour(n):
+        """The band across the top of page n, one based, a colour no other page near it has."""
+        return ((n * 67) % 200 + 30, (n * 131) % 200 + 30, (n * 29) % 200 + 30)
+
+
+@dataclass
 class Served:
     """What the page is currently being shown."""
     path: Path = None
     ranged: bool = False
     status_override: int = 0
     requests: list = field(default_factory=list)
+    simple: Simple = None
 
 
 class ViewerServer:
@@ -110,9 +146,10 @@ class ViewerServer:
                 self.wfile.write(body)
 
             def do_GET(self):
-                path = self.path.split("?", 1)[0]
+                path, _, query = self.path.partition("?")
                 self.record = {
                     "path": path,
+                    "query": {k: v[0] for k, v in parse_qs(query).items()},
                     "range": self.headers.get("Range"),
                     "status": None,
                     "bytes": 0,
@@ -121,6 +158,8 @@ class ViewerServer:
 
                 if path.startswith("/doc/"):
                     return self._document()
+                if path.startswith("/render/"):
+                    return self._render(path, self.record["query"])
                 if path.startswith("/assets/viewer/"):
                     return self._asset(path[len("/assets/viewer/"):])
                 self._send(404, b"not found", {"Content-Type": "text/plain"})
@@ -132,6 +171,63 @@ class ViewerServer:
                     return self._send(404, b"no such asset", {"Content-Type": "text/plain"})
                 ctype = CONTENT_TYPES.get(target.suffix, "application/octet-stream")
                 self._send(200, target.read_bytes(), {"Content-Type": ctype})
+
+            def _json(self, said):
+                body = json.dumps(said).encode()
+                self._send(200, body, {"Content-Type": "application/json", "Cache-Control": "no-store"})
+
+            def _render(self, path, query):
+                """SimplePdf.respond, to the letter in what it answers if not in how it draws."""
+                simple = state.simple
+                nothing = (404, b"", {"Content-Type": "text/plain"})
+                if simple is None:
+                    return self._send(*nothing)
+
+                def number(name):
+                    value = query.get(name, "")
+                    return int(value) if value.isdigit() and len(value) <= 9 else None
+
+                if path == "/render/document":
+                    if simple.error:
+                        return self._json({"error": simple.error})
+                    width, height = simple.size(1)
+                    return self._json({"pages": simple.count, "width": width, "height": height})
+                if path == "/render/sizes":
+                    first, last = number("from"), number("to")
+                    if first is None or last is None or first < 1 or last < first \
+                            or last > simple.count or last - first >= 16:
+                        return self._send(*nothing)
+                    return self._json({"sizes": [list(simple.size(n)) for n in range(first, last + 1)]})
+                if path != "/render/page":
+                    return self._send(*nothing)
+                n, width = number("n"), number("w")
+                if n is None or width is None or not 1 <= n <= simple.count or n in simple.broken:
+                    return self._send(*nothing)
+                with simple.lock:
+                    simple.drawing += 1
+                    simple.most = max(simple.most, simple.drawing)
+                try:
+                    time.sleep(simple.delay)
+                    from PIL import Image, ImageDraw
+                    pw, ph = simple.size(n)
+                    width = min(width, 8192)
+                    height = max(1, round(width * ph / pw))
+                    night = query.get("night") == "1"
+                    image = Image.new("RGB", (width, height), (0, 0, 0) if night else (255, 255, 255))
+                    band = Simple.colour(n)
+                    if night:
+                        band = tuple(255 - c for c in band)
+                    ImageDraw.Draw(image).rectangle([0, 0, width, max(1, height // 20)], fill=band)
+                    out = io.BytesIO()
+                    image.save(out, "PNG")
+                finally:
+                    with simple.lock:
+                        simple.drawing -= 1
+                self._send(200, out.getvalue(), {
+                    "Content-Type": "image/png",
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                })
 
             def _document(self):
                 if state.status_override:
@@ -174,7 +270,27 @@ class ViewerServer:
         self.state.path = fixture if isinstance(fixture, Path) else FIXTURES / fixture
         self.state.ranged = ranged
         self.state.status_override = status
+        self.state.simple = None
         self.state.requests.clear()
+
+    def show_simple(self, sizes=None, pages=0, error=None, broken=(), delay=0.0):
+        """
+        Has /render/ answer as the simple view's renderer would for a document of pages [sizes]
+        in points, or with [error] in place of one, and /doc/ answer nothing, as ViewerActivity
+        answers that page.
+        """
+        self.state.path = None
+        self.state.ranged = False
+        self.state.status_override = 0
+        self.state.simple = Simple(
+            sizes=list(sizes or []), pages=pages, error=error, broken=set(broken), delay=delay)
+        self.state.requests.clear()
+        return self.state.simple
+
+    def pages_asked(self):
+        """Each picture of a page asked for, in order: (page, night)."""
+        return [(int(r["query"].get("n", 0)), r["query"].get("night") == "1")
+                for r in self.state.requests if r["path"] == "/render/page"]
 
     def url(self, page, name=None, ext=None, **params):
         """

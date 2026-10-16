@@ -102,6 +102,12 @@
          text with no card to say why. What was done comes first: at a font size above 1.19 a
          360dp bar has no room for the whole line, and it is the end that gets cut. Issue #51. -->
     <string name="unknown_shown_as_text">Shown as text, unknown format</string>
+    <!-- Under the name of a PDF in the simple view, on a phone whose WebView pdf.js can't run
+         on: its pages are pictures, so there is no text to search, and the renderer draws no
+         filled-in form fields, and draws highlights and comments only from Android 15.
+         Placeholders, for Arjun to write. -->
+    <string name="simple_view_line">Simple view: no search, notes or form entries</string>
+    <string name="simple_view_line_notes">Simple view: no search or form entries</string>
     <string name="page_number">Page number</string>
     <string name="page_range">1 to %1$d</string>
     <string name="page_out_of_range">Enter a page between 1 and %1$d</string>

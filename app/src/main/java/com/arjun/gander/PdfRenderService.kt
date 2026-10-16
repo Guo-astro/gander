@@ -5,6 +5,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.graphics.pdf.RenderParams
+import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.Process
@@ -45,8 +47,8 @@ open class PdfRenderService : Service() {
             if (answer != null) reply(answer) { littleEndian(8).putLong(sizeOf(page)) }
         }
 
-        override fun render(page: Int, width: Int, height: Int, answer: ParcelFileDescriptor?) {
-            if (answer != null) draw(page, width, height, answer)
+        override fun render(page: Int, width: Int, height: Int, flags: Int, answer: ParcelFileDescriptor?) {
+            if (answer != null) draw(page, width, height, flags, answer)
         }
     }
 
@@ -130,7 +132,7 @@ open class PdfRenderService : Service() {
         r.openPage(page).use { (it.width.toLong() shl 32) or (it.height.toLong() and 0xffffffffL) }
     }
 
-    private fun draw(page: Int, width: Int, height: Int, sink: ParcelFileDescriptor) {
+    private fun draw(page: Int, width: Int, height: Int, flags: Int, sink: ParcelFileDescriptor) {
         try {
             ParcelFileDescriptor.AutoCloseOutputStream(sink).use { out ->
                 if (width !in 1..MAX_SIDE || height !in 1..MAX_SIDE ||
@@ -143,7 +145,13 @@ open class PdfRenderService : Service() {
                         drawing(page)
                         createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
                             it.eraseColor(Color.WHITE)
-                            p.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            if (flags and RENDER_NOTES != 0 &&
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+                            ) {
+                                p.render(it, null, null, withNotes())
+                            } else {
+                                p.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            }
                         }
                     }
                 }
@@ -176,6 +184,18 @@ open class PdfRenderService : Service() {
         }
     }
 
+    /**
+     * Display rendering with two kinds of note drawn too, highlights and comments, which Android
+     * draws only from 15.
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    private fun withNotes(): RenderParams =
+        RenderParams.Builder(RenderParams.RENDER_MODE_FOR_DISPLAY)
+            .setRenderFlags(
+                RenderParams.FLAG_RENDER_HIGHLIGHT_ANNOTATIONS or RenderParams.FLAG_RENDER_TEXT_ANNOTATIONS
+            )
+            .build()
+
     private fun closeDocument() {
         runCatching { renderer?.close() }
         renderer = null
@@ -194,6 +214,9 @@ open class PdfRenderService : Service() {
         const val OPEN_NOT_PDF = -3
         const val OPEN_DAMAGED = -4
 
+        /** For render: draw the page's highlights and comments as well, where Android can. */
+        const val RENDER_NOTES = 1
+
         /** pdf.mjs's own caps on a canvas, kept here too so asking for more gets nothing. */
         const val MAX_SIDE = 8192
         const val MAX_PIXELS = 8L * 1024 * 1024
@@ -209,6 +232,17 @@ open class PdfRenderService : Service() {
  * holds the document open in the viewer.
  */
 class PdfThumbService : PdfRenderService()
+
+/**
+ * The same renderer under three more names, so that each viewer showing a PDF can have one of its
+ * own: every binding of one isolated service shares its process, and the renderer holds one
+ * document at a time. See [RendererSlots].
+ */
+class PdfRenderService1 : PdfRenderService()
+
+class PdfRenderService2 : PdfRenderService()
+
+class PdfRenderService3 : PdfRenderService()
 
 /** Whether "%PDF" appears in [length] bytes of [start], which is where PDF readers look for it. */
 internal fun startsLikePdf(start: ByteArray, length: Int): Boolean {

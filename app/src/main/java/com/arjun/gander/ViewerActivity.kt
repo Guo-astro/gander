@@ -5,6 +5,7 @@ import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -94,6 +95,12 @@ open class ViewerActivity : AppCompatActivity() {
         private const val STATE_FULL_SCREEN = "full_screen"
         private const val STATE_SIMPLE_VIEW = "simple_view"
         private const val ASSET_HOST = "appassets.androidplatform.net"
+
+        /**
+         * Opens a PDF in the simple view whatever the WebView, so that a phone pdf.js runs on can
+         * show it. Read only by a debuggable build: see [pdfRouteHere].
+         */
+        const val EXTRA_SIMPLE_VIEW = "com.arjun.gander.SIMPLE_VIEW"
 
         /** The keys a WebView scrolls a document by. */
         private val SCROLL_KEYS = setOf(
@@ -190,6 +197,10 @@ open class ViewerActivity : AppCompatActivity() {
 
     /** Whether the reader asked for a PDF's simple view, which the viewer is rebuilt to show. */
     private var simpleAsked = false
+
+    /** The simple view's renderer and the pages it serves, while a PDF is shown there. */
+    @Volatile
+    private var simplePdf: SimplePdf? = null
 
     /** Where a video or a track picks up when the viewer is rebuilt around it, as a change of theme does. */
     private var playerStartAt = 0L
@@ -390,6 +401,12 @@ open class ViewerActivity : AppCompatActivity() {
             setUpActions(toolbar, kind, uri, name, ext, mime)
             // A document that opens turned over opens with the parts around it dark as well
             if (loadedNight) nightChrome.show(true)
+            // What the simple view can't show, under the file's name
+            if (kind == FileKind.PDF_SIMPLE) {
+                val notesDrawn = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+                toolbar.subtitle =
+                    getString(if (notesDrawn) R.string.simple_view_line_notes else R.string.simple_view_line)
+            }
         }
 
         val detected = detect(ext, mime)
@@ -411,13 +428,23 @@ open class ViewerActivity : AppCompatActivity() {
      * Where a PDF goes on this phone: see [pdfRoute]. Asked before the WebView is made, so the
      * engine is read from the user agent a WebView starts with, which is the one it keeps, since
      * Gander never sets its own.
+     *
+     * A debuggable build also takes [EXTRA_SIMPLE_VIEW], so that the simple view can be checked
+     * on a phone pdf.js runs on, which is every phone a test is run on. Never on Android 8, where
+     * the renderer isn't walled off from Gander.
      */
-    private fun pdfRouteHere(): PdfRoute = pdfRoute(
-        webViewChromiumMajor(runCatching { WebSettings.getDefaultUserAgent(this) }.getOrNull()),
-        webViewProviderIsLocked(),
-        Build.VERSION.SDK_INT,
-        simpleAsked,
-    )
+    private fun pdfRouteHere(): PdfRoute {
+        val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        if (debuggable && intent.getBooleanExtra(EXTRA_SIMPLE_VIEW, false) &&
+            PdfRenderClient.containedOn(Build.VERSION.SDK_INT)
+        ) return PdfRoute.SIMPLE
+        return pdfRoute(
+            webViewChromiumMajor(runCatching { WebSettings.getDefaultUserAgent(this) }.getOrNull()),
+            webViewProviderIsLocked(),
+            Build.VERSION.SDK_INT,
+            simpleAsked,
+        )
+    }
 
     /**
      * Opens the PDF on show again in the simple view, when the reader asks for it on the card
@@ -1958,15 +1985,7 @@ open class ViewerActivity : AppCompatActivity() {
                 view: WebView,
                 detail: android.webkit.RenderProcessGoneDetail
             ): Boolean {
-                if (webView === view) {
-                    // A zoom still on its way would go on calling a WebView that has gone
-                    doubleTapZoom?.cancel()
-                    doubleTapZoom = null
-                    webView = null
-                    (view.parent as? ViewGroup)?.removeView(view)
-                    view.destroy()
-                    showRendererGone(container, detail.didCrash())
-                }
+                if (webView === view) dropPage(container, detail.didCrash())
                 return true
             }
 
@@ -1985,6 +2004,13 @@ open class ViewerActivity : AppCompatActivity() {
                     url.path?.startsWith("/doc/") == true
                 ) {
                     return docResponse(uri, mime, documentTotal, request.requestHeaders["Range"])
+                }
+                // The simple view's pages, drawn by its isolated renderer. See SimplePdf.
+                if (kind == FileKind.PDF_SIMPLE &&
+                    url.scheme == "https" && url.host == ASSET_HOST &&
+                    url.path?.startsWith("/render/") == true
+                ) {
+                    return simplePdf?.respond(url) ?: notFound()
                 }
                 return assetLoader.shouldInterceptRequest(url)?.withViewerPolicy() ?: when (url.scheme) {
                     // Anything else a page asks the network for is answered here, with
@@ -2032,6 +2058,15 @@ open class ViewerActivity : AppCompatActivity() {
         setUpFastScroll(web, kind)
 
         container.addView(web, matchParent())
+        if (kind == FileKind.PDF_SIMPLE) {
+            simplePdf = SimplePdf(
+                this, uri,
+                inFront = { lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) },
+                locked = { printLocked = true },
+                // The page is pictures the renderer draws, so it goes with the renderer
+                gone = { crashed -> if (webView === web) dropPage(container, crashed) },
+            ).apply { start() }
+        }
         // Out on the URL rather than over the port, so a page opens already turned over
         // instead of drawing itself white and then again. It is also the only route that
         // survives process death and the recreate() in showRendererGone, neither of which
@@ -2098,12 +2133,30 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
+     * Takes the WebView away, which can no longer show its document, and puts the card saying so
+     * in its place: its renderer has gone, or the simple view's has.
+     */
+    private fun dropPage(container: FrameLayout, didCrash: Boolean) {
+        val view = webView ?: return
+        // A zoom still on its way would go on calling a WebView that has gone
+        doubleTapZoom?.cancel()
+        doubleTapZoom = null
+        webView = null
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.destroy()
+        showRendererGone(container, didCrash)
+    }
+
+    /**
      * Puts a message and a way back where the document was, once its renderer has
      * gone. Reloading is a full restart of the activity rather than a fresh WebView
      * in place, because search holds the WebView it was wired to and a destroyed one
      * cannot answer findAllAsync; going through onCreate again rebuilds both together.
      */
     private fun showRendererGone(container: FrameLayout, didCrash: Boolean) {
+        // The simple view's renderer goes with the page it drew for
+        simplePdf?.close()
+        simplePdf = null
         // Both search surfaces go until there is something to search again, and for
         // PDF so does the channel: its far end was in the renderer that just died, so
         // it can neither be asked anything nor answer. The activity restarts to get a
@@ -2387,6 +2440,8 @@ open class ViewerActivity : AppCompatActivity() {
         doubleTapZoom?.cancel()
         webView?.destroy()
         webView = null
+        simplePdf?.close()
+        simplePdf = null
         super.onDestroy()
     }
 }

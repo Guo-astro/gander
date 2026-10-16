@@ -25,7 +25,8 @@ oneway interface IPdfRenderer {
 
     /**
      * Draws the page on white at width x height and answers it a row at a time, top row first,
-     * four bytes a pixel in the order blue, green, red, alpha.
+     * four bytes a pixel in the order blue, green, red, alpha. flags are PdfRenderService's
+     * RENDER_ bits.
      */
-    void render(int page, int width, int height, in ParcelFileDescriptor answer);
+    void render(int page, int width, int height, int flags, in ParcelFileDescriptor answer);
 }

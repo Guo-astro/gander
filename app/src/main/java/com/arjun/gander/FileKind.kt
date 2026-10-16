@@ -51,10 +51,11 @@ enum class FileKind(val page: String) {
     val paged: Boolean get() = this == PDF || this == PDF_SIMPLE || this == DOCX || this == EPUB
 
     /**
-     * Turns its pages over for night mode. Not a book: its page is prose and follows the
-     * phone's theme, as a Markdown file's does.
+     * Turns its pages over for night mode, a PDF in either view: the simple view turns the whole
+     * page over, photographs too, since its renderer says nothing of where they are. Not a book:
+     * its page is prose and follows the phone's theme, as a Markdown file's does.
      */
-    val turnsOver: Boolean get() = this == PDF || this == DOCX
+    val turnsOver: Boolean get() = this == PDF || this == PDF_SIMPLE || this == DOCX
 
     /**
      * Has its double tap zoomed by [DoubleTapZoom], and its page turns the WebView's own off. A
