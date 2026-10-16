@@ -1,6 +1,9 @@
 package com.arjun.gander
 
+import android.app.Application
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Looper
 import android.view.View
@@ -179,12 +182,12 @@ class ThumbsTest {
     }
 
     /** Loads [uri]'s thumbnail the way a row does, and waits for it to be drawn. */
-    private fun loadAndWait(uri: Uri) {
+    private fun loadAndWait(uri: Uri, ext: String = "png") {
         // Hidden, as a row's is until its picture arrives: a new ImageView starts out visible,
         // and waiting for that would wait for nothing
         val into = ImageView(context).apply { visibility = View.GONE }
         val badge = View(context)
-        Thumbs.load(context, uri, "png", into, badge)
+        Thumbs.load(context, uri, ext, into, badge)
         // Real time, not SystemClock: Robolectric's clock stands still unless a test moves it,
         // so a deadline on that one never arrives and a thumbnail that never comes hangs the run
         // rather than failing it.
@@ -198,6 +201,56 @@ class ThumbsTest {
 
     private fun cached(): List<String> =
         File(context.cacheDir, "thumbs").listFiles().orEmpty().map { it.name }
+
+    /**
+     * A PDF's is drawn by the thumbnail renderer, never by PDFium in Gander's own process, and
+     * kept on disk like a photo's.
+     */
+    @Test
+    fun aPdfIsDrawnByItsOwnRenderer() {
+        val renderer = thumbnailRenderer()
+        val uri = FixtureProvider.uriFor("six-pages.pdf")
+        loadAndWait(uri, "pdf")
+        assertThat(renderer.drawn).containsExactly("0 192x271")
+        assertThat(cached()).containsExactly(cacheFileFor(uri.toString()).name)
+    }
+
+    /** Two PDFs asked for together are drawn in turn, because the renderer holds one document. */
+    @Test
+    fun pdfsAreDrawnOneAtATime() {
+        val renderer = thumbnailRenderer()
+        renderer.onRender = { renderer.entered.countDown(); renderer.release.await() }
+        val rows = listOf("one.pdf", "two.pdf").map { name ->
+            ImageView(context).apply { visibility = View.GONE }.also {
+                Thumbs.load(context, FixtureProvider.uriNamed("six-pages.pdf", name), "pdf", it, View(context))
+            }
+        }
+        val deadline = System.nanoTime() + 10_000_000_000
+        while (renderer.entered.count > 0) {
+            check(System.nanoTime() < deadline) { "the first PDF was never drawn" }
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(20)
+        }
+        // Time for a second to open beside it, were it allowed to
+        Thread.sleep(300)
+        assertThat(renderer.opens.get()).isEqualTo(1)
+
+        renderer.release.countDown()
+        while (rows.any { it.visibility != View.VISIBLE }) {
+            check(System.nanoTime() < deadline) { "a PDF was never drawn" }
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(20)
+        }
+        assertThat(renderer.opens.get()).isEqualTo(2)
+    }
+
+    /** A stand-in for PdfThumbService, bound in its place and nothing else's. */
+    private fun thumbnailRenderer(): FakeRenderer = FakeRenderer().also {
+        val service = ComponentName(context, PdfThumbService::class.java)
+        shadowOf(context as Application).setComponentNameAndServiceForBindServiceForIntent(
+            Intent().setComponent(service), service, it
+        )
+    }
 
     /** The control for the next: a photo on the phone is kept on disk, so the check can see one. */
     @Test

@@ -78,6 +78,9 @@ internal class PdfRenderClient(
         override fun onNullBinding(name: ComponentName?) = lost(crashed = true)
     }
 
+    /** Whether the renderer is gone or the client closed, so that every call fails at once. */
+    val gone: Boolean get() = over
+
     /** Starts the renderer's process. */
     @MainThread
     fun bind() {

@@ -1,13 +1,11 @@
 package com.arjun.gander
 
+import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Matrix
-import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
@@ -24,6 +22,7 @@ import java.util.concurrent.Executors
  * Small preview thumbnails for images, videos and PDFs.
  * Memory LRU + PNG disk cache under cacheDir/thumbs, generated off the
  * main thread. Kinds without a cheap visual preview simply keep their badge.
+ * A PDF's is drawn in an isolated process: see PdfThumbs.
  *
  * A file inside a zip gets the memory cache and never the disk. Nothing in a zip is written
  * to the phone, which is what Gander says about opening one, and a thumbnail on disk is a
@@ -36,6 +35,11 @@ object Thumbs {
     private val mem = LruCache<String, Bitmap>(48)
     private val executor = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
+
+    // Made by the first PDF to need a picture, on the main thread. The context it keeps is the
+    // application's, which lives as long as the process, so holding it leaks nothing.
+    @SuppressLint("StaticFieldLeak")
+    private var pdfs: PdfThumbs? = null
 
     fun supported(kind: FileKind, ext: String): Boolean = when (kind) {
         FileKind.IMAGE, FileKind.IMAGE_WEB, FileKind.PDF -> true
@@ -69,10 +73,11 @@ object Thumbs {
         val appCtx = context.applicationContext
         val kind = FileKind.detect(ext, null)
         val onDisk = !ArchiveProvider.isEntry(appCtx, uri)
-        executor.execute {
+        val pdf = if (kind == FileKind.PDF) pdfs ?: PdfThumbs(appCtx, SIZE).also { pdfs = it } else null
+        val job = Runnable {
             val bmp = (if (onDisk) fromDisk(appCtx, key) else null)
-                ?: generate(appCtx, uri, kind, ext)?.also { if (onDisk) toDisk(appCtx, key, it) }
-                ?: return@execute
+                ?: generate(appCtx, uri, kind, key, pdf)?.also { if (onDisk) toDisk(appCtx, key, it) }
+                ?: return@Runnable
             mem.put(key, bmp)
             main.post {
                 if (into.tag == key) {
@@ -82,10 +87,11 @@ object Thumbs {
                 }
             }
         }
+        if (pdf != null) pdf.queue(job) else executor.execute(job)
     }
 
     /**
-     * Drops the in-memory cache.
+     * Drops the in-memory cache and the PDF renderer.
      *
      * This object is process-wide and its LruCache outlives any one screen,
      * which is what makes it useful and also what makes it leak between unit
@@ -94,6 +100,9 @@ object Thumbs {
     @androidx.annotation.VisibleForTesting
     internal fun resetForTests() {
         mem.evictAll()
+        // Bound with the Application of an earlier test
+        pdfs?.shutdown()
+        pdfs = null
     }
 
     fun evict(context: Context, uriString: String) {
@@ -118,10 +127,10 @@ object Thumbs {
         } ?: 0
     }.getOrDefault(0)
 
-    private fun generate(ctx: Context, uri: Uri, kind: FileKind, ext: String): Bitmap? =
+    private fun generate(ctx: Context, uri: Uri, kind: FileKind, key: String, pdf: PdfThumbs?): Bitmap? =
         runCatching {
             when {
-                kind == FileKind.PDF -> pdfThumb(ctx, uri)
+                pdf != null -> pdf.draw(uri, key)
                 kind == FileKind.PLAYER -> videoThumb(ctx, uri)
                 else -> imageThumb(ctx, uri)
             }
@@ -157,23 +166,6 @@ object Thumbs {
             )
         } finally {
             runCatching { retriever.release() }
-        }
-    }
-
-    private fun pdfThumb(ctx: Context, uri: Uri): Bitmap? {
-        val pfd = ctx.contentResolver.openFileDescriptor(uri, "r") ?: return null
-        pfd.use {
-            PdfRenderer(it).use { renderer ->
-                if (renderer.pageCount == 0) return null
-                renderer.openPage(0).use { page ->
-                    val height = (SIZE.toFloat() * page.height / page.width).toInt()
-                        .coerceIn(1, SIZE * 2)
-                    val bmp = Bitmap.createBitmap(SIZE, height, Bitmap.Config.ARGB_8888)
-                    Canvas(bmp).drawColor(Color.WHITE)
-                    page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    return bmp
-                }
-            }
         }
     }
 

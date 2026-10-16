@@ -174,6 +174,13 @@ open class PdfRenderService : Service() {
     }
 }
 
+/**
+ * The same renderer under a second name, for thumbnails. Android starts each isolated service in
+ * a process of its own, so the files of a browsed folder are never read in the process that
+ * holds the document open in the viewer.
+ */
+class PdfThumbService : PdfRenderService()
+
 /** Whether "%PDF" appears in [length] bytes of [start], which is where PDF readers look for it. */
 internal fun startsLikePdf(start: ByteArray, length: Int): Boolean {
     val end = minOf(length, start.size) - 4

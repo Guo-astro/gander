@@ -3,7 +3,6 @@ package com.arjun.gander
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
@@ -16,8 +15,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.graphics.get
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.util.concurrent.Executors
 
 /**
@@ -152,7 +149,7 @@ class PdfSpikeActivity : Activity() {
             }
             if (n == 0) {
                 line.append(" page0=${size[0]}x${size[1]}pt drawn=${w}x$h bytes=${bytes.size}")
-                val bitmap = bitmapOf(bytes, w, h)
+                val bitmap = pageBitmap(bytes, w, h)
                 line.append(" centre=#%08x".format(bitmap[w / 2, h / 2]))
                 runOnUiThread { image.setImageBitmap(bitmap) }
             }
@@ -168,12 +165,6 @@ class PdfSpikeActivity : Activity() {
             " renderTooWide=${client.render(0, PdfRenderService.MAX_SIDE + 1, 10)}" +
             " renderTooMany=${client.render(0, 4000, 4000)}" +
             " renderZero=${client.render(0, 0, 100)}"
-
-    private fun bitmapOf(bytes: ByteArray, w: Int, h: Int): Bitmap {
-        val pixels = IntArray(w * h)
-        ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(pixels)
-        return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
-    }
 
     private fun pdfsIn(tree: Uri): List<Uri> = runCatching {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(

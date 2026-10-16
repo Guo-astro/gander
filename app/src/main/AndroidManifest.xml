@@ -217,5 +217,13 @@
             android:name=".PdfRenderService"
             android:isolatedProcess="true"
             android:exported="false" />
+
+        <!-- The same renderer again, for PDF thumbnails: see PdfThumbs. A second isolated
+             service runs in a process of its own, so a browsed folder's files are never read
+             beside the document open in the viewer. -->
+        <service
+            android:name=".PdfThumbService"
+            android:isolatedProcess="true"
+            android:exported="false" />
     </application>
 </manifest>

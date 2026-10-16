@@ -1,6 +1,9 @@
 package com.arjun.gander
 
+import android.graphics.Bitmap
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * Gander's side of PdfRenderService's pipe. Nothing the renderer says is taken on trust: the
@@ -41,4 +44,14 @@ internal fun readPage(input: InputStream, count: Int): ByteArray? {
         have += n
     }
     return if (input.read() == -1) bytes else null
+}
+
+/**
+ * A page from [readPage] as a bitmap. Its blue, green, red and alpha bytes are each pixel's ARGB
+ * int read little-endian.
+ */
+internal fun pageBitmap(bytes: ByteArray, width: Int, height: Int): Bitmap {
+    val pixels = IntArray(width * height)
+    ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asIntBuffer().get(pixels)
+    return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
 }

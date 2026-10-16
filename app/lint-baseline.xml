@@ -271,17 +271,6 @@
 
     <issue
         id="UseKtx"
-        message="Use the KTX function `createBitmap` instead?"
-        errorLine1="                    val bmp = Bitmap.createBitmap(SIZE, height, Bitmap.Config.ARGB_8888)"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/Thumbs.kt"
-            line="153"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
         message="Use the KTX extension function `String.toUri` instead?"
         errorLine1="            web, WebMessageCompat(&quot;vw-search-port&quot;, arrayOf(ends[1])), Uri.parse(&quot;*&quot;))"
         errorLine2="                                                                       ~~~~~~~~~~~~~~">
