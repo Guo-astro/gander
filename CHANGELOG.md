@@ -9,6 +9,10 @@
 - A Word table whose cells are marked to run left to right, the usual way, now reads across.
   Gander turned the text in every such cell on its side (thanks @XZY123lol, who brought this
   over from 4PDA in #52).
+- In a book read right to left, such as one in Arabic, Hebrew, Persian or Urdu, Next is on the
+  left and Previous on the right, and the contents, the title and the chapter's name read right
+  to left, indented from the right (#54, thanks @yshalsager). Gander laid them all out left to
+  right.
 
 ## 2.5 (2026-10-14)
 
