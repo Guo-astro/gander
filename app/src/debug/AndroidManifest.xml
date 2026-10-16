@@ -19,5 +19,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- The renderer failing on purpose, for the spike: see FaultyPdfRenderService. Isolated
+             like the real one, so that it dies and hangs the way the real one would. -->
+        <service
+            android:name=".FaultyPdfRenderService"
+            android:isolatedProcess="true"
+            android:exported="false" />
     </application>
 </manifest>

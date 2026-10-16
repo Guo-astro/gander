@@ -2,15 +2,10 @@ package com.arjun.gander
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
-import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -26,40 +21,27 @@ import java.nio.ByteOrder
 import java.util.concurrent.Executors
 
 /**
- * The spike for PdfRenderService, in debug builds only. It opens a PDF through the isolated
- * renderer and logs what came back under the tag PdfSpike, so a run over adb can be read from
- * logcat. A document comes as the intent's data (from adb, or from another app sharing one),
- * from the file picker, or as every PDF in a folder picked as a tree.
+ * The spike for PdfRenderService, in debug builds only. It opens a PDF through PdfRenderClient
+ * and the isolated renderer and logs what came back under the tag PdfSpike, so a run over adb
+ * can be read from logcat. A document comes as the intent's data (from adb, or from another app
+ * sharing one), from the file picker, or as every PDF in a folder picked as a tree.
  *
  *   adb shell am start -a com.arjun.gander.PDF_SPIKE -d <content uri> -t application/pdf \
  *     --grant-read-uri-permission -n com.arjun.gander.debug/com.arjun.gander.PdfSpikeActivity
  *   adb shell am start -a com.arjun.gander.PDF_SPIKE --es pick file|tree \
  *     -n com.arjun.gander.debug/com.arjun.gander.PdfSpikeActivity
  *
- * Add --ez all true to draw every page rather than the first.
+ * Add --ez all true to draw every page rather than the first, and --es fault crash-draw (or
+ * another of FaultyPdfRenderService's) to bind a renderer that fails on purpose.
  */
 class PdfSpikeActivity : Activity() {
 
     private val worker = Executors.newSingleThreadExecutor()
-    private val waiting = ArrayDeque<Pair<String, Uri>>()
-    private var renderer: IPdfRenderer? = null
+    private lateinit var client: PdfRenderClient
     private var allPages = false
     private var edgesChecked = false
     private lateinit var log: TextView
     private lateinit var image: ImageView
-
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            renderer = IPdfRenderer.Stub.asInterface(service)
-            report("BOUND ${name.className}")
-            drain()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName) {
-            renderer = null
-            report("GONE the renderer's process died")
-        }
-    }
 
     // A debug build's test bench, which no reader sees, so its two labels stay untranslated
     @SuppressLint("SetTextI18n")
@@ -73,7 +55,12 @@ class PdfSpikeActivity : Activity() {
         column.addView(log)
         column.addView(image)
         setContentView(ScrollView(this).apply { addView(column) })
-        bindService(Intent(this, PdfRenderService::class.java), connection, Context.BIND_AUTO_CREATE)
+        val fault = intent.getStringExtra("fault")
+        val service = if (fault == null) Intent(this, PdfRenderService::class.java)
+        else Intent(this, FaultyPdfRenderService::class.java).setAction(fault)
+        client = PdfRenderClient(this, service) { crashed -> report("GONE crashed=$crashed") }
+        client.bind()
+        report("BIND ${service.component?.shortClassName} fault=$fault")
         handle(intent)
     }
 
@@ -83,7 +70,7 @@ class PdfSpikeActivity : Activity() {
     }
 
     override fun onDestroy() {
-        unbindService(connection)
+        client.close()
         worker.shutdown()
         super.onDestroy()
     }
@@ -116,20 +103,11 @@ class PdfSpikeActivity : Activity() {
     }
 
     private fun enqueue(source: String, uri: Uri) {
-        waiting.addLast(source to uri)
-        drain()
+        val all = allPages
+        worker.execute { open(source, uri, all) }
     }
 
-    private fun drain() {
-        val r = renderer ?: return
-        while (waiting.isNotEmpty()) {
-            val (source, uri) = waiting.removeFirst()
-            val all = allPages
-            worker.execute { open(r, source, uri, all) }
-        }
-    }
-
-    private fun open(r: IPdfRenderer, source: String, uri: Uri, all: Boolean) {
+    private fun open(source: String, uri: Uri, all: Boolean) {
         val started = SystemClock.elapsedRealtime()
         val line = StringBuilder("RESULT source=$source authority=${uri.authority} name=${nameOf(uri)}")
         try {
@@ -138,12 +116,14 @@ class PdfSpikeActivity : Activity() {
                 line.append(" descriptor=none")
             } else {
                 line.append(" statSize=${pfd.statSize}")
-                val pages = pfd.use { r.open(it) }
-                line.append(" open=$pages")
-                if (pages > 0) drawPages(r, if (all) pages else 1, line)
+                val pages = client.open(pfd)
+                val said = if (pages == PdfRenderClient.GONE) "gone" else "$pages"
+                line.append(" open=$said")
+                report("OPENED $said ms=${SystemClock.elapsedRealtime() - started}")
+                if (pages > 0) drawPages(if (all) pages else 1, line)
                 if (pages > 0 && !edgesChecked) {
                     edgesChecked = true
-                    report(edges(r, pages))
+                    report(edges(pages))
                 }
             }
         } catch (e: Exception) {
@@ -153,25 +133,25 @@ class PdfSpikeActivity : Activity() {
         report(line.toString())
     }
 
-    private fun drawPages(r: IPdfRenderer, count: Int, line: StringBuilder) {
+    private fun drawPages(count: Int, line: StringBuilder) {
         val width = resources.displayMetrics.widthPixels
         val started = SystemClock.elapsedRealtime()
         var drawn = 0
         for (n in 0 until count) {
-            val size = r.pageSize(n)
-            val dims = if (size < 0) null else drawSize(width, (size ushr 32).toInt(), size.toInt())
-            if (dims == null) {
+            val size = client.pageSize(n)
+            val dims = size?.let { drawSize(width, it[0], it[1]) }
+            if (size == null || dims == null) {
                 line.append(" page$n=nosize")
                 return
             }
             val (w, h) = dims[0] to dims[1]
-            val bytes = fetch(r, n, w, h, 4 * w * h)
+            val bytes = client.render(n, w, h)
             if (bytes == null) {
                 line.append(" page$n=short at ${w}x$h")
                 return
             }
             if (n == 0) {
-                line.append(" page0=${size ushr 32}x${size.toInt()}pt drawn=${w}x$h bytes=${bytes.size}")
+                line.append(" page0=${size[0]}x${size[1]}pt drawn=${w}x$h bytes=${bytes.size}")
                 val bitmap = bitmapOf(bytes, w, h)
                 line.append(" centre=#%08x".format(bitmap[w / 2, h / 2]))
                 runOnUiThread { image.setImageBitmap(bitmap) }
@@ -181,36 +161,13 @@ class PdfSpikeActivity : Activity() {
         line.append(" drew=$drawn pagesMs=${SystemClock.elapsedRealtime() - started}")
     }
 
-    /** What the renderer sends for page [n] at [w] x [h], when it sends exactly [count] bytes. */
-    private fun fetch(r: IPdfRenderer, n: Int, w: Int, h: Int, count: Int): ByteArray? {
-        val (read, write) = ParcelFileDescriptor.createPipe()
-        // Our copy of the write end has to close for the pipe to end when the renderer's does.
-        write.use { r.render(n, w, h, it) }
-        return ParcelFileDescriptor.AutoCloseInputStream(read).use { readPage(it, count) }
-    }
-
-    /** How many bytes come back for a request the renderer should refuse, which is none. */
-    private fun bytesFor(r: IPdfRenderer, n: Int, w: Int, h: Int): Long {
-        val (read, write) = ParcelFileDescriptor.createPipe()
-        write.use { r.render(n, w, h, it) }
-        return ParcelFileDescriptor.AutoCloseInputStream(read).use { input ->
-            var total = 0L
-            val buffer = ByteArray(65536)
-            while (true) {
-                val got = input.read(buffer)
-                if (got < 0) break
-                total += got
-            }
-            total
-        }
-    }
-
-    private fun edges(r: IPdfRenderer, pages: Int): String =
-        "EDGE sizeOutOfRange=${r.pageSize(pages)} sizeNegative=${r.pageSize(-1)}" +
-            " renderOutOfRange=${bytesFor(r, pages, 100, 100)}B" +
-            " renderTooWide=${bytesFor(r, 0, PdfRenderService.MAX_SIDE + 1, 10)}B" +
-            " renderTooMany=${bytesFor(r, 0, 4000, 4000)}B" +
-            " renderZero=${bytesFor(r, 0, 0, 100)}B"
+    /** Requests the client refuses without asking the renderer, each of which gives null. */
+    private fun edges(pages: Int): String =
+        "EDGE sizeOutOfRange=${client.pageSize(pages)} sizeNegative=${client.pageSize(-1)}" +
+            " renderOutOfRange=${client.render(pages, 100, 100)}" +
+            " renderTooWide=${client.render(0, PdfRenderService.MAX_SIDE + 1, 10)}" +
+            " renderTooMany=${client.render(0, 4000, 4000)}" +
+            " renderZero=${client.render(0, 0, 100)}"
 
     private fun bitmapOf(bytes: ByteArray, w: Int, h: Int): Bitmap {
         val pixels = IntArray(w * h)

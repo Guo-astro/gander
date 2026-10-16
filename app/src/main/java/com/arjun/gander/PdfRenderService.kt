@@ -25,7 +25,7 @@ import java.nio.ByteOrder
  * own. All it can reach is what Gander hands it: one document's descriptor in, one pipe per
  * page out. Gander treats whatever comes back as untrusted and counts the bytes itself.
  */
-class PdfRenderService : Service() {
+open class PdfRenderService : Service() {
 
     // PdfRenderer allows one open page at a time, and binder calls arrive on several threads.
     private val lock = Any()
@@ -45,10 +45,10 @@ class PdfRenderService : Service() {
 
     /**
      * Gander unbinds when it is done with the document. Ending the process then, instead of
-     * leaving it for Android to reclaim, means nothing PDFium read stays in memory after.
+     * leaving it for Android to reclaim, means nothing PDFium read stays in memory after. Not
+     * under the lock, which a page stuck in PDFium holds for ever.
      */
     override fun onUnbind(intent: Intent): Boolean {
-        synchronized(lock) { closeDocument() }
         Process.killProcess(Process.myPid())
         return false
     }
@@ -77,6 +77,7 @@ class PdfRenderService : Service() {
                 return OPEN_NOT_PDF
             }
             return try {
+                opening()
                 PdfRenderer(document).also { renderer = it }.pageCount
             } catch (e: SecurityException) {
                 document.close()
@@ -110,6 +111,7 @@ class PdfRenderService : Service() {
                     val r = renderer ?: return
                     if (page !in 0 until r.pageCount) return
                     r.openPage(page).use { p ->
+                        drawing(page)
                         createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
                             it.eraseColor(Color.WHITE)
                             p.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -149,6 +151,11 @@ class PdfRenderService : Service() {
         runCatching { renderer?.close() }
         renderer = null
     }
+
+    /** Where the debug build's FaultyPdfRenderService crashes or hangs, as PDFium might. */
+    protected open fun opening() {}
+
+    protected open fun drawing(page: Int) {}
 
     companion object {
         private const val TAG = "PdfRenderService"
