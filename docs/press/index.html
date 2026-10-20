@@ -528,10 +528,11 @@ html[data-play="live"] .when-pending{display:none}
   locked-down WebView through <code>WebViewAssetLoader</code>, which streams the opened document
   over a virtual <code>https://</code> host that resolves inside the process and never reaches a
   network stack.</p>
-  <p>The one exception is the simple view, for PDFs on a WebView too old for pdf.js. There
-  Android's own <code>PdfRenderer</code> draws each page in an isolated process, which runs under
-  a user ID of its own with none of Gander's access and is handed only the file being read. The
-  pages come back as pictures, shown in the same WebView.</p>
+  <p>The exception is Android's own <code>PdfRenderer</code>, which draws PDF thumbnails on
+  Android 9 and later, and the pages of the simple view, for PDFs on a WebView too old for pdf.js.
+  It runs in an isolated process, under a user ID of its own with none of Gander's access, and is
+  handed only the file being read. The simple view's pages come back as pictures, shown in the
+  same WebView.</p>
   <p>Because nothing is ever fetched, the app needs no <code>INTERNET</code> permission. Because
   files arrive through the system picker, an Open-with intent or a folder granted once, it needs no
   storage permission either. There is no <code>addJavascriptInterface</code> bridge, just an HTML5
