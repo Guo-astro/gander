@@ -19,6 +19,7 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.RejectedExecutionException
 import org.json.JSONArray
 import org.json.JSONObject
@@ -67,6 +68,9 @@ internal class SimplePdf(
     @Volatile
     private var over = false
 
+    // Main thread only: the viewer has let this go
+    private var closed = false
+
     // The lane's: the renderer the document was last handed to, what it answered, and the count
     private var openIn: PdfRenderClient? = null
     private var opened = PdfRenderClient.GONE
@@ -85,12 +89,17 @@ internal class SimplePdf(
     /** Lets the renderer go, which ends its process, and every request waiting on it. */
     @MainThread
     fun close() {
-        if (over) return
+        // Its own flag, not over: a renderer that crashed or hung set that already, and this
+        // viewer's slot and lane must still go
+        if (closed) return
+        closed = true
         over = true
         client?.close()
         client = null
         RendererSlots.release(this)
-        lane.shutdownNow()
+        // shutdownNow hands back the jobs still queued without cancelling them, and a WebView
+        // thread waiting on one in respond() would wait for good
+        lane.shutdownNow().forEach { (it as? Future<*>)?.cancel(false) }
     }
 
     /**

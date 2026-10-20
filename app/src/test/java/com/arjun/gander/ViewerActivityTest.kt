@@ -32,7 +32,9 @@ import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Before
@@ -570,11 +572,15 @@ class ViewerActivityTest {
         }
     }
 
-    /** A renderer that dies on a page takes the page with it, and the reader is told. */
+    /**
+     * A renderer that dies on a page takes the page with it, and the reader is told. The viewer
+     * gives up its renderer all the same, so the next simple view opened has it.
+     */
     @Test
     fun aRendererThatDiesOnAPageLeavesTheCard() {
         lockedWebView()
-        val renderer = renderersStandIn().first()
+        val renderers = renderersStandIn()
+        val renderer = renderers.first()
         handingOver(true) {
             val viewer = open("six-pages.pdf")
             assertThat(viewer.serveOff("/render/document")?.statusCode).isEqualTo(200)
@@ -589,7 +595,67 @@ class ViewerActivityTest {
             assertThat(viewer.get().findViewById<TextView>(R.id.renderGoneTitle).text.toString())
                 .isEqualTo(context.getString(R.string.render_gone_crashed))
             viewer.destroy()
+
+            // The next simple view gets the same renderer, free again. Had the viewer kept it, the
+            // next would have gone to another.
+            renderer.dead = false
+            renderer.bytes = { it }
+            renderer.onRender = {}
+            val next = open("six-pages.pdf")
+            assertThat(next.serveOff("/render/document")?.statusCode).isEqualTo(200)
+            assertThat(renderers.map { it.opens.get() }).containsExactly(2, 0, 0, 0).inOrder()
+            next.destroy()
         }
+    }
+
+    /**
+     * A request still waiting its turn when the viewer closes is answered, with nothing. Left
+     * waiting, the WebView thread that asked would wait for good, and hold the viewer with it.
+     */
+    @Test
+    fun aRequestStillWaitingWhenTheSimpleViewClosesIsAnswered() {
+        lockedWebView()
+        val renderer = renderersStandIn().first()
+        // The renderer takes its time over the document, so whatever is asked next waits behind it
+        renderer.onOpen = {
+            renderer.entered.countDown()
+            renderer.release.await()
+        }
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            val web = viewer.webView()!!
+            val asking = AtomicReference<Thread>()
+            val pool = Executors.newSingleThreadExecutor { job -> Thread(job).also(asking::set) }
+            try {
+                val request = Request(Uri.parse("https://appassets.androidplatform.net/render/document"), emptyMap())
+                val answer = pool.submit(Callable { web.webViewClient.shouldInterceptRequest(web, request) })
+                // Queued, its thread waiting on it: asked too late to be queued, it would be refused
+                // at once and this would prove nothing
+                val deadline = System.currentTimeMillis() + 10_000
+                while (!(renderer.entered.count == 0L && asking.get()?.waitsOnItsJob() == true) &&
+                    System.currentTimeMillis() < deadline
+                ) {
+                    shadowOf(Looper.getMainLooper()).idle()
+                    Thread.sleep(5)
+                }
+                assertWithMessage("the request waiting behind the document")
+                    .that(renderer.entered.count == 0L && asking.get()?.waitsOnItsJob() == true).isTrue()
+
+                viewer.destroy()
+                assertThat(answer.get(5, TimeUnit.SECONDS)?.statusCode).isEqualTo(404)
+            } finally {
+                renderer.release.countDown()
+                pool.shutdownNow()
+            }
+        }
+    }
+
+    /** Whether this thread is parked in SimplePdf.respond(), waiting for its job to be done. */
+    private fun Thread.waitsOnItsJob(): Boolean {
+        val frames = stackTrace
+        return state == Thread.State.WAITING &&
+            frames.any { it.className == SimplePdf::class.java.name && it.methodName == "respond" } &&
+            frames.any { it.className == FutureTask::class.java.name && it.methodName == "get" }
     }
 
     /** What the simple view can't show is said under the file's name, as Android draws it. */
