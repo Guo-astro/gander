@@ -1,6 +1,7 @@
 package com.arjun.gander
 
 import android.util.Log
+import org.junit.AssumptionViolatedException
 import org.junit.rules.TestRule
 import org.junit.runner.Description
 import org.junit.runners.model.Statement
@@ -34,6 +35,10 @@ class RetryRule(private val attempts: Int = 3) : TestRule {
                             )
                         }
                         return
+                    } catch (skipped: AssumptionViolatedException) {
+                        // A test that doesn't apply here won't on a second try either, and
+                        // logging it as a failed attempt would hide the ones that flaked
+                        throw skipped
                     } catch (t: Throwable) {
                         last = t
                         Log.w(
