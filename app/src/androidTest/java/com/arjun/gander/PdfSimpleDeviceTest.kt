@@ -53,15 +53,18 @@ class PdfSimpleDeviceTest {
 
     @Test
     fun pagesAreDrawnByARendererInAnIsolatedProcessOfItsOwn() {
+        val renderers = RendererSlots.services.indices.map(::rendererProcess)
         openSimple("six-pages.pdf").use { scenario ->
             WebViewProbe.await(scenario, "$DRAWN >= 1", "the first page to be drawn")
             assertThat(WebViewProbe.eval(scenario, "document.querySelectorAll('#pages .pg').length"))
                 .isEqualTo("6")
 
             // Every process of Gander's but its own, so a renderer that isn't isolated is found
-            // too, and one at least, so the checks after it can't pass on finding none
+            // too. This viewer's is among them by the name looked for once it has closed, or that
+            // check would pass on finding none: a thumbnail renderer is no proof of the name.
             val others = othersOfGanders()
-            assertWithMessage("Gander's processes besides its own").that(others).isNotEmpty()
+            assertWithMessage("the simple view's renderer among Gander's processes")
+                .that(others.map { it.name }).containsAnyIn(renderers)
             for (other in others) {
                 assertWithMessage(other.name).that(other.uid).isNotEqualTo(Process.myUid())
                 assertWithMessage("${other.name}'s uid ${other.uid}")
@@ -70,7 +73,7 @@ class PdfSimpleDeviceTest {
         }
         // It holds the document's descriptor, so it goes with the viewer
         awaitOthers("no renderer left once the viewer closed") { others ->
-            others.none { it.name in RendererSlots.services.indices.map(::rendererProcess) }
+            others.none { it.name in renderers }
         }
     }
 
