@@ -198,6 +198,9 @@ open class ViewerActivity : AppCompatActivity() {
     /** Whether the reader asked for a PDF's simple view, which the viewer is rebuilt to show. */
     private var simpleAsked = false
 
+    /** Whether the card on show has a button for the simple view, which asks over the channel. */
+    private var cardOffersSimple = false
+
     /** The simple view's renderer and the pages it serves, while a PDF is shown there. */
     @Volatile
     private var simplePdf: SimplePdf? = null
@@ -410,10 +413,21 @@ open class ViewerActivity : AppCompatActivity() {
         }
 
         val detected = detect(ext, mime)
-        // A PDF bound for the simple view goes there once the file is found to be one it can be
-        // handed, and to the card saying pdf.js can't run here otherwise
-        if (detected == FileKind.PDF && pdfRouteHere() == PdfRoute.SIMPLE) {
-            return whetherWhole(uri) { whole -> show(if (whole) FileKind.PDF_SIMPLE else detected) }
+        if (detected == FileKind.PDF) {
+            // A PDF bound for the simple view goes there once the file is found to be one it can be
+            // handed, and to the card saying pdf.js can't run here otherwise
+            if (pdfRouteHere() == PdfRoute.SIMPLE) {
+                return whetherWhole(uri) { whole -> show(if (whole) FileKind.PDF_SIMPLE else detected) }
+            }
+            // The card's button for it is offered on the same terms, and needs the channel to ask over
+            if (canPortSearch() &&
+                pdfCardOffersSimple(engineHere(), webViewProviderIsLocked(), Build.VERSION.SDK_INT)
+            ) {
+                return whetherWhole(uri) { whole ->
+                    cardOffersSimple = whole
+                    show(detected)
+                }
+            }
         }
         if (!FileKind.isUnknown(detected, ext)) return show(detected)
         // A file of no known format that reads as text opens as text, with no card to tap
@@ -438,20 +452,19 @@ open class ViewerActivity : AppCompatActivity() {
         if (debuggable && intent.getBooleanExtra(EXTRA_SIMPLE_VIEW, false) &&
             PdfRenderClient.containedOn(Build.VERSION.SDK_INT)
         ) return PdfRoute.SIMPLE
-        return pdfRoute(
-            webViewChromiumMajor(runCatching { WebSettings.getDefaultUserAgent(this) }.getOrNull()),
-            webViewProviderIsLocked(),
-            Build.VERSION.SDK_INT,
-            simpleAsked,
-        )
+        return pdfRoute(engineHere(), webViewProviderIsLocked(), Build.VERSION.SDK_INT, simpleAsked)
     }
+
+    /** The engine's major version, as [pdfRouteHere] reads it before there is a WebView. */
+    private fun engineHere(): Int? =
+        webViewChromiumMajor(runCatching { WebSettings.getDefaultUserAgent(this) }.getOrNull())
 
     /**
      * Opens the PDF on show again in the simple view, when the reader asks for it on the card
      * saying pdf.js can't run here. Rebuilt rather than swapped in place, because the search,
      * night mode and print the viewer sets up around a page are decided by which view it is.
      */
-    internal fun askForSimpleView() {
+    private fun askForSimpleView() {
         simpleAsked = true
         recreate()
     }
@@ -1547,6 +1560,8 @@ open class ViewerActivity : AppCompatActivity() {
                             bookReflows = said.on
                             applyTextSize()
                         }
+                        // Only the card that has the button may ask
+                        PortMessage.SimpleView -> if (kind == FileKind.PDF && cardOffersSimple) askForSimpleView()
                         // Anything else came from the document rather than from
                         // the renderer, and is dropped without a word.
                         null -> Unit
@@ -2125,7 +2140,8 @@ open class ViewerActivity : AppCompatActivity() {
                         (if (kind == FileKind.EPUB) "&type=$phoneTextZoom" else "") +
                         // The room to leave at the top for the title bar floating over it
                         (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
-                        floor
+                        floor +
+                        (if (cardOffersSimple) "&simple=1" else "")
                 )
             }
         }

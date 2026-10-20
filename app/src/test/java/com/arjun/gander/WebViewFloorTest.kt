@@ -294,5 +294,21 @@ class WebViewFloorTest {
             assertThat(pdfRoute(110, locked = false, sdk, asked = true)).isEqualTo(PdfRoute.CARD)
         }
     }
+
+    /** The card's button for the simple view shows exactly where asking would take a PDF there. */
+    @Test
+    fun theCardOffersTheSimpleViewOnlyWhereAskingWouldTakeAPdfThere() {
+        // An engine an update would raise, on Android 9 and later
+        assertThat(pdfCardOffersSimple(110, locked = false, sdk = 36)).isTrue()
+        assertThat(pdfCardOffersSimple(PDFJS_MIN_CHROMIUM_MAJOR - 1, locked = false, sdk = 28)).isTrue()
+        // pdf.js runs, so there is no card
+        assertThat(pdfCardOffersSimple(PDFJS_MIN_CHROMIUM_MAJOR, locked = false, sdk = 36)).isFalse()
+        assertThat(pdfCardOffersSimple(null, locked = false, sdk = 36)).isFalse()
+        // A locked provider goes there without asking
+        assertThat(pdfCardOffersSimple(114, locked = true, sdk = 36)).isFalse()
+        assertThat(pdfCardOffersSimple(null, locked = true, sdk = 29)).isFalse()
+        // Android 8 never does
+        for (sdk in listOf(26, 27)) assertThat(pdfCardOffersSimple(110, locked = false, sdk)).isFalse()
+    }
 }
 

@@ -405,6 +405,64 @@ def test_a_current_engine_is_left_alone(viewer, page):
 
 
 # ---------------------------------------------------------------------------
+# The card's button for the simple view, which Kotlin offers and the channel carries
+# ---------------------------------------------------------------------------
+
+def test_the_card_offers_the_simple_view_where_kotlin_says_it_can(viewer, page, port):
+    """
+    The card still says to update, which brings back search and selection. The button asks
+    up the channel once, since the viewer is rebuilt to show the simple view.
+    """
+    viewer("pdf.html", "six-pages.pdf", webview=110, needs=125, simple=1)
+    page.wait_for_selector(".vw-simple-btn", timeout=15000)
+    assert "updating android system webview" in status_text(page).lower()
+    channel = port()
+    page.wait_for_timeout(300)
+    assert "simple" not in channel.messages()
+
+    page.click(".vw-simple-btn")
+    channel.wait_for("simple")
+    # A second tap sends nothing
+    page.evaluate("() => document.querySelector('.vw-simple-btn').click()")
+    page.wait_for_timeout(300)
+    assert channel.messages().count("simple") == 1
+
+
+def test_a_tap_before_the_channel_arrives_is_sent_once_it_does(viewer, page, port):
+    viewer("pdf.html", "six-pages.pdf", webview=110, needs=125, simple=1)
+    page.click(".vw-simple-btn")
+    channel = port()
+    channel.wait_for("simple")
+    page.wait_for_timeout(300)
+    assert channel.messages().count("simple") == 1
+
+
+def test_the_simple_view_is_offered_only_where_kotlin_says(viewer, page):
+    viewer("pdf.html", "six-pages.pdf", webview=110, needs=125)
+    page.wait_for_selector(".vw-error", timeout=15000)
+    assert page.locator(".vw-simple-btn").count() == 0
+
+    viewer("pdf.html", "six-pages.pdf", simple=1)
+    wait_for_pdf(page)
+    assert page.locator(".vw-simple-btn").count() == 0
+
+
+def test_the_button_is_a_full_size_target_and_turns_over_at_night(viewer, page):
+    """
+    48 dp by the --vw-zoom the card uses, since the page is laid out at 980 px and shrunk
+    to the phone. At night it takes the card's ink, where the accent would hardly show.
+    """
+    viewer("pdf.html", "six-pages.pdf", webview=110, needs=125, simple=1)
+    button = page.wait_for_selector(".vw-simple-btn", timeout=15000)
+    assert button.bounding_box()["height"] >= 48 * 2.75
+    day = button.evaluate("b => getComputedStyle(b).backgroundColor")
+
+    viewer("pdf.html", "six-pages.pdf", webview=110, needs=125, simple=1, night=1)
+    button = page.wait_for_selector(".vw-simple-btn", timeout=15000)
+    assert button.evaluate("b => getComputedStyle(b).backgroundColor") != day
+
+
+# ---------------------------------------------------------------------------
 # Page virtualisation: the 1.12 memory rework
 # ---------------------------------------------------------------------------
 

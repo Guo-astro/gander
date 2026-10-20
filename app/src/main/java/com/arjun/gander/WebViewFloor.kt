@@ -213,3 +213,12 @@ internal fun pdfRoute(major: Int?, locked: Boolean, sdk: Int, asked: Boolean): P
     locked || asked -> PdfRoute.SIMPLE
     else -> PdfRoute.CARD
 }
+
+/**
+ * Whether the card a PDF gets on a WebView of [major], from a provider that is [locked] or not, on
+ * Android [sdk], offers the simple view. Read off [pdfRoute], so the button shows exactly where
+ * asking would take the PDF there.
+ */
+internal fun pdfCardOffersSimple(major: Int?, locked: Boolean, sdk: Int): Boolean =
+    pdfRoute(major, locked, sdk, asked = false) == PdfRoute.CARD &&
+        pdfRoute(major, locked, sdk, asked = true) == PdfRoute.SIMPLE

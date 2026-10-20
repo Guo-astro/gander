@@ -16,6 +16,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -339,9 +340,29 @@ class ViewerActivityTest {
         assertThat(viewer.serve("/doc/file.pdf")?.statusCode).isEqualTo(404)
     }
 
+    /** Something the page says up the channel, which it is handed once it has loaded. */
+    private fun ActivityController<ViewerActivity>.pageSays(message: String) {
+        val web = webView()!!
+        if (shadowOf(web).createdPorts.isEmpty()) web.webViewClient.onPageFinished(web, loadedUrl())
+        val mine = shadowOf(web).createdPorts.single()[0]
+        mine.webMessageCallback.onMessage(mine, WebMessage(message))
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    /** The page a rebuilt viewer settles on, once it has asked the provider on a thread of its own. */
+    private fun ActivityController<ViewerActivity>.pageOnceAsked(expected: String): String {
+        val deadline = System.currentTimeMillis() + 10_000
+        while (pageName() != expected && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        return pageName()
+    }
+
     /**
-     * A WebView an update would raise keeps the card, which says to update it, until the reader
-     * asks there for the simple view. The viewer is rebuilt to show it, and the ask survives that.
+     * A WebView an update would raise keeps the card, which says to update it, and has a button
+     * for the simple view. The tap there comes up the channel, the viewer is rebuilt to show it,
+     * and the ask survives that.
      */
     @Test
     fun aPdfOnAWebViewAnUpdateWouldRaiseKeepsTheCardUntilTheReaderAsks() {
@@ -352,15 +373,52 @@ class ViewerActivityTest {
             assertThat(viewer.pageName()).isEqualTo("pdf.html")
             assertThat(viewer.loadedUrl()).contains("&webview=114&needs=125")
             assertThat(viewer.loadedUrl()).doesNotContain("locked")
+            assertThat(viewer.loadedUrl()).contains("&simple=1")
 
-            viewer.get().askForSimpleView()
-            // The rebuilt viewer asks the provider about the file on a thread of its own
-            val deadline = System.currentTimeMillis() + 10_000
-            while (viewer.pageName() != "pdfsimple.html" && System.currentTimeMillis() < deadline) {
-                Thread.sleep(20)
-                shadowOf(Looper.getMainLooper()).idle()
-            }
-            assertThat(viewer.pageName()).isEqualTo("pdfsimple.html")
+            viewer.pageSays("simple")
+            assertThat(viewer.pageOnceAsked("pdfsimple.html")).isEqualTo("pdfsimple.html")
+        }
+    }
+
+    /** No button for a file the renderer can't be handed, and a page asking anyway isn't heard. */
+    @Test
+    fun theCardHasNoSimpleViewForAFileTheRendererCantBeHanded() {
+        oldWebView()
+        handingOver(false) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.loadedUrl()).contains("&webview=114&needs=125")
+            assertThat(viewer.loadedUrl()).doesNotContain("&simple=")
+            val before = viewer.get()
+            viewer.pageSays("simple")
+            assertThat(viewer.get()).isSameInstanceAs(before)
+        }
+    }
+
+    /** Nor for a PDF inside a zip, which is never a file of its own. */
+    @Test
+    fun theCardHasNoSimpleViewForAPdfInsideAZip() {
+        oldWebView()
+        for (stored in listOf(true, false)) {
+            val intent = Intent()
+                .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
+                .setData(pdfInAZip(stored))
+            val viewer = handingOver(true) { start(intent) }
+            assertThat(viewer.loadedUrl()).contains("&webview=114&needs=125")
+            assertThat("stored $stored: ${viewer.loadedUrl()}").doesNotContain("&simple=")
+        }
+    }
+
+    /** Where pdf.js runs there is no card, and a page asking for the simple view isn't heard. */
+    @Test
+    fun aPdfWherePdfJsRunsCantBeAskedIntoTheSimpleView() {
+        renderersStandIn()
+        handingOver(true) {
+            val viewer = open("six-pages.pdf")
+            assertThat(viewer.loadedUrl()).doesNotContain("&needs=")
+            assertThat(viewer.loadedUrl()).doesNotContain("&simple=")
+            val before = viewer.get()
+            viewer.pageSays("simple")
+            assertThat(viewer.get()).isSameInstanceAs(before)
         }
     }
 

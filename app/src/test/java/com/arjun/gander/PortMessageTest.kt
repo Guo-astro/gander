@@ -129,6 +129,24 @@ class PortMessageTest {
     }
 
     // ---------------------------------------------------------------
+    // Inbound: the card's button for the simple view
+    // ---------------------------------------------------------------
+
+    @Test
+    fun theAskForTheSimpleViewIsRead() {
+        assertThat(parsePortMessage("simple")).isEqualTo(PortMessage.SimpleView)
+    }
+
+    /** One exact word, as "locked" is. */
+    @Test
+    fun onlyTheExactWordAsksForTheSimpleView() {
+        assertThat(parsePortMessage("Simple")).isNull()
+        assertThat(parsePortMessage("simple ")).isNull()
+        assertThat(parsePortMessage("simpler")).isNull()
+        assertThat(parsePortMessage("simple 1 0")).isNull()
+    }
+
+    // ---------------------------------------------------------------
     // Inbound: a book's place, what is open over it, and whether it reflows
     // ---------------------------------------------------------------
 

@@ -98,6 +98,9 @@ internal sealed interface PortMessage {
      * reader's text size. A page of a fixed size does not: see [ViewerActivity.applyTextSize].
      */
     data class Reflows(val on: Boolean) : PortMessage
+
+    /** The reader asked on the card for the PDF's simple view. See [ViewerActivity.askForSimpleView]. */
+    data object SimpleView : PortMessage
 }
 
 /**
@@ -116,6 +119,7 @@ internal fun parsePortMessage(data: String?): PortMessage? {
         "cover 0" -> return PortMessage.Covered(false)
         "reflow 1" -> return PortMessage.Reflows(true)
         "reflow 0" -> return PortMessage.Reflows(false)
+        "simple" -> return PortMessage.SimpleView
     }
     val said = data?.split(" ") ?: return null
     if (said.size != 3) return null

@@ -131,6 +131,7 @@
   html.vw-night .vw-status.vw-error { background: #8C1D18; color: #F9DEDC; }
   html.vw-night .vw-ask-input { background: #17130A; color: #E7E2D9; border-color: #6B6250; }
   html.vw-night .vw-ask-alert { color: #F9DEDC; }
+  html.vw-night .vw-simple-btn { background: #F9DEDC; color: #8C1D18; }
 
   /* Holds the filter and nothing else. Copied from how pdf.js hides the filters its
      own high-contrast mode builds, because that is the same engine resolving the same
@@ -482,6 +483,38 @@
     /* The brand accent, like every other primary action in the app. */
     background: #AF2D18;
     color: #fff;
+  }
+
+  /* The card's button for the simple view, with plain px first because only old engines see it.
+     At night it takes the card's ink, since the accent hardly shows on the dark red card. */
+  .vw-simple-btn {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    margin-top: calc(14px * var(--vw-zoom));
+    font: inherit;
+    font-weight: 500;
+    box-sizing: border-box;
+    min-height: 48px;
+    min-height: calc(48px * var(--vw-zoom));
+    padding: 0 16px;
+    padding: 0 calc(16px * var(--vw-zoom));
+    border: 0;
+    border-radius: 6px;
+    border-radius: calc(6px * var(--vw-zoom));
+    background: #AF2D18;
+    color: #fff;
+  }
+  .vw-simple-btn:disabled { opacity: 0.6; }
+  .vw-simple-caveat {
+    margin-top: 8px;
+    margin-top: calc(8px * var(--vw-zoom));
+    font-size: 13px;
+    font-size: calc(13px * var(--vw-zoom));
+    opacity: 0.85;
+  }
+  @media (prefers-color-scheme: dark) {
+    .vw-simple-btn { background: #F9DEDC; color: #8C1D18; }
   }
 </style>
 </head>
