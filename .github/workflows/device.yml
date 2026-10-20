@@ -69,7 +69,7 @@ jobs:
       - name: Instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          # google_apis rather than the Play Store image: PDFs need the
+          # google_apis rather than the Play Store image: pdf.js needs the
           # WebView at Chromium 125 or newer, and this image ships far past
           # that. The Play Store image is only needed if that ever stops being
           # true, and the first step below prints the version so it can be
@@ -94,6 +94,59 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gander-device-test-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          retention-days: 14
+
+  # The simple view's card, which only a WebView below pdf.js's floor shows, so only
+  # PdfSimpleDeviceTest runs here. Revision 17 of this image carries WebView 109, read
+  # from its product partition on 2026-10-20, and with no Play Store it never updates.
+  # subFloor=required makes the card's test fail rather than skip if a later revision
+  # ships one at 125 or newer. Not snapshotted: three tests don't repay 2 GB of cache.
+  sub-floor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Simple view tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 6000M
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb shell am wait-for-broadcast-idle
+            adb shell input keyevent 82
+            echo "WebView on this image:"
+            adb shell dumpsys webviewupdate | grep -i "current webview package" || true
+            ./gradlew connectedDebugAndroidTest --no-daemon -Pandroid.testInstrumentationRunnerArguments.class=com.arjun.gander.PdfSimpleDeviceTest -Pandroid.testInstrumentationRunnerArguments.subFloor=required
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gander-sub-floor-test-reports
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/

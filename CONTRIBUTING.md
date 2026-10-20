@@ -42,10 +42,15 @@ scripts/test-viewer-visual.sh --update-goldens   # after a deliberate change
 ```
 
 Device tests exist too, and run nightly rather than per pull request. They
-need an emulator whose WebView is Chromium 125 or newer:
+need an emulator whose WebView is Chromium 125 or newer. The one test of the
+card's simple view button needs a WebView below 125 and skips anywhere else;
+`device.yml` runs `PdfSimpleDeviceTest` on its own on an API 33 image for it:
 
 ```sh
 ./gradlew connectedDebugAndroidTest
+# on an emulator whose WebView is below 125
+./gradlew connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.arjun.gander.PdfSimpleDeviceTest
 ```
 
 Fixtures are generated, not hand-made. If you need a new one, add it to

@@ -1,6 +1,7 @@
 package com.arjun.gander
 
 import android.app.ActivityManager
+import android.os.Build
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
@@ -11,6 +12,7 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.common.truth.Truth.assertThat
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -46,6 +48,19 @@ class PrintDeviceTest {
     fun aPdfGoesToThePrintScreen() {
         open("six-pages.pdf").use { scenario ->
             WebViewProbe.await(scenario, "document.querySelector('#pages .pg canvas')", "the first page")
+            tapPrint()
+            assertThat(awaitTop { it == PRINT_SCREEN }).isEqualTo(PRINT_SCREEN)
+        }
+    }
+
+    /** The simple view prints the file itself, as pdf.js's page does: see PrintRoute.FILE. */
+    @Test
+    fun aPdfInTheSimpleViewGoesToThePrintScreen() {
+        assumeTrue(PdfRenderClient.containedOn(Build.VERSION.SDK_INT))
+        val simple = DeviceFixtures.viewIntent("six-pages.pdf")
+            .putExtra(ViewerActivity.EXTRA_SIMPLE_VIEW, true)
+        ActivityScenario.launch<ViewerActivity>(simple).use { scenario ->
+            WebViewProbe.await(scenario, "document.querySelector('#pages .pg > img')", "the first page")
             tapPrint()
             assertThat(awaitTop { it == PRINT_SCREEN }).isEqualTo(PRINT_SCREEN)
         }
