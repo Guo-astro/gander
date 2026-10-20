@@ -88,6 +88,7 @@ class Simple:
     error: str = None
     broken: set = field(default_factory=set)   # pages, one based, the renderer can't draw
     delay: float = 0.0                          # how long each page takes to draw, in seconds
+    gate: threading.Event = None                # if given, sizes are answered once it is set
     drawing: int = 0                            # pages being drawn now
     most: int = 0                               # the most ever drawn at once
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -197,6 +198,8 @@ class ViewerServer:
                     if first is None or last is None or first < 1 or last < first \
                             or last > simple.count or last - first >= 16:
                         return self._send(*nothing)
+                    if simple.gate is not None:
+                        simple.gate.wait(15)
                     return self._json({"sizes": [list(simple.size(n)) for n in range(first, last + 1)]})
                 if path != "/render/page":
                     return self._send(*nothing)

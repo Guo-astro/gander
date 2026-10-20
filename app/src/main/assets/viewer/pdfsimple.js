@@ -43,10 +43,18 @@
 
   /*
    * The tallest a column of pages may be, in CSS px. Chromium lays nothing out past about 33.5
-   * million, so a document longer than this shows its first pages and says so. A renderer can
-   * believe a PDF has a million pages, which is why the pages are laid out lazily at all.
+   * million px, counted in device pixels on a screen with several to a CSS px, as a phone's has,
+   * so the ceiling in CSS px comes down with the pixel ratio. A document longer than this shows
+   * its first pages and says so. A renderer can believe a PDF has a million pages, which is why
+   * the pages are laid out lazily at all.
    */
-  var MAX_COLUMN = 25e6;
+  var MAX_COLUMN = 25e6 / Math.max(1, window.devicePixelRatio || 1);
+
+  /*
+   * Whether app.css's scroll-padding-top keeps a page brought into view out from under the title
+   * bar. Chromium has it from 69, and this page is for engines as old as 66: see place().
+   */
+  var PADDED = !!(window.CSS && CSS.supports && CSS.supports("scroll-padding-top", "0px"));
 
   /* The shapes a page may take, height over width, for laying it out. */
   var MIN_RATIO = 0.02;
@@ -118,7 +126,11 @@
     return lo;
   }
 
-  /* Gives page i its own shape, r. True if that moved anything. */
+  /*
+   * Gives page i its own shape, r, and its box too if it is laid out: lay() keeps the boxes it
+   * has, so one laid out before a jump learnt its shape would otherwise keep the old one. True
+   * if that moved anything.
+   */
   function shape(i, r) {
     sized[i] = true;
     r = Math.min(MAX_RATIO, Math.max(MIN_RATIO, r));
@@ -132,6 +144,8 @@
       sums.splice(at, 0, 0);
     }
     for (var k = at; k < known.length; k++) sums[k] = (k ? sums[k - 1] : 0) + deltas[k];
+    var s = slotOf(i);
+    if (s) s.box.style.height = heightOf(i) + "px";
     return true;
   }
 
@@ -301,10 +315,7 @@
   function landed(s, img, mode) {
     /* Drawn the other way round from what is wanted now: pump() asks again */
     if (mode !== night && s.img) return;
-    if (img.naturalWidth > 0 && shape(s.n, img.naturalHeight / img.naturalWidth)) {
-      s.box.style.height = heightOf(s.n) + "px";
-      spacers();
-    }
+    if (img.naturalWidth > 0 && shape(s.n, img.naturalHeight / img.naturalWidth)) spacers();
     if (s.img) s.box.replaceChild(img, s.img); else s.box.appendChild(img);
     s.img = img;
     s.mode = mode;
@@ -370,9 +381,18 @@
     return pageAt(v.top + v.height / 2 - columnTop()) + 1;
   }
 
-  /* The sizes of pages a to b not yet known, asked of Gander. Never fails: a page it can't size
-     keeps the shape it has. */
-  function sizes(a, b) {
+  /*
+   * Jumps asked for, counted, so that only the last one lands: the sizes one waits for can come
+   * after a later one's that needed none.
+   */
+  var jumps = 0;
+
+  /*
+   * The sizes of pages a to b not yet known, asked of Gander for a jump. Never fails: a page it
+   * can't size keeps the shape it has. Sizes that come for a jump a later one has overtaken are
+   * dropped: that jump lays nothing out, so nothing would bring the spacers into line with them.
+   */
+  function sizes(a, b, jump) {
     var from = a, to = b;
     while (from <= to && sized[from]) from++;
     while (to >= from && sized[to]) to--;
@@ -381,7 +401,7 @@
       return r.ok ? r.json() : null;
     }).then(function (said) {
       var all = said && said.sizes;
-      if (!all) return;
+      if (!all || jump !== jumps) return;
       for (var k = 0; k < all.length && from + k <= to; k++) {
         var wh = all[k];
         if (wh && wh[0] > 0 && wh[1] > 0) shape(from + k, wh[1] / wh[0]);
@@ -391,14 +411,25 @@
 
   /*
    * Puts page i on screen where the readout will name it, with it and the page before at their own
-   * shapes first: pdf.mjs's place() and bringIntoView(), which say why both.
+   * shapes first: pdf.mjs's place() and bringIntoView(), which say why both. Where the engine has
+   * no scroll-padding, it is put where scroll-padding-top would have scrollIntoView put it: at the
+   * top below the title bar's room, or in the middle of the screen below it.
    */
   function place(i) {
-    return sizes(Math.max(0, i - 1), i).then(function () {
+    var jump = ++jumps;
+    return sizes(Math.max(0, i - 1), i, jump).then(function () {
+      if (jump !== jumps) return;
       lay(Math.max(0, i - KEEP_PAGES), Math.min(count - 1, i + KEEP_PAGES));
       var s = slotOf(i);
       var shortPage = heightOf(i) <= view().height / 2;
-      s.box.scrollIntoView({ block: shortPage ? "center" : "start" });
+      if (PADDED) {
+        s.box.scrollIntoView({ block: shortPage ? "center" : "start" });
+      } else {
+        var room = vwTopPx, y = s.box.getBoundingClientRect().top + window.pageYOffset;
+        window.scrollTo(0, shortPage
+          ? y + heightOf(i) / 2 - (room + (view().height - room) / 2)
+          : y - room);
+      }
       askedFor = { n: i + 1, top: view().top };
     });
   }
