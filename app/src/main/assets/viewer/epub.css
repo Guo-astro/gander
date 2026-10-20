@@ -87,10 +87,11 @@ body { font-family: sans-serif; }
 .epub-turn button[disabled] { color: var(--epub-quiet); opacity: 0.5; }
 
 /* Half the strip each, since Next is tapped at the foot of every chapter and of every page
-   of a comic: the word stays in its corner and the whole of its side takes the tap */
+   of a comic: the word stays in its corner and the whole of its side takes the tap. The
+   strip goes the way the book does, so in a book read right to left Next is on the left */
 .epub-turn button { flex: 1; }
-#epub-prev { text-align: left; }
-#epub-next { text-align: right; }
+#epub-prev { text-align: start; }
+#epub-next { text-align: end; }
 
 .epub-where {
   min-width: 0;
@@ -175,7 +176,7 @@ body { font-family: sans-serif; }
   box-sizing: border-box;
   width: 100%;
   padding: 12px;
-  text-align: left;
+  text-align: start;
   font-size: 15px;
   font-size: calc(15px * var(--epub-own, 1));
   line-height: 1.35;

@@ -212,9 +212,11 @@ var vwEpub = (function () {
   var spine = [];
   /* A chapter's place in the spine, by path */
   var index = bag();
-  /* The contents list: { label, depth, at, frag }, at being -1 for a heading that goes nowhere */
+  /* The contents list: { label, depth, at, frag }, label a caption (see captionOf) and at
+     being -1 for a heading that goes nowhere */
   var contents = [];
-  var bookTitle = "";
+  /* A caption too, or null */
+  var bookTitle = null;
   var total = 0;
 
   var shown = -1;
@@ -510,6 +512,18 @@ var vwEpub = (function () {
     return type === "application/xhtml+xml" || type === "image/svg+xml";
   }
 
+  /*
+   * Whether a language tag is for writing that runs right to left: by its script where it
+   * names one, as Punjabi in Arabic letters does, or else by the language. Chinese and
+   * Japanese are left out, since Gander lays their columns out in rows read left to right.
+   */
+  function writtenRightToLeft(tag) {
+    var m = /^([a-z]{2,3})(?:[-_]([a-z]{4}))?(?:[-_]|$)/i.exec(tag || "");
+    if (!m) return false;
+    if (m[2]) return /^(adlm|arab|hebr|nkoo|rohg|syrc|thaa)$/i.test(m[2]);
+    return /^(ar|ckb|dv|fa|he|ks|ps|sd|ug|ur|yi)$/i.test(m[1]);
+  }
+
   function readPackage(doc, path) {
     var byId = bag();
     var insteadOf = bag();
@@ -574,9 +588,6 @@ var vwEpub = (function () {
     }
     if (!spine.length) throw new Error("The book lists no chapters.");
 
-    var named = all(doc, "title")[0];
-    bookTitle = named ? clean(named.textContent) : "";
-
     // The identifier the package calls its own, or failing that its first
     var own = doc.documentElement.getAttribute("unique-identifier");
     var ids = all(doc, "identifier");
@@ -591,8 +602,14 @@ var vwEpub = (function () {
     }
     var tongue = all(doc, "language")[0];
     if (tongue && clean(tongue.textContent)) host.lang = clean(tongue.textContent);
+    // After the language, which the title takes where the package names none
+    bookTitle = captionOf(all(doc, "title")[0]);
 
     var spineEl = all(doc, "spine")[0];
+    var goes = spineEl ? clean(spineEl.getAttribute("page-progression-direction")).toLowerCase() : "";
+    // A book that doesn't say, as an EPUB 2 one never can, goes the way its language is
+    // written, as Readium takes it
+    turnBar.dir = goes === "rtl" || (goes !== "ltr" && writtenRightToLeft(host.lang)) ? "rtl" : "ltr";
     var declared = spineEl && byId[spineEl.getAttribute("toc")];
     return { nav: nav, ncx: declared || ncx };
   }
@@ -601,10 +618,46 @@ var vwEpub = (function () {
   // The contents list, from the newer kind of book's nav file or the older kind's NCX
   // ---------------------------------------------------------------------------------------
 
-  function listed(label, depth, base, href) {
+  /*
+   * A label's words, and the direction and language the book gives them, as { text, dir,
+   * lang }: never its markup or styles, which would reach the page's own parts.
+   */
+  function captionOf(el) {
+    var out = { text: el ? clean(el.textContent) : "", dir: "", lang: null };
+    for (; el; el = el.parentElement) {
+      var dir = (el.getAttribute("dir") || "").trim().toLowerCase();
+      if (!out.dir && /^(ltr|rtl|auto)$/.test(dir)) out.dir = el.vwDir || dir;
+      if (out.dir === "auto") {
+        var source = el.cloneNode(true);
+        var skip = source.querySelectorAll("bdi, script, style, textarea, [dir=ltr i], [dir=rtl i], [dir=auto i]");
+        for (var i = 0; i < skip.length; i++) skip[i].remove();
+        var probe = document.createElement("bdi");
+        probe.hidden = true;
+        probe.textContent = source.textContent;
+        document.body.appendChild(probe);
+        el.vwDir = out.dir = getComputedStyle(probe).direction;
+        probe.remove();
+      }
+      if (out.lang === null) out.lang = el.hasAttribute("lang") ? el.getAttribute("lang") : el.getAttribute("xml:lang");
+    }
+    // A label that names no language is in the book's, as a chapter is
+    return { text: out.text, dir: out.dir || "auto", lang: out.lang === null ? host.lang : out.lang };
+  }
+
+  /* Puts a caption on one of the page's own parts, or clears it */
+  function putCaption(el, c) {
+    el.textContent = c ? c.text : "";
+    el.dir = c ? c.dir : "auto";
+    el.lang = c ? c.lang : "";
+  }
+
+  function listed(el, depth, base, href, out) {
+    var label = captionOf(el);
+    if (!label.text && /^(a|span)$/.test(local(el))) label.text = calledBy(el);
+    if (!label.text) return;
     var at = href ? resolve(base, href) : null;
     var place = at && index[at.path] !== undefined ? index[at.path] : -1;
-    return { label: label, depth: depth, at: place, frag: at && place >= 0 ? at.frag : "" };
+    out.push({ label: label, depth: depth, at: place, frag: at && place >= 0 ? at.frag : "" });
   }
 
   function navList(ol, depth, base, out) {
@@ -617,8 +670,7 @@ var vwEpub = (function () {
         if (name === "ol") under = c;
         else if (!named && (name === "a" || name === "span")) named = c;
       }
-      var label = named ? clean(named.textContent) || calledBy(named) : "";
-      if (label) out.push(listed(label, depth, base, named.getAttribute("href")));
+      if (named) listed(named, depth, base, named.getAttribute("href"), out);
       if (under) navList(under, depth + 1, base, out);
     }
   }
@@ -648,13 +700,13 @@ var vwEpub = (function () {
   function ncxPoints(parent, depth, base, out) {
     for (var c = parent.firstElementChild; c; c = c.nextElementSibling) {
       if (local(c) !== "navpoint") continue;
-      var label = "";
+      var label = null;
       var src = null;
       for (var k = c.firstElementChild; k; k = k.nextElementSibling) {
-        if (local(k) === "navlabel") label = clean(k.textContent);
+        if (local(k) === "navlabel") label = all(k, "text")[0] || k;
         else if (local(k) === "content") src = k.getAttribute("src");
       }
-      if (label) out.push(listed(label, depth, base, src));
+      if (label) listed(label, depth, base, src, out);
       ncxPoints(c, depth + 1, base, out);
     }
   }
@@ -679,7 +731,7 @@ var vwEpub = (function () {
       contents = found;
       if (contents.length) return;
       for (var i = 0; i < spine.length; i++) {
-        contents.push({ label: "Part " + (i + 1), depth: 0, at: i, frag: "" });
+        contents.push({ label: { text: "Part " + (i + 1), dir: "auto", lang: "" }, depth: 0, at: i, frag: "" });
       }
     });
   }
@@ -2250,9 +2302,10 @@ var vwEpub = (function () {
   // Putting a chapter on the page
   // ---------------------------------------------------------------------------------------
 
-  /* The name the contents give the chapter on the page, or the nearest one before it */
+  /* The name the contents give the chapter on the page, or the nearest one before it, as a
+     caption, or null */
   function nameOf(i) {
-    var best = "";
+    var best = null;
     var bestAt = -1;
     for (var k = 0; k < contents.length; k++) {
       var at = contents[k].at;
@@ -2314,7 +2367,7 @@ var vwEpub = (function () {
     page.appendChild(html);
     onPage = body;
 
-    where.textContent = nameOf(i);
+    putCaption(where, nameOf(i));
     prev.disabled = i <= 0;
     next.disabled = i >= spine.length - 1;
     if (!quiet) place(to);
@@ -2450,7 +2503,7 @@ var vwEpub = (function () {
   // ---------------------------------------------------------------------------------------
 
   function buildContents() {
-    document.getElementById("epub-title").textContent = bookTitle;
+    putCaption(document.getElementById("epub-title"), bookTitle);
     // An epic in two thousand short chapters lists every one, so the limit is well past that
     for (var i = 0; i < contents.length && i < 20000; i++) {
       var li = document.createElement("li");
@@ -2459,8 +2512,10 @@ var vwEpub = (function () {
         el.type = "button";
         el.setAttribute("data-n", i);
       }
-      el.textContent = contents[i].label;
-      el.style.paddingLeft = (12 + 16 * Math.min(contents[i].depth, 4)) + "px";
+      putCaption(el, contents[i].label);
+      // From the side the entry's words start on. The prefixed name, as WebView 66 has no
+      // padding-inline-start
+      el.style.webkitPaddingStart = (12 + 16 * Math.min(contents[i].depth, 4)) + "px";
       li.appendChild(el);
       list.appendChild(li);
     }
