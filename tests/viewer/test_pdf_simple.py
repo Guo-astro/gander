@@ -59,6 +59,14 @@ def top_of(page, n):
         "(n) => document.querySelector(`img[alt=\"Page ${n}\"]`).getBoundingClientRect().top", n)
 
 
+def frames(page, count=2):
+    """Waits for [count] frames, by which a scroll has been heard and what it sets off has run."""
+    page.evaluate("""(count) => new Promise((done) => {
+      const next = (left) => left ? requestAnimationFrame(() => next(left - 1)) : done();
+      next(count);
+    })""", count)
+
+
 def until(check, what, timeout=15.0):
     """Waits for [check], asked of the server's side, to come true."""
     deadline = time.time() + timeout
@@ -84,6 +92,7 @@ def test_a_long_document_stands_at_its_full_height_with_only_the_pages_near_the_
 
 def test_pages_come_and_go_as_the_reader_scrolls_and_nothing_on_screen_moves(page, server):
     opened(page, server, [A4] * 300)
+    pitch = layout(page)["width"] * 842 / 595 + 8
     page.evaluate("() => window.scrollTo(0, 100 * 1395)")
     drawn(page, 101)
     before = top_of(page, 101)
@@ -91,10 +100,20 @@ def test_pages_come_and_go_as_the_reader_scrolls_and_nothing_on_screen_moves(pag
     assert lay["boxes"] <= 2 * 5 + 2
     # Page 1 is long gone, and its column is the same height without it
     assert page.evaluate("() => document.querySelector('img[alt=\"Page 1\"]')") is None
-    assert lay["inner"] == pytest.approx(300 * (lay["width"] * 842 / 595 + 8), abs=2)
-    page.evaluate("() => window.scrollBy(0, 600)")
-    page.wait_for_timeout(300)
-    assert top_of(page, 101) == pytest.approx(before - 600, abs=1)
+    assert lay["inner"] == pytest.approx(300 * pitch, abs=2)
+
+    # Over two pages further, which takes the pages at the top of those laid out away and lays out
+    # more below. The spacers stand in for them, so neither the page on screen nor where the reader
+    # is moves. Both are checked, since scroll anchoring would hide a wrong spacer by moving the
+    # reader to keep the page still.
+    above = "() => document.getElementById('pages').firstElementChild.getBoundingClientRect().height"
+    spacer, y = page.evaluate(above), page.evaluate("() => scrollY")
+    page.evaluate("() => window.scrollBy(0, 3000)")
+    frames(page)
+    assert page.evaluate(above) > spacer + pitch, "no page went from the top of those laid out"
+    assert page.evaluate("() => scrollY") == pytest.approx(y + 3000, abs=1)
+    assert top_of(page, 101) == pytest.approx(before - 3000, abs=1)
+    assert layout(page)["inner"] == pytest.approx(300 * pitch, abs=2)
 
 
 def test_a_page_of_another_shape_takes_its_own_once_its_picture_comes(page, server):
@@ -408,14 +427,26 @@ def test_a_resume_past_the_end_opens_at_the_top(page, server):
 def test_night_mode_asks_for_every_page_turned_over_and_back(page, server, port):
     opened(page, server, [A4] * 10, night=1)
     assert page.evaluate("() => document.documentElement.classList.contains('vw-night')")
+    page.wait_for_function("() => document.querySelectorAll('#pages .pg img').length === 5",
+                           timeout=15000)
     assert all(night for _, night in server.pages_asked())
+    # Each page drawn shows one picture or the other while it is turned, never none: looked at
+    # after every change to the pages, since the new pictures come one at a time
+    watched = page.evaluate("""() => {
+      const boxes = [...document.querySelectorAll('#pages .pg')].filter(b => b.querySelector('img'));
+      window.__vwBlank = [];
+      new MutationObserver(() => boxes.forEach((b, k) => {
+        if (b.querySelectorAll('img').length !== 1) window.__vwBlank.push(k + 1);
+      })).observe(document.getElementById('pages'), { childList: true, subtree: true });
+      return boxes.length;
+    }""")
+    assert watched == 5
     channel = port()
     channel.night_mode(False)
-    drawn(page, 1, night=False)
+    for n in range(1, watched + 1):
+        drawn(page, n, night=False)
     assert not page.evaluate("() => document.documentElement.classList.contains('vw-night')")
-    # Each page shows one picture or the other while it is turned, never none
-    assert page.evaluate("() => [...document.querySelectorAll('.pg')].slice(0, 2)"
-                         ".every(b => b.querySelectorAll('img').length === 1)")
+    assert page.evaluate("() => window.__vwBlank") == []
 
 
 def test_the_title_bar_has_room_at_the_top(page, server):
