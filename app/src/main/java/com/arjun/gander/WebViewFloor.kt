@@ -12,7 +12,7 @@ package com.arjun.gander
 /**
  * Chromium major version the vendored pdf.js needs. Mozilla puts the legacy
  * build's floor at Chrome 125, and `lib/pdf.min.mjs` is pdfjs-dist 6.3.289
- * legacy. Below it, `pdf.html` says so instead of loading the renderer.
+ * legacy. Below it, a PDF goes to the card or the simple view instead: see [pdfRoute].
  *
  * Read this before raising it alongside a pdf.js upgrade. Chromium 138 is the
  * last WebView that Android 8.0, 8.1 and 9.0 will ever receive, because 139
@@ -122,8 +122,9 @@ internal val CHROME_TOKEN = Regex("""Chrome/(\d+)""")
  * The card must not tell these users to update Android System WebView, since they
  * cannot. And for a PDF, a version we failed to read is old rather than unknown,
  * because no Huawei build reaches the pdf.js floor, so this is the one case where
- * an unreadable version blocks instead of being waved through. Nothing says the
- * same of the Word and Markdown floors, which are far lower.
+ * an unreadable version keeps a PDF from pdf.js, and sends it to the simple view,
+ * instead of being waved through. Nothing says the same of the Word and Markdown
+ * floors, which are far lower.
  */
 internal val LOCKED_WEBVIEW_PACKAGES = setOf("com.huawei.webview")
 

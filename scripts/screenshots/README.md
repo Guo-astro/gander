@@ -65,8 +65,8 @@ Willowmere, Harrowgate) were checked the same way.
 
 ## The emulator
 
-PDF rendering needs **Android System WebView 133 or newer**; the app refuses to
-draw PDFs below Chromium 125 and shows a card saying so. Stock API 28 and API 33
+PDF rendering needs **Android System WebView 133 or newer**; below Chromium 125
+the app shows a card or the simple view in place of pdf.js. Stock API 28 and API 33
 images are too old, and their WebView cannot be updated without signing into
 Play. Use a recent `google_apis_playstore` image:
 

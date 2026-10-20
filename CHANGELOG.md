@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- A PDF now opens on a phone whose WebView is too old for PDFs and can't be updated, such as a
+  Huawei phone without Google services, where Gander only said that PDFs would not work (#9,
+  thanks @sdiddssew, and #31, thanks @XZY123lol). Android's own PDF renderer draws the pages, in
+  a process walled off from your files and from Gander, and they are shown as pictures, with the
+  page readout, Go to page, night mode and Print, but without search, text selection or form
+  entries, and before Android 15 without highlights or comments. Where updating Android System
+  WebView would fix PDFs, the message still says so, and now has a button that opens this simple
+  view in the meantime. It needs Android 9 or later.
+- PDF thumbnails are drawn the same way, in a walled-off process, on every phone, so a PDF that
+  crashes Android's renderer no longer closes Gander. On Android 8, which can't keep that process
+  as far apart, PDFs show their badge instead of a thumbnail.
 - A slide with no background is drawn on white, as PowerPoint draws it, and so is a slide whose
   background Gander can't draw yet, such as a pattern (#53, thanks @PROTON-DARK, who sent the
   deck). Gander drew both see-through, so the grey behind them showed and dark text on them was

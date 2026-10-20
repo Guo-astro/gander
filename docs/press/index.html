@@ -309,7 +309,7 @@ html[data-play="live"] .when-pending{display:none}
       <tr><th scope="row" class="k">Price</th><td>Free. No in-app purchases, no subscription.</td></tr>
       <tr><th scope="row" class="k">Licence</th><td>MIT</td></tr>
       <tr><th scope="row" class="k">Download size</th><td>5,270,449 bytes for 2.0, so about 5 MB. One build for every processor, no native libraries.</td></tr>
-      <tr><th scope="row" class="k">Requires</th><td>Android 8.0 or newer (minSdk 26). PDF rendering needs Android System WebView 125 or newer, and the app says so plainly if yours is older.</td></tr>
+      <tr><th scope="row" class="k">Requires</th><td>Android 8.0 or newer (minSdk 26). Full PDF rendering needs Android System WebView 125 or newer. Below that, from Android 9, PDFs open in a simple view: pictures of the pages, without search or text selection.</td></tr>
       <tr><th scope="row" class="k">Developer</th><td>Arjun Maniyani, working alone, in India</td></tr>
       <tr><th scope="row" class="k">First release</th><td>19 July 2026. Twenty releases to date.</td></tr>
       <tr><th scope="row" class="k">Reach</th><td>13,879 APK downloads and 1,093 GitHub stars <span class="asof">(read 29 Sep 2026)</span>. Its <a href="https://news.ycombinator.com/item?id=49119425">Show HN</a> reached the Hacker News front page on 31 July 2026, with 211 points.</td></tr>
@@ -528,6 +528,10 @@ html[data-play="live"] .when-pending{display:none}
   locked-down WebView through <code>WebViewAssetLoader</code>, which streams the opened document
   over a virtual <code>https://</code> host that resolves inside the process and never reaches a
   network stack.</p>
+  <p>The one exception is the simple view, for PDFs on a WebView too old for pdf.js. There
+  Android's own <code>PdfRenderer</code> draws each page in an isolated process, which runs under
+  a user ID of its own with none of Gander's access and is handed only the file being read. The
+  pages come back as pictures, shown in the same WebView.</p>
   <p>Because nothing is ever fetched, the app needs no <code>INTERNET</code> permission. Because
   files arrive through the system picker, an Open-with intent or a folder granted once, it needs no
   storage permission either. There is no <code>addJavascriptInterface</code> bridge, just an HTML5
@@ -628,9 +632,9 @@ CA:7C:15:9F:22:A7:E2:4B</span>
       is both faithful and small enough to bundle. Binary <code>.xls</code> and <code>.doc</code>
       do open.</li>
     <li>Complex PowerPoint decks render approximately, and spreadsheet charts are not drawn.</li>
-    <li>PDF rendering needs Android System WebView 125 or newer. On Android 8 and 9 the last
-      WebView those devices will receive is Chromium 138, so this is a real ceiling rather than a
-      temporary one.</li>
+    <li>On a WebView older than 125, PDFs open in a simple view, as pictures of their pages
+      without search or text selection. Android 8 has no simple view, so there Gander asks for a
+      WebView update instead.</li>
     <li>It is not on F-Droid yet. The renderers are vendored as minified upstream builds, which
       F-Droid will not accept, and un-minifying or building them from source is the outstanding
       work.</li>

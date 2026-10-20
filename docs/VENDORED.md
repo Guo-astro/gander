@@ -176,8 +176,11 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   set that floor in PR 21152, the same number the FAQ gave for 5.7.284. That
   number is `PDFJS_MIN_CHROMIUM_MAJOR` in
   `app/src/main/java/com/arjun/gander/WebViewFloor.kt`, compared against the
-  WebView actually in use. Below it, `pdf.html` shows a card explaining that
-  Android System WebView needs updating instead of loading the renderer.
+  WebView actually in use. Below it, `pdfRoute` in the same file sends a PDF to
+  the simple view, drawn by Android's own `PdfRenderer` in an isolated process,
+  where the WebView can't be updated. Elsewhere `pdf.html` shows a card explaining
+  that Android System WebView needs updating, with a button for the simple view
+  from Android 9, instead of loading the renderer.
 - **Every viewer page runs under the Content Security Policy in `ViewerPolicy.kt`.**
   It allows no eval and no fetch off the page's own host, and allows WebAssembly,
   which the worker compiles for its JPEG 2000 and JBIG2 decoders and for every
@@ -189,9 +192,10 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
 - **Chromium 138 is the ceiling on Android 8.0, 8.1 and 9.0.** Chromium 139
   requires Android 10, so those releases will never receive a newer WebView, and
   minSdk here is 26. A pdf.js version needing more than 138 therefore does not
-  degrade on API 26 to 28, it ends PDF support there. Check the new version's
-  floor first: if it is above 138, this is a decision about dropping PDFs on
-  Android 8 and 9, not a version bump.
+  degrade on API 26 to 28, it ends pdf.js there: Android 9 would be left with the
+  simple view, and Android 8, which has none, with no PDFs at all. Check the new
+  version's floor first: if it is above 138, this is a decision about those phones,
+  not a version bump, and `pdfRoute` would have to treat them as locked.
 
 - **The text layer CSS in `pdf.html` is a contract, and it fails silently.** pdf.js
   writes only `left`, `top`, `font-family` and three custom properties on each span:
@@ -275,7 +279,9 @@ wording lives in `app.js`, called from `pdf-setup.js`, and reads both version
 numbers out of the query string, so it needs no edit. It also reads `locked`,
 which says the reader has no way to update the WebView and selects wording that
 does not ask them to; that flag is about the phone rather than about pdf.js, so
-a version bump does not affect it either.
+a version bump does not affect it either. The card's button for the simple view
+comes with `simple=1`, which `pdfCardOffersSimple` decides from the same floor,
+so it follows the constant too.
 
 Notes for packagers (F-Droid and friends): the minified files are unmodified
 upstream distribution artifacts. If unminified sources are required, every

@@ -34,6 +34,11 @@ Flaws in a bundled library such as pdf.js count when a file can reach them.
 Crashes and wrong rendering are normal issues. Bugs in Android System
 WebView itself belong with Chromium.
 
+Where pdf.js can't run, a PDF is drawn by Android's own PdfRenderer in an
+isolated process. A file that takes that process over has found a flaw in
+Android's PDFium, which belongs with Android. One that gets from there into
+Gander counts.
+
 ## Supported versions
 
 Fixes go into the next release. Older versions aren't patched.

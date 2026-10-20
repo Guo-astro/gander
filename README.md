@@ -67,7 +67,7 @@ It cannot phone home because it does not even hold the INTERNET permission.
 
 | Category | Formats | Renderer |
 | --- | --- | --- |
-| Documents | PDF | pdf.js, offline in a sandboxed WebView |
+| Documents | PDF | pdf.js, offline in a sandboxed WebView; on an older WebView, Android's own renderer in an isolated process |
 | | Word `.docx` `.docm` `.dotx` | docx-preview, offline in a sandboxed WebView |
 | | Word 97-2003 `.doc`, OpenDocument `.odt`, Rich Text `.rtf` | Gander's own readers, offline in a sandboxed WebView |
 | Books | EPUB `.epub`, without DRM | Gander's own reader, offline in a sandboxed WebView |
@@ -117,10 +117,17 @@ works.
 
 Runs on **Android 8.0 (API 26) and up**.
 
-Viewing PDFs also needs Android System WebView 125 or newer (May 2024), Markdown
-files 92 and Word documents 80. Any phone still receiving WebView updates is well
-past all three; if yours is not, Gander says so when you open the file rather than
-failing quietly.
+Some formats need a recent Android System WebView, the browser engine built into the
+phone: Word documents 80, Markdown files 92 and PDFs 125 (May 2024). Any phone still
+receiving WebView updates is well past all three; if yours is not, Gander says so when
+you open the file rather than failing quietly.
+
+Below 125, on Android 9 and later, PDFs can open in a simple view: pictures of the
+pages, drawn by Android's own PDF renderer in an isolated process, without search, text
+selection or form entries, and before Android 15 without highlights or comments. Where
+the WebView can't be updated, as on Huawei phones without Google services, PDFs open
+there directly; elsewhere the card asking for an update offers it. A PDF inside a zip,
+or handed over by another app as a stream, keeps the card.
 
 **From Google Play**, which keeps it updated:
 [Gander on Google Play](https://play.google.com/store/apps/details?id=com.arjun.gander&listing=github).
@@ -213,9 +220,13 @@ vendored JS libraries (`app/src/main/assets/viewer/`), PDF included, or a list
 (`ArchiveBrowser.kt`) for a `.zip`, whose entries `ArchiveProvider` serves back to
 those same surfaces without ever touching the disk. Documents
 under 16 MB are handed to the WebView whole; larger ones are served in ranges so
-only the pages being read are held in memory. The home screen (`MainActivity`) lists recents
+only the pages being read are held in memory. Where pdf.js can't run (`pdfRoute` in
+`WebViewFloor.kt`), a PDF's pages are drawn by the platform's `PdfRenderer` in an isolated
+process (`PdfRenderService`) and shown as pictures in that same WebView (`SimplePdf.kt`). The
+home screen (`MainActivity`) lists recents
 (persisted SAF grants) and granted folders (DocumentsContract child queries), with
-thumbnails generated off-thread and cached (`Thumbs.kt`).
+thumbnails generated off-thread and cached (`Thumbs.kt`), a PDF's by an isolated renderer of
+their own (`PdfThumbs.kt`).
 
 Vendored viewer libraries and their licenses: pdf.js (Apache-2.0), JSZip (MIT),
 docx-preview (Apache-2.0), SheetJS CE (Apache-2.0), PPTXjs + divs2slides (MIT),
