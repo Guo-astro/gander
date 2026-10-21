@@ -25,11 +25,13 @@ def test_lists_and_links_render(viewer, page):
     assert page.query_selector("#content a") is not None
 
 
-@pytest.mark.parametrize("heading,direction", [
-    ("ملاحظات القراءة", "rtl"),
-    ("Reading notes", "ltr"),
+@pytest.mark.parametrize("heading", [
+    "ملاحظات القراءة",
+    # The first letter is Latin, but most of the prose under it is Arabic.
+    "Reading notes",
 ])
-def test_prose_sets_direction_without_turning_code(viewer, page, made, port, heading, direction):
+def test_prose_sets_direction_without_turning_code(viewer, page, made, port, heading):
+    direction = "rtl"
     text = f'''```js
 const count = 1;
 ```
@@ -58,14 +60,59 @@ const count = 1;
     borders = page.locator("#content blockquote").evaluate(
         "el => [getComputedStyle(el).borderLeftWidth, getComputedStyle(el).borderRightWidth]"
     )
-    assert borders == (["0px", "4px"] if direction == "rtl" else ["4px", "0px"])
+    assert borders == ["0px", "4px"]
     channel = port()
     channel.query("العربية")
     channel.wait_for_count(1, 1)
 
 
+ARABIC_PROSE = "العربية من اليمين إلى اليسار، وهذا سطر آخر بالعربية.\n\nوهذه فقرة ثانية بالعربية أيضا.\n"
+
+
+@pytest.mark.parametrize("opening", [
+    "English | [العربية](README.ar.md) | [فارسی](README.fa.md)",
+    "# NewPipe",
+    "---\ntitle: Notes\nlayout: post\n---",
+])
+def test_arabic_prose_reads_right_to_left_below_an_opening_in_english(viewer, page, made, opening):
+    """Real Arabic files often open with a language menu, the project's English name or front matter."""
+    viewer("md.html", made("opening.md", f"{opening}\n\n{ARABIC_PROSE}"))
+    wait_for_render(page)
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "rtl"
+
+
+def test_english_prose_reads_left_to_right_below_a_link_to_its_arabic_version(viewer, page, made):
+    text = "[العربية](README.ar.md)\n\n# Quick start\n\nInstall the app, then open any file from the share sheet.\n"
+    viewer("md.html", made("english.md", text))
+    wait_for_render(page)
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "ltr"
+
+
+def test_a_part_the_author_gave_a_direction_does_not_decide_the_rest(viewer, page, made):
+    text = f'''Install the app, then open any file from the share sheet.
+
+<div dir="rtl">
+
+{ARABIC_PROSE * 4}
+</div>
+'''
+    viewer("md.html", made("authored-part.md", text))
+    wait_for_render(page)
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "ltr"
+    assert page.locator("#content div").evaluate("el => getComputedStyle(el).direction") == "rtl"
+
+
+def test_only_the_opening_of_a_long_document_is_counted(viewer, page, made):
+    """Counting megabytes at once holds hundreds of megabytes of matches."""
+    english = "Install the app, then open any file from the share sheet. " * 1500  # about 88K characters
+    viewer("md.html", made("long.md", f"{english}\n\n{ARABIC_PROSE * 3000}"))
+    wait_for_render(page)
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "ltr"
+
+
 @pytest.mark.parametrize("direction", ["rtl", "ltr", "auto"])
-def test_authored_direction_scopes_are_preserved_for_code(viewer, page, made, direction):
+def test_code_reads_left_to_right_inside_an_authored_direction_unless_it_has_its_own(viewer, page, made, direction):
+    """A wrapper's direction would put a leading `.` or `--` on the wrong end of the code in it."""
     text = f'''<div dir="{direction}">
 <pre><code>مقطع عربي</code></pre>
 <p><code>مقطع عربي</code></p>
@@ -76,9 +123,11 @@ def test_authored_direction_scopes_are_preserved_for_code(viewer, page, made, di
     wait_for_render(page)
     assert page.get_attribute("#content div", "dir") == direction
     assert page.get_attribute("#content > code", "dir") == direction
-    assert page.locator("#content pre, #content code").evaluate_all(
-        "(els, direction) => els.every(el => getComputedStyle(el).direction === direction)",
-        "ltr" if direction == "ltr" else "rtl",
+    inside = page.locator("#content div pre, #content div code")
+    assert inside.count() == 3
+    assert inside.evaluate_all("els => els.every(el => getComputedStyle(el).direction === 'ltr')")
+    assert page.locator("#content > code").evaluate("el => getComputedStyle(el).direction") == (
+        "ltr" if direction == "ltr" else "rtl"
     )
 
 

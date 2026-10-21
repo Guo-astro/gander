@@ -8,12 +8,27 @@ if (!vwWebViewTooOld("Markdown files")) {
       var html = marked.parse(txt, { gfm: true, breaks: false });
       var content = document.getElementById("content");
       content.innerHTML = DOMPurify.sanitize(html);
-      // Isolate code before auto direction scans the document.
+      // Code reads left to right in a document of any language, unless the code
+      // itself says otherwise.
       content.querySelectorAll("pre, code").forEach(function (el) {
-        if (!el.closest("[dir]")) el.dir = "ltr";
+        if (!el.hasAttribute("dir") && !el.parentElement.closest("pre[dir], code[dir]")) el.dir = "ltr";
       });
-      content.dir = "auto";
+      content.dir = vwMostlyRightToLeft(proseText(content)) ? "rtl" : "ltr";
       vwStatusDone();
     })
     .catch(function (e) { vwError("Could not render this Markdown file", String(e)); });
+}
+
+/* The text that decides the document's direction, up to VW_DIRECTION_SAMPLE characters of it.
+   Code is left out, since it is mostly Latin whatever language surrounds it, and so is anything
+   the author gave its own dir, as that part keeps its direction anyway. */
+function proseText(root) {
+  var walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), node, parts = [], length = 0;
+  while (length < VW_DIRECTION_SAMPLE && (node = walk.nextNode())) {
+    if (!node.parentElement.closest("[dir]")) {
+      parts.push(node.data);
+      length += node.data.length;
+    }
+  }
+  return parts.join("").slice(0, VW_DIRECTION_SAMPLE);
 }
