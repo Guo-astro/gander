@@ -24,6 +24,12 @@
   left and Previous on the right, and the contents, the title and the chapter's name read right
   to left, indented from the right (#54, thanks @yshalsager). Gander laid them all out left to
   right.
+- A plain text file mostly in Arabic, Hebrew or another right-to-left script reads right to left
+  (#59, thanks @yshalsager). Gander set every text file from the left. Code, data, subtitles and
+  playlists stay left to right.
+- A Markdown file mostly in Arabic, Hebrew or another right-to-left script reads right to left,
+  and its code reads left to right, even in a part the author set right to left (#60, thanks
+  @yshalsager). Gander set every Markdown file from the left.
 
 ## 2.5 (2026-10-14)
 
