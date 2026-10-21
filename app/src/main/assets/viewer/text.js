@@ -1,6 +1,13 @@
 var content = document.getElementById("content");
-// shortcut: direction is file-wide; use format-aware rendering if timestamps or ASCII art must stay LTR.
-if (["", "txt", "log", "nfo"].indexOf(vwExt) >= 0) content.dir = "auto";
+/* Prose reads the way most of its letters do, decided once, from the first page that has any,
+   so showing more never turns the file round. Code, data, subtitles and playlists stay left to
+   right, which their layout depends on. */
+var findsDirection = ["", "txt", "log", "nfo"].indexOf(vwExt) >= 0;
+// An engine below Chromium 64 can't tell scripts apart, so there the first letter decides.
+if (findsDirection && vwMostlyRightToLeft("a") === null) {
+  content.dir = "auto";
+  findsDirection = false;
+}
 var more = document.getElementById("more");
 var moreNote = document.getElementById("moreNote");
 var moreBtn = document.getElementById("moreBtn");
@@ -26,6 +33,15 @@ function showPage() {
       if (laid !== null) text = laid;
     }
     firstPage = false;
+
+    if (findsDirection) {
+      // A sample tells as well as the whole page, which can run to megabytes
+      var rtl = vwMostlyRightToLeft(text.slice(0, VW_DIRECTION_SAMPLE));
+      if (rtl !== null) {
+        content.dir = rtl ? "rtl" : "ltr";
+        findsDirection = false;
+      }
+    }
 
     content.appendChild(document.createTextNode(text));
     shown += page.bytes;

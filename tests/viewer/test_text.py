@@ -30,19 +30,42 @@ def test_a_text_file_is_shown(viewer, page):
 
 
 @pytest.mark.parametrize("ext", ["txt", "log", "nfo", ""])
-@pytest.mark.parametrize("text,direction", [
-    ("(2026) العربية من اليمين إلى اليسار.\nEnglish second.", "rtl"),
-    ("English first.\nالعربية من اليمين إلى اليسار.", "ltr"),
+@pytest.mark.parametrize("text,direction,word", [
+    ("Reading notes, 2026\nالعربية من اليمين إلى اليسار، وهذا سطر آخر بالعربية.", "rtl", "اليمين"),
+    ("بسم الله\nEnglish notes, which run on for longer than the line above them.", "ltr", "الله"),
+    # A rule of tatweels, whose own script is Common, under Persian text.
+    ("فهرست مطالب\n" + "\u0640" * 80 + "\nفصل اول", "rtl", "مطالب"),
 ])
-def test_text_uses_the_first_strong_character_for_file_direction(viewer, page, made, port, text, direction, ext):
+def test_text_reads_the_way_most_of_its_letters_do(viewer, page, made, port, text, direction, word, ext):
+    """Not its first letter: an Arabic file often opens with an English title, and the reverse."""
     viewer("text.html", made("mixed" + ("." + ext if ext else ""), text))
     wait_for_text(page)
     assert content(page) == text
     assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == direction
     assert page.locator("#content > *").count() == 0
     channel = port()
-    channel.query("العربية")
+    channel.query(word)
     channel.wait_for_count(1, 1)
+
+
+# Below Chromium 64 a \p{} pattern is a syntax error.
+NO_SCRIPT_PROPERTIES = r"""(() => {
+  const Native = RegExp;
+  window.RegExp = function (source, flags) {
+    if (String(source).indexOf("\\p{") >= 0) throw new SyntaxError("Invalid regular expression");
+    return new Native(source, flags);
+  };
+  window.RegExp.prototype = Native.prototype;
+})();"""
+
+
+def test_an_engine_that_cannot_tell_scripts_apart_goes_by_the_first_letter(viewer, page, made):
+    page.add_init_script(NO_SCRIPT_PROPERTIES)
+    text = "العربية من اليمين إلى اليسار.\nEnglish notes, which run on for longer than the line above them."
+    viewer("text.html", made("old-engine.txt", text))
+    wait_for_text(page)
+    assert page.get_attribute("#content", "dir") == "auto"
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "rtl"
 
 
 @pytest.mark.parametrize("ext,text", [
@@ -166,15 +189,26 @@ def test_asking_for_more_appends_the_rest(viewer, page, made):
     assert len(content(page)) > first
 
 
-def test_direction_updates_when_the_first_strong_character_arrives_on_a_later_page(viewer, page, made):
+def test_direction_waits_for_the_first_page_with_letters(viewer, page, made):
     text = "." * (VW_TEXT_PAGE - 1) + "ب\nالعربية في النهاية"
     viewer("text.html", made("paged-rtl.txt", text))
     wait_for_text(page)
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "ltr"
     page.click("#moreBtn")
     page.wait_for_function("() => document.querySelector('#content').textContent.endsWith('النهاية')")
     assert content(page) == text
     assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "rtl"
     assert page.locator("#content > *").count() == 0
+
+
+def test_showing_more_does_not_turn_the_file_round(viewer, page, made):
+    text = "العربية\n" + "." * VW_TEXT_PAGE + "\nEnglish words, enough of them to outnumber the Arabic above."
+    viewer("text.html", made("paged-turn.txt", text))
+    wait_for_text(page)
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "rtl"
+    page.click("#moreBtn")
+    page.wait_for_function("() => document.querySelector('#content').textContent.endsWith('above.')")
+    assert page.locator("#content").evaluate("el => getComputedStyle(el).direction") == "rtl"
 
 
 def test_a_file_ending_exactly_on_the_boundary_offers_no_empty_page(viewer, page, made):

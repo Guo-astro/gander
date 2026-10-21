@@ -387,6 +387,31 @@ function vwOpenTextPages() {
   });
 }
 
+/*
+ * Whether most of text's letters are in a right-to-left script, or null when it has none or the
+ * engine cannot tell scripts apart. Not its first letter: a file in Arabic or Hebrew often opens
+ * with an English name or header. Script extensions (scx) take in the tatweel, U+0640, which
+ * Arabic and Persian text draws rules with: its own script is Common, so a rule of it would count
+ * against. A \p{} literal would stop engines below Chromium 64 parsing this file, so the patterns
+ * are built when asked for.
+ */
+function vwMostlyRightToLeft(text) {
+  var letter, rtlLetter;
+  try {
+    letter = new RegExp("\\p{L}", "gu");
+    rtlLetter = new RegExp("(?=\\p{L})[\\p{scx=Arabic}\\p{scx=Hebrew}\\p{scx=Syriac}" +
+      "\\p{scx=Thaana}\\p{scx=Nko}\\p{scx=Adlam}]", "gu");
+  } catch (e) {
+    return null;
+  }
+  var all = (text.match(letter) || []).length;
+  return all ? (text.match(rtlLetter) || []).length * 2 > all : null;
+}
+
+/* How much of a document the count reads. Its opening tells as well as the whole, and counting
+   megabytes at once holds hundreds of megabytes of matches. */
+var VW_DIRECTION_SAMPLE = 64 * 1024;
+
 var VW_JSON_INDENT = "  ";
 
 /*
