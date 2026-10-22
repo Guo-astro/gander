@@ -46,7 +46,7 @@ Ganz ehrlich: Was Gander nicht ist
 - Gander ist ein Viewer, kein Editor
 - Alte binäre .ppt-Dateien werden nicht unterstützt. Binäre .xls- und .doc-Dateien schon
 - Komplexe PowerPoint-Präsentationen werden nur annähernd dargestellt, und Diagramme in Tabellenkalkulationen werden nicht angezeigt
-- Zum Anzeigen von PDFs ist Android System WebView 125 oder neuer nötig, und Gander weist Sie deutlich darauf hin, wenn Ihre Version älter ist
+- Für die volle PDF-Ansicht ist Android System WebView 125 oder neuer nötig. Mit einer älteren Version kann Gander ab Android 9 die Seiten als Bilder zeigen, ohne Suche und Textauswahl
 - Die App selbst ist auf Englisch
 
 Wenn Sie einen Offline-Viewer für PDFs und Dokumente suchen, der einfach Ihre Dateien anzeigt und die Finger von allem anderen lässt, dann ist das Gander.
