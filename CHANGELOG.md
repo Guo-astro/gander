@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.6 (2026-10-22)
 
 - A PDF now opens on a phone whose WebView is too old for PDFs and can't be updated, such as a
   Huawei phone without Google services, where Gander only said that PDFs would not work (#9,
