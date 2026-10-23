@@ -198,10 +198,18 @@ function vwDrawWord(buf) {
     });
 }
 
-/* A second drawing makes its pictures afresh, so the first one's are let go */
+/*
+ * A second drawing makes its pictures afresh, so the first one's are let go. The first drawing
+ * leaves the page before the second is parsed: docx-preview lines up every tab half a second
+ * after it draws, laying the page out once per tab, and on the first drawing's pages that pass
+ * came in the middle of the second parse. On a 498-page file it took over 3 s; on pages already
+ * gone it lays nothing out.
+ */
 function vwDrawWordAgain(buf) {
-  var pictures = [].map.call(document.querySelectorAll('#container img[src^="blob:"]'),
+  var container = document.getElementById("container");
+  var pictures = [].map.call(container.querySelectorAll('img[src^="blob:"]'),
     function (img) { return img.src; });
+  container.innerHTML = "";
   return vwDrawWord(buf).then(function () {
     pictures.forEach(function (url) { URL.revokeObjectURL(url); });
   });
