@@ -595,20 +595,23 @@ function vwAddTurns(model, turns) {
 }
 
 /*
- * A second drawing costs about as much again as the first: with the CPU slowed four times, as a
- * stand-in for a phone, a 261-page file took 1.7 s to open where one long sheet took 1.1 s. Past
- * this many turns a file keeps its long sheets, as before measuring, rather than wait longer.
+ * A second drawing costs about as much again as the first, which grows with how much the file
+ * draws. With the CPU slowed four times, as a stand-in for a phone, a file of 6,247 elements (261
+ * pages) took 1.6 s to open where one long sheet took 1.0 s, and one of 60,640 elements (498
+ * pages) 10.5 s where it took 6.0 s. Past this many a file keeps its long sheets, as before
+ * measuring, so the wait pages add stays near two seconds.
  */
-var VW_MOST_TURNS = 500;
+var VW_MOST_ELEMENTS = 20000;
 
 /* Resolves true once vwPages.turns says where the pages turn, for the document to be drawn again */
 function vwMeasurePages() {
+  if (document.querySelectorAll("#container *").length > VW_MOST_ELEMENTS) return Promise.resolve(false);
   /* A layout first, so a font the document embeds is loading by the time fonts.ready is read */
   document.body.getBoundingClientRect();
   return document.fonts.ready.then(function () {
     var turns = [], sheets = vwSheets();
-    for (var i = 0; i < sheets.length && turns.length <= VW_MOST_TURNS; i++) vwSheetTurns(sheets[i], turns);
-    vwPages.turns = turns.length && turns.length <= VW_MOST_TURNS ? turns : null;
+    for (var i = 0; i < sheets.length; i++) vwSheetTurns(sheets[i], turns);
+    vwPages.turns = turns.length ? turns : null;
     return !!vwPages.turns;
   });
 }
@@ -651,7 +654,7 @@ function vwSheetTurns(sheet, turns) {
   for (a = 0; a < articles.length; a++) blocks.push.apply(blocks, articles[a].children);
   var top = articles[0].getBoundingClientRect().top;
   var page = { top: top, end: top + room };
-  for (var b = 0; b < blocks.length && turns.length <= VW_MOST_TURNS; b++) {
+  for (var b = 0; b < blocks.length; b++) {
     for (var guard = 0; guard < 1000; guard++) {
       if (blocks[b].getBoundingClientRect().bottom <= page.end + VW_SLACK) break;
       var turn = blocks[b].tagName === "TABLE" ? vwTableTurn(blocks, b, page)
@@ -718,6 +721,8 @@ function vwTableTurn(blocks, b, page) {
  */
 function vwParagraphTurn(blocks, b, page) {
   var el = blocks[b], lines = vwLineBoxes(el);
+  /* A blank line has nothing on it to measure, so it goes to the next page whole */
+  if (!lines.length) return vwBlockTop(el) <= page.top + VW_SLACK ? null : vwTurnBefore(blocks, b, page);
   var first = 0;
   while (first < lines.length && lines[first].top < page.top - VW_SLACK) first++;
   var cut = first;

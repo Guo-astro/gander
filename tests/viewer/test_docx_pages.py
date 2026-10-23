@@ -195,7 +195,7 @@ def measured(viewer, page):
 
 def test_a_file_without_words_record_turns_where_its_paper_runs_out(viewer, page):
     seen = measured(viewer, page)
-    assert len(seen) == 5
+    assert len(seen) == 6
     assert page.evaluate("vwPages.measure") is True
     for p in seen:
         assert p["over"] < 1.005
@@ -240,13 +240,37 @@ def test_measured_pages_lose_and_repeat_nothing_but_the_header_row(viewer, page)
         + [f"Widow line {n}" for n in range(1, 4)]
         + [f"Filler D{n:02d}" for n in range(1, 22)]
         + ["Entry", "Reading"] + rows[:12] + ["Entry", "Reading"] + rows[12:]
+        + ["Last line"]
     )
     assert [line for p in seen for line in p["lines"]] == expected
 
 
 def test_measured_pages_are_numbered_in_the_footer(viewer, page):
     seen = measured(viewer, page)
-    assert [p["footer"] for p in seen] == [f"Page {n} of 5" for n in range(1, 6)]
+    assert [p["footer"] for p in seen] == [f"Page {n} of 6" for n in range(1, 7)]
+
+
+def test_blank_lines_a_measured_page_has_no_room_for_go_to_the_next(viewer, page):
+    open_word(viewer, page, MEASURED)
+    blank = page.evaluate("""() => [...document.querySelectorAll('.docx-wrapper > section.docx')]
+      .map(s => [...s.querySelectorAll(':scope > article > p')].filter(p => !p.innerText.trim()).length)""")
+    assert blank[4:] == [24, 6]
+
+
+def test_a_file_too_big_to_draw_twice_keeps_its_long_sheet(viewer, page, made, fixture_path):
+    """
+    Over 20,000 drawn elements, a second drawing would add more than about two seconds on a
+    phone, so the pages are not measured: 10,500 one-line paragraphs, a paragraph and a run each.
+    """
+    lines = b"<w:p><w:r><w:t>Many lines</w:t></w:r></w:p>" * 10500
+    target = remade(made, fixture_path, MEASURED, {
+        "word/document.xml": lambda xml: re.sub(rb"(<w:body>).*?(<w:sectPr)", lambda m: m.group(1) + lines + m.group(2),
+                                                xml, flags=re.S),
+    })
+    open_word(viewer, page, target)
+    assert page.evaluate("document.querySelectorAll('.docx-wrapper > section.docx').length") == 1
+    assert page.evaluate("vwPages.measure") is True
+    assert page.evaluate("vwPages.turns") is None
 
 
 def test_a_file_that_records_its_pages_is_not_measured(viewer, page):

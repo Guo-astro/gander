@@ -747,7 +747,8 @@ def word_measured() -> None:
     paragraph. Page three ends with 23 lines of filler and 48pt over, where a three-line
     paragraph would leave one line alone, so it goes whole to page four, which ends six rows
     into a table, each row 2px over its line for the cell's padding. Page five draws the
-    table's header row again above row seven.
+    table's header row again above row seven, and 24 of the 30 blank lines after the table;
+    the other six go on to page six with the last line.
     """
     from docx import Document
     from docx.enum.text import WD_LINE_SPACING
@@ -789,6 +790,9 @@ def word_measured() -> None:
     table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
     for n in range(1, 13):
         table.rows[n].cells[0].text, table.rows[n].cells[1].text = f"Row {n:02d}", f"Value {n:02d}"
+    for _ in range(30):
+        doc.add_paragraph()
+    doc.add_paragraph("Last line")
     section.footer.paragraphs[0].text = "Page [[PAGE]] of [[NUMPAGES]]"
     fix_core_properties(doc)
     target = OUT / "word-measured.docx"
