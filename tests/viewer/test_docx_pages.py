@@ -151,19 +151,108 @@ def test_each_page_has_its_own_number(viewer, page):
     ]
 
 
-def test_a_file_without_words_record_is_drawn_as_before(viewer, page, made, fixture_path):
+def test_a_file_without_words_record_keeps_its_breaks_and_counts_its_pages(viewer, page, made, fixture_path):
     """
     The same document as WPS or LibreOffice would save it, with no record of where its pages
-    began. docx-preview's own pages, one per break and per section, and the footer's saved
-    values on the pages that have it.
+    began (#55). None of its text runs past its paper, so its pages are its breaks' and its
+    sections', the continuous section sharing its page as in Word, and the footer counts them.
     """
     target = remade(made, fixture_path, FIXTURE, {
         "word/document.xml": lambda xml: xml.replace(b"<w:lastRenderedPageBreak/>", b""),
     })
     seen = pages(open_word(viewer, page, target))
-    assert len(seen) == 4
-    assert [p["footer"] for p in seen if p["footer"]] == ["Page 1 of 6", "Page 1 of 6"]
-    assert page.evaluate("vwPages.split") is False
+    assert len(seen) == 3
+    assert seen[1]["articles"] == [
+        "After the explicit break. Section one ends here.",
+        "Section two shares page four.",
+    ]
+    assert [p["footer"] for p in seen] == ["Page 1 of 3", "Page 2 of 3", "Page i of 3"]
+    assert page.evaluate("vwPages.measure") is True
+    assert page.evaluate("vwPages.turns") is None
+
+
+# ---------------------------------------------------------------------------
+# Pages measured where the file records none, issue #55
+# ---------------------------------------------------------------------------
+
+MEASURED = "word-measured.docx"
+
+MEASURED_PAGES = """() => {
+  document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+  return [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => ({
+    lines: [...s.querySelectorAll(':scope > article')].map(a => a.innerText).join('\\n')
+      .split('\\n').map(l => l.trim()).filter(Boolean),
+    footer: [...s.querySelectorAll(':scope > footer')].map(f => f.innerText.trim()).join(' | '),
+    over: s.getBoundingClientRect().height / parseFloat(getComputedStyle(s).minHeight)
+  }));
+}"""
+
+
+def measured(viewer, page):
+    open_word(viewer, page, MEASURED)
+    return page.evaluate(MEASURED_PAGES)
+
+
+def test_a_file_without_words_record_turns_where_its_paper_runs_out(viewer, page):
+    seen = measured(viewer, page)
+    assert len(seen) == 5
+    assert page.evaluate("vwPages.measure") is True
+    for p in seen:
+        assert p["over"] < 1.005
+
+
+def test_a_measured_page_takes_a_heading_kept_with_its_next_paragraph_along(viewer, page):
+    seen = measured(viewer, page)
+    assert seen[0]["lines"][-1] == "Filler A31"
+    assert seen[1]["lines"][:2] == ["Kept heading", "Kept body line 1"]
+
+
+def test_a_paragraph_a_measured_page_cuts_goes_on_at_its_next_line(viewer, page):
+    seen = measured(viewer, page)
+    assert seen[1]["lines"][-1] == "Cut line 3"
+    assert seen[2]["lines"][0] == "Cut line 4"
+    rest = page.evaluate("""() => [...document.querySelectorAll('.docx-wrapper p')]
+      .find(p => p.innerText.trim().startsWith('Cut line 4')).className""")
+    assert "vw-cont" in rest.split()
+
+
+def test_a_paragraph_that_would_leave_a_line_alone_goes_to_the_next_page_whole(viewer, page):
+    seen = measured(viewer, page)
+    assert seen[2]["lines"][-1] == "Filler C23"
+    assert seen[3]["lines"][:3] == ["Widow line 1", "Widow line 2", "Widow line 3"]
+
+
+def test_a_measured_table_draws_its_header_row_again_on_the_next_page(viewer, page):
+    seen = measured(viewer, page)
+    assert seen[3]["lines"][-2:] == ["Row 06", "Value 06"]
+    assert seen[4]["lines"][:4] == ["Entry", "Reading", "Row 07", "Value 07"]
+
+
+def test_measured_pages_lose_and_repeat_nothing_but_the_header_row(viewer, page):
+    seen = measured(viewer, page)
+    rows = [x for n in range(1, 13) for x in (f"Row {n:02d}", f"Value {n:02d}")]
+    expected = (
+        [f"Filler A{n:02d}" for n in range(1, 32)]
+        + ["Kept heading"] + [f"Kept body line {n}" for n in range(1, 6)]
+        + [f"Filler B{n:02d}" for n in range(1, 24)]
+        + [f"Cut line {n}" for n in range(1, 11)]
+        + [f"Filler C{n:02d}" for n in range(1, 24)]
+        + [f"Widow line {n}" for n in range(1, 4)]
+        + [f"Filler D{n:02d}" for n in range(1, 22)]
+        + ["Entry", "Reading"] + rows[:12] + ["Entry", "Reading"] + rows[12:]
+    )
+    assert [line for p in seen for line in p["lines"]] == expected
+
+
+def test_measured_pages_are_numbered_in_the_footer(viewer, page):
+    seen = measured(viewer, page)
+    assert [p["footer"] for p in seen] == [f"Page {n} of 5" for n in range(1, 6)]
+
+
+def test_a_file_that_records_its_pages_is_not_measured(viewer, page):
+    open_word(viewer, page)
+    assert page.evaluate("vwPages.measure") is False
+    assert page.evaluate("document.querySelectorAll('[data-vw-p], [data-vw-r]').length") == 0
 
 
 # ---------------------------------------------------------------------------

@@ -180,12 +180,15 @@ var VW_DRAW = {
 
 /*
  * renderAsync in its two halves, so docx-lines.js can read what docx-preview leaves out of the
- * styles from the XML it has just parsed (keepOrigin keeps it) instead of parsing it again.
+ * styles from the XML it has just parsed (keepOrigin keeps it) instead of parsing it again, and
+ * docx-pages.js can write in the page records it measured on the first drawing.
  */
 function vwDrawWord(buf) {
   return docx.parseAsync(buf, VW_DRAW)
     .then(function (doc) {
       vwContextualSpacing(doc);
+      var model = vwNumberModel(doc);
+      if (vwPages.turns) vwAddTurns(model, vwPages.turns);
       return docx.renderDocument(doc, VW_DRAW);
     })
     .then(function (nodes) {

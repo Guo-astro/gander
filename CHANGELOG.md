@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- A Word file saved by WPS Office, LibreOffice or Google Docs now opens as pages, with the page
+  readout and Go to page, where Gander showed it as one long sheet (#55, thanks @BenjaminSk-04,
+  who sent a file). These apps don't save where their pages end, as Word does, so Gander works it
+  out from the page size: a page ends between paragraphs, between table rows or between the lines
+  of a long paragraph, keeps a heading with the text after it where the file asks for that, and
+  draws a table's header rows again on the next page. Page numbers in the footer count these
+  pages. A break can land a little away from where the app that saved the file put it, since the
+  phone's fonts differ from that app's.
+
 ## 2.6 (2026-10-22)
 
 - A PDF now opens on a phone whose WebView is too old for PDFs and can't be updated, such as a

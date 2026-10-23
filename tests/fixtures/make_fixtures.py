@@ -735,6 +735,85 @@ def word_unrecorded() -> None:
     written(target)
 
 
+def word_measured() -> None:
+    """
+    Issue #55: a file as WPS saves one, with no record of where its pages began, so Gander
+    measures them. Every line is exactly 20pt and every paragraph of several lines is cut by
+    line breaks, so where each page ends depends on no font: 648pt of body on Letter paper
+    with inch margins holds 32 lines and 8pt over.
+
+    Five pages: page one is 31 lines of filler, then a heading kept with its next paragraph,
+    which has no room, so both go to page two; that page ends with three lines of a ten-line
+    paragraph. Page three ends with 23 lines of filler and 48pt over, where a three-line
+    paragraph would leave one line alone, so it goes whole to page four, which ends six rows
+    into a table, each row 2px over its line for the cell's padding. Page five draws the
+    table's header row again above row seven.
+    """
+    from docx import Document
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.oxml import OxmlElement
+    from docx.shared import Inches, Pt
+
+    doc = Document()
+    section = doc.sections[0]
+    section.page_width, section.page_height = Inches(8.5), Inches(11)
+    for side in ("top_margin", "bottom_margin", "left_margin", "right_margin"):
+        setattr(section, side, Inches(1))
+    for name in ("Normal", "Heading 1"):
+        fmt = doc.styles[name].paragraph_format
+        fmt.space_before = fmt.space_after = Pt(0)
+        fmt.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        fmt.line_spacing = Pt(20)
+    doc.styles["Heading 1"].paragraph_format.keep_with_next = True
+
+    def filler(tag, count):
+        for n in range(1, count + 1):
+            doc.add_paragraph(f"Filler {tag}{n:02d}")
+
+    def lines(label, count):
+        run = doc.add_paragraph().add_run(f"{label} line 1")
+        for n in range(2, count + 1):
+            run.add_break()
+            run.add_text(f"{label} line {n}")
+
+    filler("A", 31)
+    doc.add_heading("Kept heading", level=1)
+    lines("Kept body", 5)
+    filler("B", 23)
+    lines("Cut", 10)
+    filler("C", 23)
+    lines("Widow", 3)
+    filler("D", 21)
+    table = doc.add_table(rows=13, cols=2)
+    table.rows[0].cells[0].text, table.rows[0].cells[1].text = "Entry", "Reading"
+    table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+    for n in range(1, 13):
+        table.rows[n].cells[0].text, table.rows[n].cells[1].text = f"Row {n:02d}", f"Value {n:02d}"
+    section.footer.paragraphs[0].text = "Page [[PAGE]] of [[NUMPAGES]]"
+    fix_core_properties(doc)
+    target = OUT / "word-measured.docx"
+    doc.save(str(target))
+
+    def edit(name, xml):
+        return re.sub(
+            r"<w:r>(?:<w:rPr>.*?</w:rPr>)?<w:t>Page \[\[PAGE\]\] of \[\[NUMPAGES\]\]</w:t></w:r>",
+            lambda m: '<w:r><w:t xml:space="preserve">Page </w:t></w:r>'
+            + field_runs("PAGE", "1")
+            + '<w:r><w:t xml:space="preserve"> of </w:t></w:r>'
+            + field_runs("NUMPAGES", "1"),
+            xml,
+        )
+
+    rewrite_parts(target, edit)
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+        footer = "".join(z.read(n).decode() for n in z.namelist() if n.startswith("word/footer"))
+    assert "lastRenderedPageBreak" not in body and "tblHeader" in body
+    assert footer.count('fldCharType="begin"') == 2
+    normalize_zip(target)
+    written(target)
+
+
 def word_colours() -> None:
     """
     Issue #47's night mode for Word: ink, a coloured heading, a colour given only by
@@ -3650,7 +3729,8 @@ def epubs() -> None:
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
-    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_colours, word_lines,
+    for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_measured,
+                 word_colours, word_lines,
                  cell_directions, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,
