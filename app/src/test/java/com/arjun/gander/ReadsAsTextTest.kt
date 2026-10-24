@@ -70,4 +70,32 @@ class ReadsAsTextTest {
         }
         assertThat(readsAsText(trickle)).isFalse()
     }
+
+    private fun dotIsText(bytes: ByteArray): Boolean = dotOpensAsText(ByteArrayInputStream(bytes))
+
+    /** Graphviz saves its graphs as .dot, and a graph is text, comment first or not. Issue #58. */
+    @Test
+    fun aGraphvizDotOpensAsText() {
+        assertThat(dotIsText("digraph G {\n  a -> b;\n}\n".toByteArray())).isTrue()
+        assertThat(dotIsText("/* made by a build tool */\nstrict graph {\n  a -- b\n}\n".toByteArray())).isTrue()
+    }
+
+    /** A Word 97-2003 template is a Word file, which the prose page reads. */
+    @Test
+    fun aWordTemplateDotDoesNot() {
+        assertThat(dotIsText(Fixtures.bytes("legacy.doc"))).isFalse()
+    }
+
+    /**
+     * Rich Text and an OpenDocument saved as one XML file are text the prose page reads, under a
+     * .dot as under any name, past a byte order mark and blank lines as prose.js steps over them.
+     */
+    @Test
+    fun richTextAndFlatOpenDocumentDotsStayWithTheProsePage() {
+        val mark = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        assertThat(dotIsText(Fixtures.bytes("memo.rtf"))).isFalse()
+        assertThat(dotIsText(mark + "\r\n\t {\\rtf1\\ansi Dear Sam}".toByteArray())).isFalse()
+        assertThat(dotIsText("<?xml version=\"1.0\"?>\n<office:document/>".toByteArray())).isFalse()
+        assertThat(dotIsText("<office:document office:version=\"1.3\"/>".toByteArray())).isFalse()
+    }
 }

@@ -12,6 +12,9 @@
   phone's fonts differ from that app's.
 - A Word file with a footer prints one sheet per page. Each footer printed on a sheet of its own,
   so six pages took twelve sheets, and a full page could send its last line to a sheet of its own.
+- A Graphviz graph saved as .dot opens as text, where Gander took it for a Word template and said
+  it couldn't read it (#58, thanks @IsakTheHacker). Word 97-2003 templates, which end in .dot
+  too, still open as documents, and a .gv no longer says "unknown format" under its name.
 
 ## 2.6 (2026-10-22)
 

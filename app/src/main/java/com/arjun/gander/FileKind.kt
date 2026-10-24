@@ -100,7 +100,11 @@ enum class FileKind(val page: String) {
             "srt", "vtt", "m3u", "nfo",
             // Hardware description: Verilog and SystemVerilog sources and headers, and VHDL.
             // A .vhd is also a virtual disk's name, which is not a file opened on a phone.
-            "v", "vh", "sv", "svh", "vhd", "vhdl"
+            "v", "vh", "sv", "svh", "vhd", "vhdl",
+            // A Graphviz graph, shown as the text it is written in. Its other name, .dot, is a
+            // Word template's too, so the viewer asks a .dot's first bytes: see dotOpensAsText.
+            // Issue #58.
+            "gv"
         )
 
         private const val MIME_DOCX =

@@ -90,6 +90,10 @@ class FileKindTest {
             "v" to TEXT, "vh" to TEXT, "sv" to TEXT, "svh" to TEXT,
             "vhd" to TEXT, "vhdl" to TEXT,
 
+            // A Graphviz graph, issue #58. A .dot goes to PROSE by its name and is told by its
+            // bytes in the viewer: see ReadsAsTextTest.
+            "gv" to TEXT,
+
             // Listed rather than drawn, issue #30
             "zip" to ARCHIVE,
 
@@ -120,8 +124,8 @@ class FileKindTest {
 
     /** A count, so a silently deleted table row is noticed. */
     @Test
-    fun theTableCoversOneHundredAndThreeExtensions() {
-        assertThat(EXPECTED).hasSize(103)
+    fun theTableCoversOneHundredAndFourExtensions() {
+        assertThat(EXPECTED).hasSize(104)
     }
 
     /**

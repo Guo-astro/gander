@@ -829,6 +829,28 @@ class ViewerActivityTest {
         }
     }
 
+    /**
+     * Graphviz saves its graphs as .dot, and one opens as text, with nothing under its name: Gander
+     * knows what it is. Issue #58.
+     */
+    @Test
+    fun aGraphvizDotOpensAsText() {
+        val graph = File(context.cacheDir, "graph.dot").apply { writeText("digraph G {\n  a -> b;\n}\n") }
+        val controller = view(FixtureProvider.install().add("graph.dot", graph))
+        assertThat(controller.pageName()).isEqualTo("text.html")
+        assertThat(controller.loadedUrl()).contains("ext=dot")
+        assertThat(controller.underTheName()).isNull()
+    }
+
+    /** A Word template is a .dot too, and still goes to the prose page, as does Rich Text so named. */
+    @Test
+    fun aWordTemplateDotStillOpensInTheProsePage() {
+        for ((fixture, name) in listOf("legacy.doc" to "template.dot", "memo.rtf" to "letter.dot")) {
+            assertWithMessage(name).that(view(FixtureProvider.uriNamed(fixture, name)).pageName())
+                .isEqualTo("prose.html")
+        }
+    }
+
     /** A .ppt keeps its card though these bytes read as text, since the card says how to get it opened. */
     @Test
     fun aLegacyPowerPointKeepsItsCard() {

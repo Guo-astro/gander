@@ -429,6 +429,11 @@ open class ViewerActivity : AppCompatActivity() {
                 }
             }
         }
+        // Graphviz saves its graphs as .dot too, which the prose page cannot read: one that reads
+        // as text opens as text, while a Word template still goes to the prose page. Issue #58.
+        if (detected == FileKind.PROSE && ext == "dot") {
+            return whetherText(uri, ::dotOpensAsText) { text -> show(if (text) FileKind.TEXT else detected) }
+        }
         if (!FileKind.isUnknown(detected, ext)) return show(detected)
         // A file of no known format that reads as text opens as text, with no card to tap
         // through, and the line under its name says so. Issue #51.
@@ -470,12 +475,17 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Tells [then] whether the file reads as text. Its first bytes are read off the main
-     * thread, as a picture's are, since a provider can be slow to hand over even those. One
-     * that cannot be read is not text, and gets the card it always had.
+     * Tells [then] whether the file reads as text, which [test] decides from its first bytes.
+     * Those are read off the main thread, as a picture's are, since a provider can be slow to
+     * hand over even those. One that cannot be read is not text, and gets the page or card it
+     * always had.
      */
-    private fun whetherText(uri: Uri, then: (Boolean) -> Unit) = offMain(then) { app ->
-        runCatching { app.contentResolver.openInputStream(uri)?.use(::readsAsText) }.getOrNull() == true
+    private fun whetherText(
+        uri: Uri,
+        test: (InputStream) -> Boolean = ::readsAsText,
+        then: (Boolean) -> Unit,
+    ) = offMain(then) { app ->
+        runCatching { app.contentResolver.openInputStream(uri)?.use(test) }.getOrNull() == true
     }
 
     /**
