@@ -387,6 +387,35 @@ def test_a_turn_leaves_at_least_half_a_page_above_it(viewer, page, made, fixture
 
 
 # ---------------------------------------------------------------------------
+# Headers and footers for odd and even pages
+# ---------------------------------------------------------------------------
+
+ODD_EVEN = "word-odd-even.docx"
+
+HEADERS_FOOTERS = """() => [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s =>
+  [...s.querySelectorAll(':scope > header, :scope > footer')].map(e => e.innerText.trim()).join(' | '))"""
+
+
+def test_a_file_set_for_odd_and_even_pages_gives_even_pages_their_own_header(viewer, page):
+    open_word(viewer, page, ODD_EVEN)
+    assert page.evaluate(HEADERS_FOOTERS) == [
+        "Header | Footer", "Even header | Even footer", "Header | Footer", "Even header | Even footer",
+    ]
+
+
+def test_a_file_not_set_for_odd_and_even_pages_has_one_header_on_every_page(viewer, page, made, fixture_path):
+    """
+    The same file without the setting, its section still holding an even-page header and
+    footer. Word draws those only in a file set for different odd and even pages.
+    """
+    target = remade(made, fixture_path, ODD_EVEN, {
+        "word/settings.xml": swap(b"<w:evenAndOddHeaders/>", b""),
+    })
+    open_word(viewer, page, target)
+    assert page.evaluate(HEADERS_FOOTERS) == ["Header | Footer"] * 4
+
+
+# ---------------------------------------------------------------------------
 # The page counter and Go to page, over the app's channel
 # ---------------------------------------------------------------------------
 

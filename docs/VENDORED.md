@@ -22,7 +22,7 @@ commit.
 | `wasm/jbig2.wasm` | PDFium's JBIG2 decoder, compiled and redistributed by pdf.js | via pdf.js 6.3.289 | BSD-3-Clause and Apache-2.0 | https://pdfium.googlesource.com/pdfium/ |
 | `wasm/LICENSE_*` (4 files) | licence texts for the two decoders above | via pdf.js 6.3.289 | see above | https://github.com/mozilla/pdf.js |
 | `jszip3.min.js` | JSZip | 3.10.1 | MIT or GPL-3.0 dual | https://github.com/Stuk/jszip |
-| `docx-preview.min.js` | docx-preview | 0.4.0 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
+| `docx-preview.min.js` | docx-preview | 0.4.1 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
 | `marked.min.js` | marked | 15.0.12 | MIT | https://github.com/markedjs/marked |
 | `purify.min.js` | DOMPurify | 3.4.12 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
@@ -113,13 +113,22 @@ so neither sets a floor today.
 
 docx-preview stays as upstream ships it, so `docx.js`, `docx-pages.js` and `docx-lines.js`
 change it from outside, through the `h` option, which it calls as the renderer's own method.
-From there they replace nine renderer methods by name: `renderRun` (subscript runs drawn
+From there they replace ten renderer methods by name: `renderRun` (subscript runs drawn
 twice, docxjs#233, and the page-number fields), `splitBySection`, `groupByPageBreaks`,
 `createPageElement`, `renderHeaderFooter`, `renderParagraph` and `renderTableRow` (Word's
-own pages, issue #47), `styleToString` (lines as Word sets them), and `renderTableCell` (a
-cell whose text direction is `lrTb`, Word's plain left-to-right text, drawn on its side). The
-names survive minification. Check that each still exists in a new file, with the same
-arguments, before upgrading.
+own pages, issue #47), `renderText` (measured pages, issue #55), `styleToString` (lines as
+Word sets them), and `renderTableCell` (a cell whose text direction is `lrTb`, Word's plain
+left-to-right text, drawn on its side). They call two more as they are: `findStyle`, for a
+paragraph's style and the styles it is `basedOn`, and `isPageBreakSection`, for whether a
+continuous section still starts a page. The names survive minification. Check that each
+still exists in a new file, with the same arguments, before upgrading.
+
+Then read upstream's changes method by method. `splitBySection` and `groupByPageBreaks` are
+replaced whole and never call upstream's, so a fix inside them never reaches Gander: 0.4.1's
+fix for a paragraph's own "page break before" was one, and `splitPieces` in `docx-pages.js`
+already did the same. The other eight call upstream's, so a fix inside them does reach
+Gander: 0.4.1's fix in `renderHeaderFooter`, which draws an even page's own header only when
+the file asks for different odd and even pages, was one.
 
 `docx-lines.js` also rewrites the style objects `h` receives for `p` and `span`, so it reads
 the three forms `parseSpacing` writes for `line-height`: a bare number for "auto",
@@ -133,15 +142,30 @@ part's `_xmlDocument` rather than parsing `styles.xml` again, then clears every 
 
 They also read the shapes of the parsed document: a break whose `break` is
 `"lastRenderedPageBreak"`, a run's `fieldRun` with `complexField` (by `charType`) and
-`instruction` children, a section's `pageNumber.start`, `pageNumber.format` and
-`columns.numberOfColumns`, a row's `isHeader`, which is null for Word's `<w:tblHeader/>`,
-and the page count Word saved, `document.extendedPropsPart.props.pages`.
-`test_docx_pages.py` fails if the pages stop splitting or numbering. Once upstream
-releases the fix for #233 (PR #234), `drawRunsOnce` can go.
+`instruction` children, a paragraph's `sectionProps`, `styleName`, `pageBreakBefore`,
+`keepNext` and `keepLines`, a style's `paragraphProps` and `basedOn`, a section's `type`,
+`headerRefs` and `footerRefs` (each by its `type`), `pageNumber.start`, `pageNumber.format`
+and `columns.numberOfColumns`, a row's `isHeader`, which is null for Word's
+`<w:tblHeader/>`, and the page count Word saved, `document.extendedPropsPart.props.pages`.
+For measured pages, `vwNumberModel` walks `documentPart.body` by each node's `type` and
+`children`, and `vwAddTurns` writes runs holding that break into the parsed document before
+it is drawn again, so docx-preview has to draw nodes it did not parse. The rest of a
+paragraph a page cuts in two gets a `className`, which docx-preview draws as its class.
+`test_docx_pages.py` fails if the pages stop splitting or numbering, or if a file that does
+not ask for different odd and even pages shows its even-page header. Once upstream releases
+the fix for #233 (PR #234), `drawRunsOnce` can go.
+
+Print leans on how docx-preview lays out a page. `renderHeaderFooter` sets the footer in
+the bottom margin with a negative `margin-bottom`, `calc(<footer> - <bottom>)` from the
+section's `pageMargins`, and docx-preview's own stylesheet makes each page a flex column
+whose `article` has `margin-bottom: auto`, which holds the footer at the foot of the page.
+`vwPrintFooters` in `docx.js` reads that margin to give the page, in print, the part of its
+bottom margin the footer reaches into. `test_print.py` fails if a Word page with a footer
+prints on two sheets, or if its footer moves in print.
 
 `test_docx.py` fails if a cell set `lrTb` is drawn vertical, or a cell set `tbRl` or `btLr`
-is not. `drawLrTbAcross` can go once a release reads `lrTb` as horizontal text; upstream's
-main branch still read it as vertical at c533f38 (21 September 2026).
+is not. `drawLrTbAcross` can go once a release reads `lrTb` as horizontal text; 0.4.1,
+which is upstream's c533f38 (21 September 2026), still reads it as vertical.
 
 ## PPTXjs's one change
 

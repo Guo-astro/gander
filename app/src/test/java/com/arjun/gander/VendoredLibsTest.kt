@@ -52,7 +52,7 @@ class VendoredLibsTest {
          * measurements, and a measurement is of one file.
          */
         val FLOORS_MEASURED_ON = mapOf(
-            "docx-preview.min.js" to "051ef503f2677d53159a388b7384e950eda41ea4e47a103e5e36f124d7faea40",
+            "docx-preview.min.js" to "c4a133c65a112799e35b143c572dfff9e923a3bf39b5fd3b07a06aa0f8f530c2",
             "jszip3.min.js" to "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e",
             "marked.min.js" to "3e7e7d7feb3e5d58cb6c804f68ab5c24cc7e5eb6270fd6e5cbb9124739217d0c",
             "purify.min.js" to "c45ba939765574f96cbf35ee9b6d89f73756a17921814425e74b82f7c54603ce",

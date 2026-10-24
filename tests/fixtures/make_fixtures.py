@@ -742,7 +742,7 @@ def word_measured() -> None:
     line breaks, so where each page ends depends on no font: 648pt of body on Letter paper
     with inch margins holds 32 lines and 8pt over.
 
-    Five pages: page one is 31 lines of filler, then a heading kept with its next paragraph,
+    Six pages: page one is 31 lines of filler, then a heading kept with its next paragraph,
     which has no room, so both go to page two; that page ends with three lines of a ten-line
     paragraph. Page three ends with 23 lines of filler and 48pt over, where a three-line
     paragraph would leave one line alone, so it goes whole to page four, which ends six rows
@@ -814,6 +814,38 @@ def word_measured() -> None:
         footer = "".join(z.read(n).decode() for n in z.namelist() if n.startswith("word/footer"))
     assert "lastRenderedPageBreak" not in body and "tblHeader" in body
     assert footer.count('fldCharType="begin"') == 2
+    normalize_zip(target)
+    written(target)
+
+
+def word_odd_even() -> None:
+    """
+    A file set for different odd and even pages: four pages, each ended by a page break, with
+    a header and footer for odd pages and another pair for even ones. test_docx_pages.py
+    also takes the setting out, which leaves the even-page pair in a file that doesn't use it.
+    """
+    from docx import Document
+    from docx.enum.text import WD_BREAK
+
+    doc = Document()
+    doc.settings.odd_and_even_pages_header_footer = True
+    section = doc.sections[0]
+    section.header.paragraphs[0].text = "Header"
+    section.footer.paragraphs[0].text = "Footer"
+    section.even_page_header.paragraphs[0].text = "Even header"
+    section.even_page_footer.paragraphs[0].text = "Even footer"
+    for n in range(1, 5):
+        p = doc.add_paragraph(f"Page {n}.")
+        if n < 4:
+            p.add_run().add_break(WD_BREAK.PAGE)
+    fix_core_properties(doc)
+    target = OUT / "word-odd-even.docx"
+    doc.save(str(target))
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+        settings = z.read("word/settings.xml").decode()
+    assert settings.count("<w:evenAndOddHeaders/>") == 1
+    assert body.count('w:type="even"') == 2
     normalize_zip(target)
     written(target)
 
@@ -3734,7 +3766,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_measured,
-                 word_colours, word_lines,
+                 word_odd_even, word_colours, word_lines,
                  cell_directions, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,

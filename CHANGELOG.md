@@ -15,6 +15,9 @@
 - A Graphviz graph saved as .dot opens as text, where Gander took it for a Word template and said
   it couldn't read it (#58, thanks @IsakTheHacker). Word 97-2003 templates, which end in .dot
   too, still open as documents, and a .gv no longer says "unknown format" under its name.
+- A Word file that isn't set for different odd and even pages shows the same header and footer on
+  every page, as Word does. Gander drew the file's unused even-page header and footer on every
+  second page. Word files are now drawn by docx-preview 0.4.1, up from 0.4.0.
 
 ## 2.6 (2026-10-22)
 

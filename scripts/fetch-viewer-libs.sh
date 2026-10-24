@@ -50,7 +50,7 @@ done
 # Pinned. Unpinned, this took whatever was latest, which on the first fetch was
 # 0.4.0 while every record said 0.3.x, and a later run would have swapped the
 # library silently.
-get docx-preview.min.js "https://cdn.jsdelivr.net/npm/docx-preview@0.4.0/dist/docx-preview.min.js"
+get docx-preview.min.js "https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js"
 get xlsx.full.min.js    "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
 get marked.min.js       "https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"
 get purify.min.js       "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"

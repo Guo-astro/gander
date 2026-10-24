@@ -21,7 +21,7 @@ Released under the MIT Licence, the full text of which appears below.
 | Project | Version | Licence |
 | --- | --- | --- |
 | pdf.js (legacy build, with worker) | 6.3.289 | Apache-2.0 |
-| docx-preview | 0.4.0 | Apache-2.0 |
+| docx-preview | 0.4.1 | Apache-2.0 |
 | SheetJS Community Edition | 0.20.3 | Apache-2.0 |
 | DOMPurify | 3.4.12 | Apache-2.0 (elected) |
 | NVD3 | 1.8.1 | Apache-2.0 |
