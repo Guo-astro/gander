@@ -155,6 +155,26 @@ function fitPageWidth() {
   }
 }
 
+/*
+ * docx-preview sets a footer in the bottom margin with a negative margin below it, and print
+ * keeps each sheet's whole margin free, so the footer printed on a sheet of its own. In print
+ * the part of the margin it reaches into is the page's instead (docx.html), which leaves the
+ * footer where it was. Read before fitPageWidth zooms the pages.
+ */
+function vwPrintFooters(sheets) {
+  for (var i = 0; i < sheets.length; i++) {
+    var footer = sheets[i].querySelector(":scope > footer");
+    var into = footer ? -parseFloat(getComputedStyle(footer).marginBottom) : 0;
+    if (!(into > 0)) continue;
+    var style = getComputedStyle(sheets[i]);
+    /* A page too long for one sheet keeps its whole margin, which it repeats on every sheet */
+    if (sheets[i].getBoundingClientRect().height > (parseFloat(style.minHeight) || 0) + into + 0.5) continue;
+    var pad = parseFloat(style.paddingBottom) || 0;
+    sheets[i].style.setProperty("--vw-print-pad", Math.max(0, pad - into) + "px");
+    sheets[i].classList.add("vw-print-footer");
+  }
+}
+
 /* What the app sends besides search: "g<n>" to go to a page, "i1" and "i0" for night mode */
 window.vwPageCommand = function (msg) {
   var verb = msg.charAt(0);
@@ -237,6 +257,7 @@ if (!vwWebViewTooOld("Word documents")) {
       fixSymbolChars(container);
       vwNumberPages(vwSheets());
       if (vwNightOn) vwPrepareNight();
+      vwPrintFooters(vwSheets());
       /* Width first: it decides whether the document still overflows 980, which is the
          one thing that moves the height vwFitHeight is about to read. */
       fitPageWidth();

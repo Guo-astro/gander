@@ -7,6 +7,7 @@ is whether it asked for a password, which Android's printing can't open.
 """
 
 import re
+import zipfile
 
 import pytest
 
@@ -19,6 +20,36 @@ def sheets(page, paper):
     """How many sheets the page prints on, on [paper]."""
     data = page.pdf(format=paper, margin=ZERO)
     return len(re.findall(rb"/Type\s*/Page\b", data))
+
+
+def remade(made, fixture_path, name, part, change):
+    """word-measured.docx, a Letter file with a footer, with [part] passed through [change]."""
+    with zipfile.ZipFile(fixture_path("word-measured.docx")) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    items[part] = change(items[part])
+    target = made(name, b"")
+    with zipfile.ZipFile(target, "w") as z:
+        for each, data in items.items():
+            z.writestr(each, data)
+    return target
+
+
+def spaced(made, fixture_path):
+    """6pt after every paragraph, so its full pages end on space after."""
+    def change(xml):
+        xml, changed = re.subn(
+            rb'(<w:style [^>]*w:styleId="Normal"(?:(?!</w:style>).)*?)w:after="0"', rb'\1w:after="120"',
+            xml, count=1, flags=re.S)
+        assert changed == 1
+        return xml
+    return remade(made, fixture_path, "spaced.docx", "word/styles.xml", change)
+
+
+def one_long_page(made, fixture_path):
+    """10,500 lines, too many to measure, so they stay one page that runs on to many sheets."""
+    lines = b"<w:p><w:r><w:t>Many lines</w:t></w:r></w:p>" * 10500
+    return remade(made, fixture_path, "long.docx", "word/document.xml", lambda xml: re.sub(
+        rb"(<w:body>).*?(<w:sectPr)", lambda m: m.group(1) + lines + m.group(2), xml, flags=re.S))
 
 
 @pytest.mark.parametrize("paper", ["A4", "Letter"])
@@ -37,6 +68,57 @@ def test_a_letter_word_document_prints_on_one_sheet(viewer, page, paper):
     viewer("docx.html", "report.docx")
     wait_until_done(page)
     assert sheets(page, paper) == 1
+
+
+@pytest.mark.parametrize("paper", ["A4", "Letter"])
+def test_a_word_document_with_a_footer_prints_a_sheet_per_page(viewer, page, paper):
+    """
+    Six pages, each with a footer in its bottom margin. Print keeps each sheet's whole margin
+    free, so every footer used to print on a sheet of its own.
+    """
+    viewer("docx.html", "word-pages.docx")
+    wait_until_done(page)
+    assert sheets(page, paper) == 6
+
+
+@pytest.mark.parametrize("paper", ["A4", "Letter"])
+def test_a_full_word_page_prints_on_one_sheet(viewer, page, made, fixture_path, paper):
+    """
+    Pages measured full (#55), each ending on a paragraph with space after it. The space held
+    the page past its paper, and print gave that page's last line a sheet of its own.
+    """
+    viewer("docx.html", spaced(made, fixture_path))
+    wait_until_done(page)
+    drawn = page.evaluate("document.querySelectorAll('.docx-wrapper > section.docx').length")
+    assert drawn == 7
+    assert sheets(page, paper) == drawn
+
+
+def test_a_printed_footer_stays_where_the_page_draws_it(viewer, page):
+    viewer("docx.html", "word-pages.docx")
+    wait_until_done(page)
+    page.evaluate("document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1')")
+    where = """() => [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => {
+        const f = s.querySelector(':scope > footer').getBoundingClientRect(), top = s.getBoundingClientRect().top;
+        return [f.top - top, f.bottom - top];
+    })"""
+    drawn = page.evaluate(where)
+    page.emulate_media(media="print")
+    assert page.evaluate(where) == drawn
+
+
+def test_a_page_too_long_for_one_sheet_keeps_its_whole_margin(viewer, page, made, fixture_path):
+    """
+    It repeats its margins on every sheet it prints on, so giving its footer's part of the
+    bottom margin to the page would let every sheet's text run half an inch lower.
+    """
+    viewer("docx.html", one_long_page(made, fixture_path))
+    wait_until_done(page, timeout=25000)
+    assert page.evaluate("document.querySelectorAll('.docx-wrapper > section.docx').length") == 1
+    bottom = "getComputedStyle(document.querySelector('.docx-wrapper > section.docx')).paddingBottom"
+    drawn = page.evaluate(bottom)
+    page.emulate_media(media="print")
+    assert page.evaluate(bottom) == drawn == "96px"
 
 
 @pytest.mark.parametrize("html,fixture,sheet", [

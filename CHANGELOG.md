@@ -10,6 +10,8 @@
   draws a table's header rows again on the next page. Page numbers in the footer count these
   pages. A break can land a little away from where the app that saved the file put it, since the
   phone's fonts differ from that app's.
+- A Word file with a footer prints one sheet per page. Each footer printed on a sheet of its own,
+  so six pages took twelve sheets, and a full page could send its last line to a sheet of its own.
 
 ## 2.6 (2026-10-22)
 

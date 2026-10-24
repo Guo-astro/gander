@@ -110,6 +110,10 @@
     margin-top: 0 !important;
   }
 
+  /* Word lets a page's last space after fall below its margin, so it is not drawn: it held a
+     full page past its paper, and print gave that page's last line a sheet of its own */
+  .docx-wrapper > section.docx > article:last-of-type > :last-child { margin-bottom: 0 !important; }
+
   /*
    * Night mode (docx-night.js). The ground is black, as a PDF's is, and a line marks the top
    * of each page and the foot of the last, or black pages would run together. Screen only,
@@ -167,6 +171,9 @@
       box-decoration-break: clone;
     }
     .docx-wrapper > section.docx + section.docx { break-before: page; }
+    /* The part of the bottom margin a footer reaches into is the page's, see vwPrintFooters */
+    .docx-wrapper > section.docx.vw-print-footer { padding-bottom: var(--vw-print-pad) !important; }
+    .docx-wrapper > section.docx.vw-print-footer > footer { margin-bottom: 0 !important; }
   }
 </style>
 <script src="lib/jszip3.min.js"></script>
