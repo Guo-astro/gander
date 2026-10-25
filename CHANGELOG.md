@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The first screen now says how to open a file from your file manager, with Open with > Gander,
+  which only About said before.
+
 ## 2.7 (2026-10-25)
 
 - A Word file saved by WPS Office, LibreOffice or Google Docs now opens as pages, with the page

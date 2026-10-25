@@ -156,8 +156,8 @@
                     android:textAppearance="?attr/textAppearanceBodyMedium"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 
-                <!-- The two ways a file reaches Gander, in priority order. Both call the
-                     launchers the FAB and the old Add row already used; there is no third
+                <!-- The two ways a file reaches Gander from here, in priority order. Both call
+                     the launchers the FAB and the old Add row already used; there is no third
                      route into the picker. minWidth rather than a fixed width so a large
                      system font size grows the button instead of ellipsising the label. -->
                 <com.google.android.material.button.MaterialButton
@@ -176,6 +176,18 @@
                     android:layout_marginTop="12dp"
                     android:minWidth="@dimen/welcome_action_min_width"
                     android:text="@string/add_folder" />
+
+                <!-- Opening a file from another app is the route neither button shows, so a
+                     first run names it here as well as in About. -->
+                <TextView
+                    android:id="@+id/openWithHint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:gravity="center"
+                    android:text="@string/open_with_hint"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
         </ScrollView>
     </LinearLayout>

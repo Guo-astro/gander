@@ -171,6 +171,17 @@ class MainActivityTest {
             .isEqualTo(context.getString(R.string.welcome_formats_spoken))
     }
 
+    /**
+     * Neither button opens a file from another app, so a first run is told that route too,
+     * not only About.
+     */
+    @Test
+    fun theExplainerSaysHowToOpenAFileFromAFileManager() {
+        val tip = home().welcome().findViewById<TextView>(R.id.openWithHint)
+        assertThat(tip.text.toString()).isEqualTo(context.getString(R.string.open_with_hint))
+        assertThat(tip.isShown).isTrue()
+    }
+
     @Test
     fun theExplainerGoesOnceSomethingHasBeenOpened() {
         granted("six-pages.pdf", "Alder Court.pdf")
