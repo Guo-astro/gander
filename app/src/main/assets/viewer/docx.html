@@ -114,8 +114,10 @@
      full page past its paper, and print gave that page's last line a sheet of its own */
   .docx-wrapper > section.docx > article:last-of-type > :last-child { margin-bottom: 0 !important; }
 
-  /* Blank lines at the foot of a page take no room (vwHideTails in docx-pages.js) */
+  /* Blank lines at the foot of a page that runs past its paper take no room, and the block
+     above them is the page's last (vwHideTails in docx-pages.js) */
   .docx-wrapper p.vw-tail { min-height: 0 !important; height: 0; margin: 0 !important; overflow: hidden; }
+  .docx-wrapper > section.docx > article > .vw-page-end { margin-bottom: 0 !important; }
 
   /*
    * Night mode (docx-night.js). The ground is black, as a PDF's is, and a line marks the top

@@ -174,9 +174,11 @@ function vwPrintFooters(sheets) {
     var paper = parseFloat(style.minHeight) || 0;
     var over = Math.max(0, sheets[i].getBoundingClientRect().height - paper);
     var pad = parseFloat(style.paddingBottom) || 0;
-    /* A page too long for one sheet keeps its whole margin, which it repeats on every sheet */
-    if (!(into + over > 0.5) || over > paper * VW_PRINT_OVER || into + over > pad) continue;
-    sheets[i].style.setProperty("--vw-print-pad", (pad - into - over) + "px");
+    /* A page too long for one sheet keeps its whole margin, which it repeats on every sheet. A
+       rounding's worth over is not too long: a page reads a hair past paper that is not a whole
+       number of pixels tall, as A4 is not, and a footer can fill the whole margin. */
+    if (!(into + over > 0.5) || over > paper * VW_PRINT_OVER || into + over > pad + VW_SLACK) continue;
+    sheets[i].style.setProperty("--vw-print-pad", Math.max(0, pad - into - over) + "px");
     sheets[i].classList.add(into > 0 ? "vw-print-footer" : "vw-print-fit");
   }
 }

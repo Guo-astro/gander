@@ -15,7 +15,10 @@
   A page that runs a little past its paper, as a page set in the phone's fonts can, prints on one
   sheet too.
 - A tab in a Word file takes the text after it to its stop. On newer phones tabs were lined up
-  after the pages were fitted to the screen, which left them about a tenth short.
+  after the pages were fitted to the screen, which left them about a tenth short. A dotted tab
+  that ends a line, as in a table of contents without page numbers, draws its dots to the stop,
+  where they ran past the margin on a line of their own. A file with thousands of tabs no longer
+  freezes for seconds as it opens: each tab laid the page out again.
 - Footnotes in a Word file are numbered through the document, as Word numbers them. A file drawn
   in pages started each page's notes again at 1.
 - A Graphviz graph saved as .dot opens as text, where Gander took it for a Word template and said

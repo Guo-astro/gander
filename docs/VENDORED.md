@@ -115,30 +115,40 @@ docx-preview stays as upstream ships it, so `docx.js`, `docx-pages.js` and `docx
 change it from outside, through the `h` option, which it calls as the renderer's own method.
 From there they replace fourteen renderer methods by name: `renderRun` (subscript runs drawn
 twice, docxjs#233, and the page-number fields), `splitBySection`, `groupByPageBreaks`,
-`createPageElement`, `renderHeaderFooter`, `renderParagraph` and `renderTableRow` (Word's
-own pages, issue #47), `renderText` and `createSectionContent` (measured pages, issue #55),
-`refreshTabStops` (tabs lined up when Gander says, not on docx-preview's timer),
-`renderFootnoteReference` and `renderNotes` (footnotes numbered through the document),
-`styleToString` (lines as Word sets them), and `renderTableCell` (a cell whose text direction
-is `lrTb`, Word's plain left-to-right text, drawn on its side). They call two more as they
-are: `findStyle`, for a paragraph's style and the styles it is `basedOn`, and
-`isPageBreakSection`, for whether a continuous section still starts a page. The names survive
-minification. Check that each still exists in a new file, with the same arguments, before
-upgrading.
+`createPageElement`, `renderHeaderFooter`, `renderParagraph` and `renderTableRow` (Word's own
+pages, issue #47), `renderText` and `createSectionContent` (measured pages, issue #55),
+`refreshTabStops` (tabs lined up when Gander says, not on docx-preview's timer, with the page
+laid out once for each tab a paragraph holds rather than once a tab), `renderFootnoteReference`
+and `renderNotes` (footnotes numbered through the document, each listed once), `styleToString`
+(lines as Word sets them), and `renderTableCell` (a cell whose text direction is `lrTb`, Word's
+plain left-to-right text, drawn on its side). They call two more as they are: `findStyle`, for
+a paragraph's style and the styles it is `basedOn`, and `isPageBreakSection`, for whether a
+continuous section still starts a page. The names survive minification. Check that each still
+exists in a new file, with the same arguments, before upgrading.
 
-Then read upstream's changes method by method. `splitBySection` and `groupByPageBreaks` are
-replaced whole and never call upstream's, so a fix inside them never reaches Gander: 0.4.1's
-fix for a paragraph's own "page break before" was one, and `splitPieces` in `docx-pages.js`
-already did the same. The other twelve call upstream's, so a fix inside them does reach
-Gander: 0.4.1's fix in `renderHeaderFooter`, which draws an even page's own header only when
-the file asks for different odd and even pages, was one.
+Then read upstream's changes method by method. `splitBySection`, `groupByPageBreaks` and
+`refreshTabStops` are replaced whole and never call upstream's, so a fix inside them never
+reaches Gander: 0.4.1's fix for a paragraph's own "page break before" was one, and
+`splitPieces` in `docx-pages.js` already did the same. The other eleven call upstream's, so a
+fix inside them does reach Gander: 0.4.1's fix in `renderHeaderFooter`, which draws an even
+page's own header only when the file asks for different odd and even pages, was one.
 
-Three of them lean on how upstream's work inside. `refreshTabStops` schedules its pass with
-the global `setTimeout`, which the replacement stands in for while it runs, to hold the pass
-for `vwLineUpTabs`. `renderNotes(ids, map)` returns the list for its caller to add, and is
-told footnotes from endnotes by `map` being the renderer's `footnoteMap`. And
-`vwPages.pageRoom` calls `createPageElement` and `renderHeaderFooter` itself, with the
-renderer's `className`, to draw a page out of sight and measure the room it leaves.
+The tab pass is upstream's, copied. `vwTabPlan` and `vwSetTab` in `docx-pages.js` are its
+`updateTabStop` (minified to `We`), cut where it stops reading and starts writing, and
+`vwPointsPerPixel` is the probe its pass measures points with, so a change upstream makes to
+how a tab is lined up has to be copied by hand. The copy makes one change: a right or centred
+tab with nothing drawn after it, as at the end of a contents line, is placed from its own end
+and never narrower than nothing, where upstream read the empty range after it as a box at the
+page's left edge and drew the tab past its line. The replacement reads the renderer's `currentTabs`, each with its `span` and its
+paragraph's `stops`, each stop's `position`, `leader` and `style`, and `defaultTabSize`.
+`test_docx_pages.py` fails if the copy and upstream's pass line up a file's other tabs
+differently.
+
+Two of them lean on how upstream's work inside. `renderNotes(ids, map)` lists the notes of
+`ids` that `map` holds, in that order, returns the list for its caller to add, and is told
+footnotes from endnotes by `map` being the renderer's `footnoteMap`. And `vwPages.pageRoom`
+calls `createPageElement` and `renderHeaderFooter` itself, with the renderer's `className`,
+to draw a page out of sight and measure the room it leaves.
 
 `docx-lines.js` also rewrites the style objects `h` receives for `p` and `span`, so it reads
 the three forms `parseSpacing` writes for `line-height`: a bare number for "auto",

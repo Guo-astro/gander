@@ -31,13 +31,19 @@ var vwPages = {
   /* Fields being read, innermost last; see trackField */
   fields: [],
   nextField: 0,
-  /* docx-preview's pass that lines up this drawing's tabs, held for vwLineUpTabs */
+  /* This drawing's tabs and its default tab stop, held for vwLineUpTabs */
   tabs: null,
-  /* Footnote references drawn so far in this drawing, which number the next one */
-  notes: 0,
+  /* This drawing's footnotes, numbered as their references are drawn; see vwNoteBook */
+  notes: vwNoteBook(),
   /* The room for the body on a page measured from a sheet; see vwSplitAsWordDid */
   pageRoom: null
 };
+
+/* The notes drawn so far: how many are numbered, each one's number by its id, and the ids
+   already listed under a page */
+function vwNoteBook() {
+  return { count: 0, of: Object.create(null), listed: Object.create(null) };
+}
 
 function vwIsPageMark(node) {
   return node.type === "break" && node.break === "lastRenderedPageBreak";
@@ -120,7 +126,7 @@ function vwSplitAsWordDid(renderer) {
     /* A second drawing counts its pages, fields and footnotes afresh */
     vwPages.props = [];
     vwPages.fields = [];
-    vwPages.notes = 0;
+    vwPages.notes = vwNoteBook();
     var app = this.document.extendedPropsPart;
     vwPages.wordPages = (app && app.props && app.props.pages) || 0;
     vwPages.split = elements.some(vwHasPageMark);
@@ -193,44 +199,53 @@ function vwSplitAsWordDid(renderer) {
   };
 
   /*
-   * docx-preview lines up tabs half a second after it draws, on a timer. The pass is held here
-   * for vwLineUpTabs to run once the drawing is on the page and its fonts are in, so a page is
-   * measured with its tabs as they are drawn, and before fitPageWidth zooms the pages: the pass
-   * reads positions with getBoundingClientRect, which takes the zoom in from about Chromium 128.
+   * docx-preview lines up tabs half a second after it draws, on a timer. Here its tabs are held
+   * for vwLineUpTabs to line up once the drawing is on the page and its fonts are in, so a page
+   * is measured with its tabs as they are drawn, and before fitPageWidth zooms the pages: tabs
+   * are placed by getBoundingClientRect, which takes the zoom in from about Chromium 128.
    */
-  var refreshTabStops = renderer.refreshTabStops;
   renderer.refreshTabStops = function () {
-    var schedule = window.setTimeout, held = null;
-    window.setTimeout = function (pass) { held = pass; return 0; };
-    try {
-      refreshTabStops.call(this);
-    } finally {
-      window.setTimeout = schedule;
-    }
-    vwPages.tabs = held;
+    if (this.options.experimental) vwPages.tabs = { tabs: this.currentTabs, size: this.defaultTabSize };
   };
 
   /*
    * docx-preview numbers a footnote by its place in its own page's list, so a document cut
    * into pages started again at 1 on each. Word numbers them through the document, and so does
-   * this, with each page's list starting at its first note's number. A page's references are
-   * also marked, for vwNotesOn to find the notes each page measured from a sheet holds.
+   * this. A reference drawn again, as in a table's header row repeated on each page, keeps its
+   * note's number, and the note is listed once, under the first page that cites it. References
+   * are also marked, for vwNotesOn to find the notes each page measured from a sheet holds.
    */
   var renderFootnoteReference = renderer.renderFootnoteReference;
   renderer.renderFootnoteReference = function (ref) {
-    var sup = renderFootnoteReference.call(this, ref);
-    vwPages.notes++;
+    var sup = renderFootnoteReference.call(this, ref), notes = vwPages.notes;
+    var n = ref.id != null && notes.of[ref.id];
+    if (!n) {
+      n = ++notes.count;
+      if (ref.id != null) notes.of[ref.id] = n;
+    }
     if (sup && sup.setAttribute) {
-      sup.textContent = String(vwPages.notes);
+      sup.textContent = String(n);
       sup.setAttribute("data-vw-note", "");
     }
     return sup;
   };
   var renderNotes = renderer.renderNotes;
   renderer.renderNotes = function (ids, map) {
-    var list = renderNotes.apply(this, arguments);
-    if (list && list.setAttribute && map === this.footnoteMap) {
-      list.setAttribute("start", String(vwPages.notes - ids.length + 1));
+    if (map !== this.footnoteMap) return renderNotes.apply(this, arguments);
+    var notes = vwPages.notes;
+    var fresh = ids.filter(function (id) {
+      if (id == null) return true;
+      if (notes.listed[id]) return false;
+      notes.listed[id] = true;
+      return true;
+    });
+    var list = renderNotes.call(this, fresh, map);
+    if (list && list.setAttribute) {
+      /* docx-preview lists the notes it has, in the order cited */
+      var shown = fresh.filter(function (id) { return map[id]; });
+      for (var i = 0; i < list.children.length && i < shown.length; i++) {
+        if (notes.of[shown[i]]) list.children[i].value = notes.of[shown[i]];
+      }
       list.setAttribute("data-vw-notes", "");
     }
     return list;
@@ -273,11 +288,110 @@ function vwSplitAsWordDid(renderer) {
   };
 }
 
-/* Lines up the tabs of the drawing on the page, which docx-preview left for later */
+/*
+ * Lines up the tabs of the drawing on the page, which docx-preview left for later. Its own pass
+ * reads where a tab sits and then moves it, tab by tab, so the page was laid out again for each
+ * tab: with the CPU slowed four times, 3,600 tabs on one long sheet took 3.6 s and 9,000 took
+ * 25 s. This is the same pass (vwTabPlan) with the reads for one tab of every paragraph made
+ * before any of them moves, so the page is laid out once for each tab a paragraph holds. A tab
+ * is placed from its own paragraph's left edge and moves only the text after it in that
+ * paragraph, so the tabs of one paragraph do not move another's.
+ */
 function vwLineUpTabs() {
-  var pass = vwPages.tabs;
+  var held = vwPages.tabs;
   vwPages.tabs = null;
-  if (pass) pass();
+  if (!held) return;
+  try {
+    var paras = [], of = new Map();
+    held.tabs.forEach(function (tab) {
+      /* docx-preview's pass threw on a tab outside any paragraph; a drawing already gone has nothing to line up */
+      var p = tab.span.isConnected && tab.span.closest("p");
+      if (!p) return;
+      var group = of.get(p);
+      if (!group) {
+        group = { p: p, tabs: [] };
+        of.set(p, group);
+        paras.push(group);
+      }
+      group.tabs.push(tab);
+    });
+    var ratio = vwPointsPerPixel();
+    for (var k = 0; paras.length; k++) {
+      var plans = paras.map(function (group) { return vwTabPlan(group.tabs[k], group.p, held.size, ratio); });
+      plans.forEach(function (plan, i) { if (plan) vwSetTab(paras[i].tabs[k].span, plan); });
+      paras = paras.filter(function (group) { return group.tabs.length > k + 1; });
+    }
+  } catch (e) {
+    /* The tabs not yet lined up stay as drawn, as when docx-preview's own pass threw */
+  }
+}
+
+/* Points to a pixel, as docx-preview reads it: 100pt over the whole pixels a div that wide takes */
+function vwPointsPerPixel() {
+  var probe = document.createElement("div");
+  probe.style.width = "100pt";
+  document.body.appendChild(probe);
+  var ratio = 100 / probe.offsetWidth;
+  document.body.removeChild(probe);
+  return ratio;
+}
+
+var VW_TAB_LEFT = { pos: 0, leader: "none", style: "left" };
+
+/*
+ * docx-preview's updateTabStop up to where it writes: the stop a tab reaches and the width that
+ * takes it there, with the paragraph's own stops, then default stops to its width, at most 50.
+ * Null for a tab past the last stop, which stays as drawn. Reads only. It differs from upstream's
+ * only for a right or centred tab with nothing drawn after it.
+ */
+function vwTabPlan(tab, p, size, ratio) {
+  var span = tab.span, box = span.getBoundingClientRect(), para = p.getBoundingClientRect();
+  var margin = parseFloat(getComputedStyle(p).marginLeft);
+  var stops = tab.stops && tab.stops.length > 0 ? tab.stops.map(function (s) {
+    return { pos: parseFloat(s.position), leader: s.leader, style: s.style };
+  }).sort(function (a, b) { return a.pos - b.pos; }) : [VW_TAB_LEFT];
+  var width = para.width * ratio, step = parseFloat(size);
+  for (var pos = stops[stops.length - 1].pos + step; pos < width && stops.length < 50; pos += step) {
+    stops.push({ pos: pos, leader: "none", style: "left" });
+  }
+  var at = (box.left - (para.left + margin)) * ratio, stop = null;
+  for (var i = 0; i < stops.length && !stop; i++) {
+    if (stops[i].style !== "clear" && stops[i].pos > at) stop = stops[i];
+  }
+  if (!stop) return null;
+  if (stop.style !== "right" && stop.style !== "center") return { stop: stop, spacing: stop.pos - at };
+  /* The text from the tab to the next one, or to the paragraph's end, ends at the stop or centres on it */
+  var tabs = [].slice.call(p.querySelectorAll("." + span.className)), next = tabs[tabs.indexOf(span) + 1];
+  var range = document.createRange();
+  range.setStart(span, 1);
+  if (next) range.setEndBefore(next); else range.setEndAfter(p);
+  var text = range.getBoundingClientRect(), share = stop.style === "center" ? 0.5 : 1;
+  /* With nothing drawn after it, as when it ends its paragraph, the tab sets empty text at its
+     own end, and never pulls its line back where that end is past the stop. Upstream read the
+     empty range as a box at the page's left edge, so a contents line whose dotted tab ends it
+     had the dots drawn past its line, on a line of their own. */
+  if (!text.width && !text.height) {
+    return { stop: stop, spacing: Math.max(0, stop.pos - (box.right - (para.left - margin)) * ratio) };
+  }
+  return { stop: stop, spacing: stop.pos - (text.left + share * text.width - (para.left - margin)) * ratio };
+}
+
+/* The rest of updateTabStop: the tab widened to its stop, with the stop's leader drawn under it */
+function vwSetTab(span, plan) {
+  span.innerHTML = "&nbsp;";
+  span.style.textDecoration = "inherit";
+  span.style.wordSpacing = plan.spacing.toFixed(0) + "pt";
+  switch (plan.stop.leader) {
+    case "dot":
+    case "middleDot":
+      span.style.textDecoration = "underline";
+      span.style.textDecorationStyle = "dotted";
+      break;
+    case "hyphen":
+    case "heavy":
+    case "underscore":
+      span.style.textDecoration = "underline";
+  }
 }
 
 /* Word's keep with next ("n") and keep lines together ("l"), set on the paragraph or its styles */
@@ -749,11 +863,9 @@ function vwSheetTurns(sheet, turns, index) {
   if (!(room > 0)) return;
   var notes = vwNotesOn(sheet);
 
-  var blocks = [];
-  for (a = 0; a < articles.length; a++) blocks.push.apply(blocks, articles[a].children);
+  var blocks = vwBlocks(sheet);
   /* Blank lines that end the sheet start no page: the break or the end after them does (vwHideTails) */
-  var last = blocks.length;
-  while (last > 0 && vwBlank(blocks[last - 1])) last--;
+  var last = vwInked(blocks);
 
   var page = { top: articles[0].getBoundingClientRect().top, room: room, notes: notes };
   for (var b = 0; b < last; b++) {
@@ -813,31 +925,66 @@ function vwNotesHeight(notes, top, bottom) {
   return any ? sum + notes.frame : 0;
 }
 
+/* The blocks of a page's body, from the top, across the parts its sections make of it */
+function vwBlocks(sheet) {
+  var articles = sheet.querySelectorAll(":scope > article"), blocks = [];
+  for (var a = 0; a < articles.length; a++) blocks.push.apply(blocks, articles[a].children);
+  return blocks;
+}
+
+/* How many of a page's [blocks] come before the blank paragraphs that end it */
+function vwInked(blocks) {
+  var last = blocks.length;
+  while (last > 0 && vwBlank(blocks[last - 1])) last--;
+  return last;
+}
+
+/* What an empty paragraph can hold and still draw nothing: empty runs, links, bookmarks and breaks */
+var VW_EMPTY = { SPAN: 1, A: 1, BR: 1, WBR: 1 };
+
 /*
- * A paragraph with nothing drawn on it, which a page can lose at its foot. One with a border
- * or a ground shows, so it stays.
+ * A paragraph with nothing drawn on it, which a page can lose at its foot. It holds no text at
+ * all, since spaces or a tab can carry an underline or a leader, as a line to sign on does,
+ * and nothing besides empty runs. It has no list number, border or ground.
  */
 function vwBlank(el) {
-  if (el.tagName !== "P" || /\S/.test(el.textContent) || el.querySelector("img, svg, canvas")) return false;
+  if (el.tagName !== "P" || el.textContent) return false;
+  var inside = el.getElementsByTagName("*");
+  for (var i = 0; i < inside.length; i++) {
+    if (!VW_EMPTY[inside[i].tagName]) return false;
+  }
+  /* A list's number is drawn before the paragraph, or as its marker where the level has no text */
+  var number = getComputedStyle(el, "::before").content;
+  if (number && number !== "none" && number !== "normal" && number !== '""') return false;
   var style = getComputedStyle(el);
+  if (style.display === "list-item" && (style.listStyleType !== "none" || style.listStyleImage !== "none")) return false;
   return !(parseFloat(style.borderTopWidth) || parseFloat(style.borderBottomWidth) ||
     parseFloat(style.borderLeftWidth) || parseFloat(style.borderRightWidth)) &&
     /^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
 }
 
 /*
- * Blank lines at the foot of a page take no room there. A page measured without them (see
- * vwSheetTurns) would otherwise run past its paper, and a blank line ending a full page
- * before a page break became a page of its own.
+ * Blank lines at the foot of a page that runs past its paper take no room there, and the
+ * block above them no space after, as a page's last block has none (docx.html). A page
+ * measured without them (see vwSheetTurns) would otherwise run past its paper, and a blank
+ * line ending a full page before a page break became a page of its own. A page that fits
+ * keeps them, where they show nothing anyway. Every page is read before any is changed, so
+ * the pages are laid out once.
  */
 function vwHideTails(sheets) {
+  var ends = [];
   for (var i = 0; i < sheets.length; i++) {
-    var articles = sheets[i].querySelectorAll(":scope > article");
-    var article = articles[articles.length - 1];
-    for (var el = article && article.lastElementChild; el && vwBlank(el); el = el.previousElementSibling) {
-      el.classList.add("vw-tail");
+    var blocks = vwBlocks(sheets[i]), last = vwInked(blocks);
+    if (last === blocks.length) continue;
+    var style = getComputedStyle(sheets[i]);
+    if (sheets[i].getBoundingClientRect().height > (parseFloat(style.minHeight) || 0) + VW_SLACK) {
+      ends.push({ blocks: blocks, last: last });
     }
   }
+  ends.forEach(function (end) {
+    for (var b = end.last; b < end.blocks.length; b++) end.blocks[b].classList.add("vw-tail");
+    if (end.last > 0) end.blocks[end.last - 1].classList.add("vw-page-end");
+  });
 }
 
 /*
@@ -895,6 +1042,9 @@ function vwTableTurn(blocks, b, page, memo) {
       /* Already at the head of the page and still too tall: the next row starts the next one */
       at = r + 1;
     }
+    /* Header rows that fill a page by themselves would be drawn again on every page with one
+       row under them, so the table goes on as one page */
+    if (memo.lift >= page.room) return null;
     if (at >= memo.rows.length || !memo.rows[at].hasAttribute("data-vw-r")) return null;
     memo.from = at;
     return { at: { r: Number(memo.rows[at].getAttribute("data-vw-r")) }, y: memo.boxes[at].top - memo.lift };

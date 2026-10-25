@@ -875,13 +875,14 @@ def word_measured_fit() -> None:
     paragraphs of an essay in 12pt Times New Roman, double-spaced with an indented first line,
     whose type sits a whole line's spacing inside its lines; then 60 paragraphs at exactly
     20pt that open with a tab and wrap on their own, so their lines move once the tabs are
-    lined up; then three lines with tab stops at 2in and, right-aligned, at 6in. Then a page
-    break starts a page of 27 lines at exactly 24pt, and the next paragraph opens with a page
-    break, as LibreOffice writes one, which must not leave a page of its own.
+    lined up; then three lines with tab stops at 2in and, right-aligned, at 6in, and a contents
+    line that ends on a right-aligned dotted tab at 6in, with no page number after it. Then a
+    page break starts a page of 27 lines at exactly 24pt, and the next paragraph opens with a
+    page break, as LibreOffice writes one, which must not leave a page of its own.
     """
     import random
 
-    from docx.enum.text import WD_BREAK, WD_LINE_SPACING, WD_TAB_ALIGNMENT
+    from docx.enum.text import WD_BREAK, WD_LINE_SPACING, WD_TAB_ALIGNMENT, WD_TAB_LEADER
     from docx.shared import Inches, Pt
 
     doc = measured_base(24)
@@ -907,6 +908,10 @@ def word_measured_fit() -> None:
         fmt.first_line_indent = Inches(0)
         fmt.tab_stops.add_tab_stop(Inches(2))
         fmt.tab_stops.add_tab_stop(Inches(6), WD_TAB_ALIGNMENT.RIGHT)
+    contents = doc.add_paragraph("Contents line ending on its tab")
+    contents.paragraph_format.first_line_indent = Inches(0)
+    contents.paragraph_format.tab_stops.add_tab_stop(Inches(6), WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+    contents.add_run("\t")
 
     def full(paragraph):
         fmt = paragraph.paragraph_format
@@ -948,24 +953,35 @@ def word_measured_notes() -> None:
     fix_core_properties(doc)
     target = OUT / "word-measured-notes.docx"
     doc.save(str(target))
-    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
     note = "This note on the reading runs to a second line, with the date, the gauge and who took it down"
+    with_footnotes(target, [(f"NOTE{n:02d}", k, f"Note {k}. {note}.") for k, n in enumerate(range(1, 41, 2), start=1)])
+    normalize_zip(target)
+    written(target)
+
+
+def with_footnotes(target: Path, notes) -> None:
+    """
+    Gives the saved file at [target] a footnotes part. [notes] holds (marker, id, text): the run
+    that says only marker becomes a superscript reference to footnote id, as Word writes one, and
+    that note says text.
+    """
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
     with zipfile.ZipFile(target) as z:
         items = {i.filename: z.read(i.filename) for i in z.infolist()}
-    body, notes = items["word/document.xml"].decode(), ""
-    for k, n in enumerate(range(1, 41, 2), start=1):
-        assert body.count(f"<w:t>NOTE{n:02d}</w:t>") == 1
+    body, written_notes = items["word/document.xml"].decode(), ""
+    for marker, k, text in notes:
+        assert body.count(f"<w:t>{marker}</w:t>") == 1
         body = body.replace(
-            f"<w:t>NOTE{n:02d}</w:t>",
+            f"<w:t>{marker}</w:t>",
             f'<w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="{k}"/>',
         )
-        notes += f'<w:footnote w:id="{k}"><w:p><w:r><w:t>Note {k}. {note}.</w:t></w:r></w:p></w:footnote>'
+        written_notes += f'<w:footnote w:id="{k}"><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:footnote>'
     items["word/document.xml"] = body.encode()
     items["word/footnotes.xml"] = (
         f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:footnotes {w}>'
         '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
         '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r>'
-        "<w:continuationSeparator/></w:r></w:p></w:footnote>" + notes + "</w:footnotes>"
+        "<w:continuationSeparator/></w:r></w:p></w:footnote>" + written_notes + "</w:footnotes>"
     ).encode()
     items["word/_rels/document.xml.rels"] = items["word/_rels/document.xml.rels"].decode().replace(
         "</Relationships>",
@@ -980,8 +996,6 @@ def word_measured_notes() -> None:
     with zipfile.ZipFile(target, "w") as z:
         for name, data in items.items():
             z.writestr(name, data)
-    normalize_zip(target)
-    written(target)
 
 
 def word_measured_sections() -> None:
@@ -1027,6 +1041,122 @@ def word_measured_sections() -> None:
     with zipfile.ZipFile(target) as z:
         body = z.read("word/document.xml").decode()
     assert "lastRenderedPageBreak" not in body and '<w:type w:val="continuous"/>' in body
+    normalize_zip(target)
+    written(target)
+
+
+def word_measured_tails() -> None:
+    """
+    Measured pages that end in blank lines, every line exactly 20pt. Sixty lines with 6pt after
+    each, then forty blank lines to a page break, more than the last page of the sixty has room
+    for. A short page with two blank lines, which fit. Then a page of lines that look blank:
+    a picture, an empty paragraph with a border and one with a ground, an empty paragraph and
+    one holding only a bookmark, which draw nothing, underlined spaces, an empty numbered item,
+    an empty item of a level with no number text, which docx-preview gives the browser's own
+    marker, a tab with a dotted leader and an underlined tab to sign on, and forty blank lines
+    to the end.
+    """
+    from docx.enum.text import WD_TAB_ALIGNMENT, WD_TAB_LEADER
+    from docx.shared import Inches, Pt
+    from PIL import Image
+
+    doc = measured_base(20)
+    for n in range(1, 61):
+        doc.add_paragraph(f"Fill {n:02d}").paragraph_format.space_after = Pt(6)
+    for _ in range(40):
+        doc.add_paragraph()
+    doc.add_paragraph("Short page").paragraph_format.page_break_before = True
+    doc.add_paragraph()
+    doc.add_paragraph()
+    doc.add_paragraph("Signed for the client:").paragraph_format.page_break_before = True
+    picture = io.BytesIO()
+    Image.new("RGB", (40, 20), (90, 90, 90)).save(picture, format="PNG")
+    picture.seek(0)
+    doc.add_paragraph().add_run().add_picture(picture, width=Inches(1))
+    doc.add_paragraph("BORDERED")
+    doc.add_paragraph("SHADED")
+    doc.add_paragraph()
+    doc.add_paragraph("BOOKMARKED")
+    doc.add_paragraph().add_run(" " * 24).underline = True
+    doc.add_paragraph(style="List Number")
+    doc.add_paragraph("MARKED")
+    leader = doc.add_paragraph()
+    leader.paragraph_format.tab_stops.add_tab_stop(Inches(6), WD_TAB_ALIGNMENT.LEFT, WD_TAB_LEADER.DOTS)
+    leader.add_run("\t")
+    sign = doc.add_paragraph()
+    sign.paragraph_format.tab_stops.add_tab_stop(Inches(4))
+    sign.add_run("\t").underline = True
+    for _ in range(40):
+        doc.add_paragraph()
+    fix_core_properties(doc)
+    target = OUT / "word-measured-tails.docx"
+    doc.save(str(target))
+
+    def edit(name, xml):
+        if name == "word/numbering.xml":
+            assert xml.count('<w:num w:numId="1">') == 1
+            xml = xml.replace('<w:num w:numId="1">', '<w:abstractNum w:abstractNumId="90"><w:lvl w:ilvl="0">'
+                              '<w:start w:val="1"/><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum>'
+                              '<w:num w:numId="1">')
+            return xml.replace("</w:numbering>", '<w:num w:numId="90"><w:abstractNumId w:val="90"/></w:num></w:numbering>')
+        if name != "word/document.xml":
+            return xml
+        for word, props in (("BORDERED", '<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="1" w:color="000000"/></w:pBdr>'),
+                            ("SHADED", '<w:shd w:val="clear" w:color="auto" w:fill="D9D9D9"/>'),
+                            ("MARKED", '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="90"/></w:numPr>')):
+            assert xml.count(f"<w:p><w:r><w:t>{word}</w:t></w:r></w:p>") == 1
+            xml = xml.replace(f"<w:p><w:r><w:t>{word}</w:t></w:r></w:p>", f"<w:p><w:pPr>{props}</w:pPr></w:p>")
+        assert xml.count("<w:p><w:r><w:t>BOOKMARKED</w:t></w:r></w:p>") == 1
+        return xml.replace("<w:p><w:r><w:t>BOOKMARKED</w:t></w:r></w:p>",
+                           '<w:p><w:bookmarkStart w:id="0" w:name="signature"/><w:bookmarkEnd w:id="0"/></w:p>')
+
+    rewrite_parts(target, edit)
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert "lastRenderedPageBreak" not in body and body.count("<w:tab/>") == 2 and 'w:leader="dot"' in body
+    assert '<w:numId w:val="90"/>' in body
+    normalize_zip(target)
+    written(target)
+
+
+def word_measured_tables() -> None:
+    """
+    Measured tables whose header rows are drawn again on each page, every line exactly 20pt.
+    The first has a header row of 40 lines, taller than a page, and 40 rows under it. After a
+    page break, the second has a header row citing a footnote and 120 rows, which run over
+    several pages, and then two paragraphs cite two more notes.
+    """
+    from docx.oxml import OxmlElement
+
+    doc = measured_base(20)
+    tall = doc.add_table(rows=41, cols=2)
+    run = tall.rows[0].cells[0].paragraphs[0].add_run("Head line 01")
+    for n in range(2, 41):
+        run.add_break()
+        run.add_text(f"Head line {n:02d}")
+    tall.rows[0].cells[1].text = "Reading"
+    tall.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+    for n in range(1, 41):
+        tall.rows[n].cells[0].text, tall.rows[n].cells[1].text = f"Body {n:02d}", f"Value {n:02d}"
+    doc.add_paragraph("Second table").paragraph_format.page_break_before = True
+    cited = doc.add_table(rows=121, cols=2)
+    cited.rows[0].cells[0].paragraphs[0].add_run("Entry")
+    cited.rows[0].cells[0].paragraphs[0].add_run("NOTEHEAD")
+    cited.rows[0].cells[1].text = "Reading"
+    cited.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+    for n in range(1, 121):
+        cited.rows[n].cells[0].text, cited.rows[n].cells[1].text = f"Item {n:03d}", f"Value {n:03d}"
+    doc.add_paragraph("After the table").add_run("NOTEAFTER")
+    doc.add_paragraph("Once more").add_run("NOTELAST")
+    fix_core_properties(doc)
+    target = OUT / "word-measured-tables.docx"
+    doc.save(str(target))
+    with_footnotes(target, [("NOTEHEAD", 1, "Readings are in metres."),
+                            ("NOTEAFTER", 2, "Taken after rain."),
+                            ("NOTELAST", 3, "Checked twice.")])
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert "lastRenderedPageBreak" not in body and body.count("<w:tblHeader/>") == 2
     normalize_zip(target)
     written(target)
 
@@ -3947,7 +4077,8 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_measured,
-                 word_odd_even, word_measured_fit, word_measured_notes, word_measured_sections, word_colours, word_lines,
+                 word_odd_even, word_measured_fit, word_measured_notes, word_measured_sections, word_measured_tails,
+                 word_measured_tables, word_colours, word_lines,
                  cell_directions, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,

@@ -395,6 +395,8 @@ def test_a_turn_leaves_at_least_half_a_page_above_it(viewer, page, made, fixture
 FIT = "word-measured-fit.docx"
 NOTES = "word-measured-notes.docx"
 SECTIONS = "word-measured-sections.docx"
+TAILS = "word-measured-tails.docx"
+TABLES = "word-measured-tables.docx"
 
 PAGES_PAST = """() => {
   document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
@@ -412,7 +414,7 @@ def fitted(viewer, page, fixture):
     return page.evaluate(PAGES_PAST)
 
 
-@pytest.mark.parametrize("fixture", [FIT, NOTES])
+@pytest.mark.parametrize("fixture", [FIT, NOTES, TAILS])
 def test_measured_pages_fit_their_paper(viewer, page, fixture):
     """
     Lines measured by their text alone left out half their spacing at each end of a page,
@@ -483,20 +485,238 @@ def test_a_tab_takes_the_text_after_it_to_its_stop(viewer, page):
         assert abs(right - 432) <= 13, stops
 
 
+# The renderer of each drawing, so a test can hand its tabs to vwLineUpTabs again
+KEEP_RENDERERS = """
+window.__vwRenderers = [];
+document.addEventListener('DOMContentLoaded', function () {
+  var split = vwSplitAsWordDid;
+  window.vwSplitAsWordDid = function (r) { window.__vwRenderers.push(r); return split(r); };
+});
+"""
+
+
+def layouts(cdp):
+    metrics = cdp.send("Performance.getMetrics")["metrics"]
+    return next(m["value"] for m in metrics if m["name"] == "LayoutCount")
+
+
+def test_tabs_are_lined_up_with_a_layout_for_each_tab_a_paragraph_holds(viewer, page):
+    """
+    docx-preview's pass read where a tab sat and then moved it, tab by tab, so the page was
+    laid out again for every tab: on one long sheet, with the CPU slowed four times, 3,600 tabs
+    took 3.6 s and 9,000 took 25 s. Here 67 tabs, in paragraphs of one or two, are lined up again.
+    """
+    page.add_init_script(KEEP_RENDERERS)
+    open_word(viewer, page, FIT)
+    tabs = page.evaluate("""() => {
+      const r = window.__vwRenderers[window.__vwRenderers.length - 1];
+      vwPages.tabs = { tabs: r.currentTabs, size: r.defaultTabSize };
+      return r.currentTabs.filter(t => t.span.isConnected).length;
+    }""")
+    assert tabs == 67
+    cdp = page.context.new_cdp_session(page)
+    cdp.send("Performance.enable")
+    before = layouts(cdp)
+    page.evaluate("vwLineUpTabs()")
+    # Three: one for the points to a pixel, then one for each of the two rounds. A frame drawn
+    # before the count is read can add one. Tab by tab, it was 67.
+    assert layouts(cdp) - before <= 6
+
+
+UPSTREAM_TABS = """() => {
+  document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+  const r = window.__vwRenderers[window.__vwRenderers.length - 1];
+  const tabs = r.currentTabs.filter(t => t.span.isConnected);
+  const look = () => tabs.map(t => [t.span.innerHTML, t.span.getAttribute('style')]);
+  const drawn = String.fromCharCode(0x2003);
+  const undo = () => tabs.forEach(t => { t.span.textContent = drawn; t.span.removeAttribute('style'); });
+  undo();
+  vwPages.tabs = { tabs: r.currentTabs, size: r.defaultTabSize };
+  vwLineUpTabs();
+  const ours = look();
+  undo();
+  let pass = null;
+  const schedule = window.setTimeout;
+  window.setTimeout = f => { pass = f; return 0; };
+  try { Object.getPrototypeOf(r).refreshTabStops.call(r); } finally { window.setTimeout = schedule; }
+  pass();
+  return { count: tabs.length, ours: ours, theirs: look() };
+}"""
+
+
+def test_tabs_line_up_as_docx_previews_own_pass_lines_them_up(viewer, page):
+    """
+    vwTabPlan and vwSetTab are docx-preview's updateTabStop, copied so that every paragraph's
+    tab can be read before any of them moves (docs/VENDORED.md). After an upgrade, this says
+    whether upstream's own pass still lines a file's tabs up as the copy does. The copy parts
+    from it only for the tab that ends the contents line, the last of the file's 67.
+    """
+    page.add_init_script(KEEP_RENDERERS)
+    open_word(viewer, page, FIT)
+    seen = page.evaluate(UPSTREAM_TABS)
+    assert seen["count"] == 67
+    assert seen["ours"][:66] == seen["theirs"][:66]
+    assert seen["ours"][66] != seen["theirs"][66]
+    assert sum(1 for _, style in seen["ours"] if "word-spacing" in (style or "")) == 67
+
+
+def test_a_tab_that_ends_its_line_reaches_its_stop(viewer, page):
+    """
+    A contents line that ends on a right-aligned dotted tab, with no page number after it.
+    docx-preview read the nothing after the tab as a box at the page's left edge, and drew the
+    dots past the line, on a line of their own. In points, they end at the 6in stop, short by as
+    much as the right-aligned stops above: docx-preview draws a tab as an em space and lines it
+    up as a no-break space, and a right-aligned tab is placed as though its width stayed.
+    """
+    open_word(viewer, page, FIT)
+    seen = page.evaluate("""() => {
+      document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+      const p = [...document.querySelectorAll('.docx-wrapper p')].find(p => p.textContent.startsWith('Contents line'));
+      const box = p.getBoundingClientRect(), style = getComputedStyle(p);
+      const left = box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+      const tab = p.querySelector('.docx-tab-stop').getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(p.firstChild);
+      return { end: (tab.right - left) * 0.75, rise: tab.top - range.getBoundingClientRect().top,
+               dotted: getComputedStyle(p.querySelector('.docx-tab-stop')).textDecorationStyle };
+    }""")
+    assert abs(seen["end"] - 432) <= 13, seen
+    assert abs(seen["rise"]) < 2 and seen["dotted"] == "dotted", seen
+
+
+# A tab whose stops cannot be read, put first among the tabs to line up
+BROKEN_TAB = """
+document.addEventListener('DOMContentLoaded', function () {
+  var line = vwLineUpTabs;
+  window.vwLineUpTabs = function () {
+    var held = vwPages.tabs;
+    if (held && held.tabs.length) held.tabs.unshift({ span: held.tabs[0].span, stops: { length: 1 } });
+    return line();
+  };
+});
+"""
+
+
+def test_a_tab_that_cannot_be_lined_up_leaves_the_document_open(viewer, page):
+    """
+    docx-preview's pass ran on a timer after the document was up, so when it threw, as it did
+    on a tab outside any paragraph, the tabs after it stayed as drawn. Run before the page
+    shows, a throw would have failed the whole file.
+    """
+    page.add_init_script(BROKEN_TAB)
+    seen = pages(open_word(viewer, page, FIT))
+    assert len(seen) > 3
+
+
+NOTES_SEEN = """() => [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => ({
+  lines: [...s.querySelectorAll(':scope > article')].map(a => a.innerText).join('\\n')
+    .split('\\n').map(l => l.trim()).filter(Boolean),
+  refs: [...s.querySelectorAll(':scope > article sup')].filter(e => !e.querySelector('sup'))
+    .map(e => e.textContent.trim()),
+  notes: [...s.querySelectorAll(':scope > ol > li')].map(li => [li.value, li.textContent.trim()])
+}))"""
+
+
 def test_footnotes_are_numbered_through_a_measured_document(viewer, page):
     """docx-preview numbered each page's notes from 1, as its own list."""
     open_word(viewer, page, NOTES)
-    seen = page.evaluate("""() => [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => ({
-      refs: [...s.querySelectorAll(':scope > article sup')].filter(e => !e.querySelector('sup'))
-        .map(e => e.textContent.trim()),
-      start: s.querySelector(':scope > ol') ? s.querySelector(':scope > ol').start : null,
-      notes: s.querySelectorAll(':scope > ol > li').length
-    }))""")
+    seen = page.evaluate(NOTES_SEEN)
     assert [r for p in seen for r in p["refs"]] == [str(n) for n in range(1, 21)]
     cited = [p for p in seen if p["refs"]]
     assert len(cited) > 2
     for p in cited:
-        assert p["start"] == int(p["refs"][0]) and p["notes"] == len(p["refs"]), cited
+        assert [str(n) for n, _ in p["notes"]] == p["refs"], cited
+        assert all(text.startswith(f"Note {n}.") for n, text in p["notes"]), cited
+
+
+def test_a_footnote_cited_in_a_repeated_header_row_keeps_its_number(viewer, page):
+    """
+    A table's header row is drawn again on each page it runs over, and a reference in it was
+    counted again each time, so the notes after the table were numbered one higher a page.
+    The note is listed once, under the first page that cites it.
+    """
+    open_word(viewer, page, TABLES)
+    seen = page.evaluate(NOTES_SEEN)
+    heads = [n for n, p in enumerate(seen) if any(line.startswith("Entry") for line in p["lines"])]
+    assert len(heads) >= 3
+    assert all(seen[n]["refs"][0] == "1" for n in heads), seen
+    assert [r for p in seen for r in p["refs"]][-2:] == ["2", "3"]
+    assert [[n for n, _ in p["notes"]] for p in seen if p["notes"]] == [[1], [2, 3]]
+    assert seen[heads[0]]["notes"][0] == [1, "Readings are in metres."]
+
+
+def test_header_rows_taller_than_a_page_are_not_drawn_again_on_every_page(viewer, page):
+    """
+    Header rows of 40 lines leave a page no room for a row under them, and the table was cut
+    into a page for each of its 40 rows, each under the header rows drawn again.
+    """
+    open_word(viewer, page, TABLES)
+    seen = page.evaluate(NOTES_SEEN)
+    tall = [p for p in seen if "Head line 01" in p["lines"]]
+    assert len(tall) == 1
+    assert "Body 01" in tall[0]["lines"] and "Body 40" in tall[0]["lines"]
+
+
+FOOT = """() => {
+  document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+  return [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => ({
+    past: s.getBoundingClientRect().height - parseFloat(getComputedStyle(s).minHeight),
+    blocks: [...s.querySelectorAll(':scope > article > *')].map(b => ({
+      text: b.textContent.trim(), tail: b.classList.contains('vw-tail'),
+      height: b.getBoundingClientRect().height, after: parseFloat(getComputedStyle(b).marginBottom)
+    }))
+  }));
+}"""
+
+
+def test_blank_lines_take_no_room_at_the_foot_of_a_page_past_its_paper(viewer, page):
+    """
+    Forty blank lines end the page the sixty lines end on and run past its paper: they take
+    no room, and nor does the space after the line above them, which is then the page's last.
+    On a page with room for them, two blank lines stay as they are.
+    """
+    open_word(viewer, page, TAILS)
+    seen = page.evaluate(FOOT)
+    full = next(p for p in seen if any(b["text"] == "Fill 60" for b in p["blocks"]))
+    at = [b["text"] for b in full["blocks"]].index("Fill 60")
+    after = full["blocks"][at + 1:]
+    assert len(after) == 40 and all(b["tail"] and b["height"] == 0 for b in after)
+    assert full["blocks"][at - 1]["after"] > 0 and full["blocks"][at]["after"] == 0
+    assert full["past"] <= 0.5
+    short = next(p for p in seen if p["blocks"][0]["text"] == "Short page")
+    assert len(short["blocks"]) == 3
+    assert not any(b["tail"] for b in short["blocks"]) and all(b["height"] > 0 for b in short["blocks"])
+
+
+KINDS = """() => {
+  const ps = [...document.querySelectorAll('.docx-wrapper p')];
+  const at = ps.findIndex(p => p.textContent.trim() === 'Signed for the client:');
+  return ps.slice(at + 1, at + 11).map(p => vwBlank(p));
+}"""
+
+
+def test_a_line_is_blank_only_when_it_draws_nothing(viewer, page):
+    """
+    A line was taken for blank when it held no letters, so at a page's foot an underlined tab
+    to sign on, underlined spaces, a dotted leader and an empty numbered item lost their line,
+    leader or number. In order: a picture, a border, a ground, an empty paragraph, a bookmark
+    alone, underlined spaces, an empty numbered item, an empty item that the browser numbers,
+    a dotted leader and an underlined tab.
+    """
+    open_word(viewer, page, TAILS)
+    assert page.evaluate(KINDS) == [False, False, False, True, True, False, False, False, False, False]
+
+
+def test_a_line_that_shows_something_stays_at_the_foot_of_a_page(viewer, page):
+    """The lines that only look blank end their page, above forty blank lines that go."""
+    open_word(viewer, page, TAILS)
+    seen = page.evaluate(FOOT)
+    signed = next(p for p in seen if p["blocks"][0]["text"] == "Signed for the client:")
+    blocks = signed["blocks"]
+    assert len(blocks) == 51
+    assert not any(b["tail"] for b in blocks[:11]) and all(b["height"] > 0 for b in blocks[6:11])
+    assert all(b["tail"] and b["height"] == 0 for b in blocks[11:])
+    assert signed["past"] <= 0.5
 
 
 def test_a_page_has_the_room_its_own_header_and_margins_leave(viewer, page):

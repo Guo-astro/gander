@@ -95,7 +95,7 @@ def test_a_full_word_page_prints_on_one_sheet(viewer, page, made, fixture_path, 
 
 
 @pytest.mark.parametrize("paper", ["A4", "Letter"])
-@pytest.mark.parametrize("fixture", ["word-measured-fit.docx", "word-measured-notes.docx"])
+@pytest.mark.parametrize("fixture", ["word-measured-fit.docx", "word-measured-notes.docx", "word-measured-tails.docx"])
 def test_measured_pages_print_a_sheet_each(viewer, page, fixture, paper):
     """
     Pages measured with nothing to spare (#55). A page that ran past its paper, by its lines'
@@ -137,6 +137,36 @@ def test_a_page_a_little_past_its_paper_prints_on_one_sheet(viewer, page, past, 
     wait_until_done(page)
     assert abs(page.evaluate(RUN_PAST, past) - past) < 1
     assert sheets(page, "Letter") == printed
+
+
+def footer_at_the_edge(made, fixture_path):
+    """word-pages.docx on A4 paper, with its footers at the paper's edge, filling the bottom margin."""
+    with zipfile.ZipFile(fixture_path("word-pages.docx")) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    xml, sized = re.subn(rb'<w:pgSz w:w="12240" w:h="15840"/>', b'<w:pgSz w:w="11906" w:h="16838"/>',
+                         items["word/document.xml"])
+    xml, moved = re.subn(rb'w:footer="720"', b'w:footer="0"', xml)
+    assert sized == moved == 3
+    items["word/document.xml"] = xml
+    target = made("footer-at-the-edge.docx", b"")
+    with zipfile.ZipFile(target, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
+    return target
+
+
+@pytest.mark.parametrize("paper", ["A4", "Letter"])
+def test_a_footer_that_fills_its_bottom_margin_prints_a_sheet_per_page(viewer, page, made, fixture_path, paper):
+    """
+    A4 paper is not a whole number of pixels tall, so a page that fits it reads a hair past it.
+    With the footer in the whole bottom margin, that hair was more margin than the page had to
+    give, so the page kept its margin in print and its footer took a sheet of its own.
+    """
+    viewer("docx.html", footer_at_the_edge(made, fixture_path))
+    wait_until_done(page)
+    assert page.evaluate("vwPages.split") is True
+    assert page.evaluate("document.querySelectorAll('.docx-wrapper > section.docx').length") == 6
+    assert sheets(page, paper) == 6
 
 
 def test_a_printed_footer_stays_where_the_page_draws_it(viewer, page):
