@@ -30,7 +30,13 @@ var vwPages = {
   props: [],
   /* Fields being read, innermost last; see trackField */
   fields: [],
-  nextField: 0
+  nextField: 0,
+  /* docx-preview's pass that lines up this drawing's tabs, held for vwLineUpTabs */
+  tabs: null,
+  /* Footnote references drawn so far in this drawing, which number the next one */
+  notes: 0,
+  /* The room for the body on a page measured from a sheet; see vwSplitAsWordDid */
+  pageRoom: null
 };
 
 function vwIsPageMark(node) {
@@ -111,9 +117,10 @@ function vwSplitAsWordDid(renderer) {
   var renderText = renderer.renderText;
 
   renderer.splitBySection = function (elements, bodyProps) {
-    /* A second drawing counts its pages and fields afresh */
+    /* A second drawing counts its pages, fields and footnotes afresh */
     vwPages.props = [];
     vwPages.fields = [];
+    vwPages.notes = 0;
     var app = this.document.extendedPropsPart;
     vwPages.wordPages = (app && app.props && app.props.pages) || 0;
     vwPages.split = elements.some(vwHasPageMark);
@@ -184,6 +191,93 @@ function vwSplitAsWordDid(renderer) {
     if (node && vwPages.measure && text.vwT !== undefined) node.vwT = text.vwT;
     return node;
   };
+
+  /*
+   * docx-preview lines up tabs half a second after it draws, on a timer. The pass is held here
+   * for vwLineUpTabs to run once the drawing is on the page and its fonts are in, so a page is
+   * measured with its tabs as they are drawn, and before fitPageWidth zooms the pages: the pass
+   * reads positions with getBoundingClientRect, which takes the zoom in from about Chromium 128.
+   */
+  var refreshTabStops = renderer.refreshTabStops;
+  renderer.refreshTabStops = function () {
+    var schedule = window.setTimeout, held = null;
+    window.setTimeout = function (pass) { held = pass; return 0; };
+    try {
+      refreshTabStops.call(this);
+    } finally {
+      window.setTimeout = schedule;
+    }
+    vwPages.tabs = held;
+  };
+
+  /*
+   * docx-preview numbers a footnote by its place in its own page's list, so a document cut
+   * into pages started again at 1 on each. Word numbers them through the document, and so does
+   * this, with each page's list starting at its first note's number. A page's references are
+   * also marked, for vwNotesOn to find the notes each page measured from a sheet holds.
+   */
+  var renderFootnoteReference = renderer.renderFootnoteReference;
+  renderer.renderFootnoteReference = function (ref) {
+    var sup = renderFootnoteReference.call(this, ref);
+    vwPages.notes++;
+    if (sup && sup.setAttribute) {
+      sup.textContent = String(vwPages.notes);
+      sup.setAttribute("data-vw-note", "");
+    }
+    return sup;
+  };
+  var renderNotes = renderer.renderNotes;
+  renderer.renderNotes = function (ids, map) {
+    var list = renderNotes.apply(this, arguments);
+    if (list && list.setAttribute && map === this.footnoteMap) {
+      list.setAttribute("start", String(vwPages.notes - ids.length + 1));
+      list.setAttribute("data-vw-notes", "");
+    }
+    return list;
+  };
+
+  /* Each part of a page keeps its section's properties, for vwSheetTurns to read the margins of a page that starts in it */
+  var createSectionContent = renderer.createSectionContent;
+  renderer.createSectionContent = function (props) {
+    var article = createSectionContent.call(this, props);
+    if (article) article.vwProps = props;
+    return article;
+  };
+
+  /*
+   * The room for the body on the page at [index] made with [props], for a page vwSheetTurns
+   * cuts from a sheet: its own margins, which a section running on from the sheet's first can
+   * change, and its header and footer, which can be an even page's or not the first page's.
+   * The page is drawn once, out of sight, and let go.
+   */
+  vwPages.pageRoom = function (props, index) {
+    var cache = props.vwRoom || (props.vwRoom = {}), key = index % 2;
+    if (cache[key] !== undefined) return cache[key];
+    var wrap = document.querySelector(".docx-wrapper");
+    if (!wrap) return 0;
+    var page = createPageElement.call(renderer, renderer.className, props, {});
+    page.style.position = "absolute";
+    page.style.visibility = "hidden";
+    wrap.appendChild(page);
+    try {
+      renderer.renderHeaderFooter(props.headerRefs, props, index, false, page);
+      renderer.renderHeaderFooter(props.footerRefs, props, index, false, page);
+      var style = getComputedStyle(page);
+      cache[key] = (parseFloat(style.minHeight) || 0) - (parseFloat(style.paddingTop) || 0) -
+        (parseFloat(style.paddingBottom) || 0) - vwOverMargin(page.querySelector(":scope > header")) -
+        vwOverMargin(page.querySelector(":scope > footer"));
+    } finally {
+      wrap.removeChild(page);
+    }
+    return cache[key];
+  };
+}
+
+/* Lines up the tabs of the drawing on the page, which docx-preview left for later */
+function vwLineUpTabs() {
+  var pass = vwPages.tabs;
+  vwPages.tabs = null;
+  if (pass) pass();
 }
 
 /* Word's keep with next ("n") and keep lines together ("l"), set on the paragraph or its styles */
@@ -423,6 +517,7 @@ function vwFindMissingPages() {
   /* A layout first, so a font the document embeds is loading by the time fonts.ready is read */
   document.body.getBoundingClientRect();
   return document.fonts.ready.then(function () {
+    vwLineUpTabs();
     vwPages.turnAt = vwPlaceTurns([].map.call(sheets, vwMeasureSheet), missing);
     return !!vwPages.turnAt;
   });
@@ -609,8 +704,9 @@ function vwMeasurePages() {
   /* A layout first, so a font the document embeds is loading by the time fonts.ready is read */
   document.body.getBoundingClientRect();
   return document.fonts.ready.then(function () {
+    vwLineUpTabs();
     var turns = [], sheets = vwSheets();
-    for (var i = 0; i < sheets.length; i++) vwSheetTurns(sheets[i], turns);
+    for (var i = 0; i < sheets.length; i++) vwSheetTurns(sheets[i], turns, i);
     vwPages.turns = turns.length ? turns : null;
     return !!vwPages.turns;
   });
@@ -634,10 +730,11 @@ function vwBlockTop(el) {
 
 /*
  * The turns one sheet needs: down its blocks, a page turns at the first that runs past the
- * paper, before it or, for a paragraph, at a line of it and, for a table, at a row. Read
+ * paper, before it or, for a paragraph, at a line of it and, for a table, at a row. The sheet
+ * is the [index]th of the first drawing, and [turns] holds those of the sheets before it. Read
  * before fitPageWidth zooms the sheets.
  */
-function vwSheetTurns(sheet, turns) {
+function vwSheetTurns(sheet, turns, index) {
   var articles = sheet.querySelectorAll(":scope > article");
   if (!articles.length) return;
   for (var a = 0; a < articles.length; a++) {
@@ -645,24 +742,100 @@ function vwSheetTurns(sheet, turns) {
     if ((parseInt(getComputedStyle(articles[a]).columnCount, 10) || 1) > 1) return;
   }
   var style = getComputedStyle(sheet);
+  /* The sheet's own margins, header and footer are its first page's; a later page's come from vwPages.pageRoom */
   var room = (parseFloat(style.minHeight) || 0) - (parseFloat(style.paddingTop) || 0) -
     (parseFloat(style.paddingBottom) || 0) - vwOverMargin(sheet.querySelector(":scope > header")) -
     vwOverMargin(sheet.querySelector(":scope > footer"));
   if (!(room > 0)) return;
+  var notes = vwNotesOn(sheet);
 
   var blocks = [];
   for (a = 0; a < articles.length; a++) blocks.push.apply(blocks, articles[a].children);
-  var top = articles[0].getBoundingClientRect().top;
-  var page = { top: top, end: top + room };
-  for (var b = 0; b < blocks.length; b++) {
+  /* Blank lines that end the sheet start no page: the break or the end after them does (vwHideTails) */
+  var last = blocks.length;
+  while (last > 0 && vwBlank(blocks[last - 1])) last--;
+
+  var page = { top: articles[0].getBoundingClientRect().top, room: room, notes: notes };
+  for (var b = 0; b < last; b++) {
+    var memo = {};
     for (var guard = 0; guard < 1000; guard++) {
-      if (blocks[b].getBoundingClientRect().bottom <= page.end + VW_SLACK) break;
-      var turn = blocks[b].tagName === "TABLE" ? vwTableTurn(blocks, b, page)
-        : blocks[b].hasAttribute("data-vw-p") ? vwParagraphTurn(blocks, b, page) : null;
-      /* A turn that would not move the page on, as for one row taller than the paper */
+      if (vwFits(page, blocks[b].getBoundingClientRect().bottom)) break;
+      var turn = blocks[b].tagName === "TABLE" ? vwTableTurn(blocks, b, page, memo)
+        : blocks[b].hasAttribute("data-vw-p") ? vwParagraphTurn(blocks, b, page, memo) : null;
+      /* A turn that would not move the page on, as for a blank line taller than the paper */
       if (!turn || turn.y <= page.top + VW_SLACK) break;
       turns.push(turn.at);
-      page = { top: turn.y, end: turn.y + room };
+      var props = blocks[b].parentNode.vwProps || vwPages.props[index];
+      if (props && vwPages.pageRoom) room = vwPages.pageRoom(props, index + turns.length);
+      if (!(room > 0)) return;
+      page = { top: turn.y, room: room, notes: notes };
+    }
+  }
+}
+
+/* Whether a page that ends at [bottom] fits its paper, with the footnotes of what is on it */
+function vwFits(page, bottom) {
+  return bottom - page.top + vwNotesHeight(page.notes, page.top, bottom) <= page.room + VW_SLACK;
+}
+
+/*
+ * The footnotes of a sheet, which docx-preview lists below its body: where each one's reference
+ * sits and the height the note takes in the list, and what the list adds around its notes. A
+ * page cut from the sheet holds the notes of its own references (vwNotesHeight). Null for a
+ * sheet without any, or whose references and notes do not pair up.
+ */
+function vwNotesOn(sheet) {
+  var list = sheet.querySelector(":scope > ol[data-vw-notes]");
+  var refs = sheet.querySelectorAll(":scope > article sup[data-vw-note]");
+  if (!list || !refs.length || list.children.length !== refs.length) return null;
+  var items = list.children, box = list.getBoundingClientRect(), style = getComputedStyle(list);
+  var tops = [].map.call(items, function (li) { return li.getBoundingClientRect().top; });
+  var end = box.bottom - (parseFloat(style.paddingBottom) || 0) - (parseFloat(style.borderBottomWidth) || 0);
+  var at = [], height = [];
+  for (var i = 0; i < items.length; i++) {
+    at.push(refs[i].getBoundingClientRect().top);
+    height.push((i + 1 < items.length ? tops[i + 1] : end) - tops[i]);
+  }
+  var whole = box.height + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+  return { at: at, height: height, frame: whole - (end - tops[0]) };
+}
+
+/* The height of the list of the footnotes whose references sit between [top] and [bottom] */
+function vwNotesHeight(notes, top, bottom) {
+  if (!notes) return 0;
+  var sum = 0, any = false;
+  for (var i = 0; i < notes.at.length; i++) {
+    if (notes.at[i] >= top - VW_SLACK && notes.at[i] < bottom) {
+      sum += notes.height[i];
+      any = true;
+    }
+  }
+  return any ? sum + notes.frame : 0;
+}
+
+/*
+ * A paragraph with nothing drawn on it, which a page can lose at its foot. One with a border
+ * or a ground shows, so it stays.
+ */
+function vwBlank(el) {
+  if (el.tagName !== "P" || /\S/.test(el.textContent) || el.querySelector("img, svg, canvas")) return false;
+  var style = getComputedStyle(el);
+  return !(parseFloat(style.borderTopWidth) || parseFloat(style.borderBottomWidth) ||
+    parseFloat(style.borderLeftWidth) || parseFloat(style.borderRightWidth)) &&
+    /^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
+}
+
+/*
+ * Blank lines at the foot of a page take no room there. A page measured without them (see
+ * vwSheetTurns) would otherwise run past its paper, and a blank line ending a full page
+ * before a page break became a page of its own.
+ */
+function vwHideTails(sheets) {
+  for (var i = 0; i < sheets.length; i++) {
+    var articles = sheets[i].querySelectorAll(":scope > article");
+    var article = articles[articles.length - 1];
+    for (var el = article && article.lastElementChild; el && vwBlank(el); el = el.previousElementSibling) {
+      el.classList.add("vw-tail");
     }
   }
 }
@@ -694,22 +867,37 @@ function vwRows(table) {
 /*
  * A table turns before its first row that runs past the paper, and its header rows are drawn
  * again above that row on the new page. If not even its first row of the body fits, the
- * whole table goes, rather than leave its header rows alone at the foot of the page.
+ * whole table goes, rather than leave its header rows alone at the foot of the page. A row
+ * taller than the paper keeps a page to itself, and the table turns again after it. [memo]
+ * keeps what was read of the table for its next turn, so a long one is read once.
  */
-function vwTableTurn(blocks, b, page) {
-  var rows = vwRows(blocks[b]), heads = 0, headHeight = 0;
-  while (heads < rows.length && rows[heads].hasAttribute("data-vw-head")) {
-    headHeight += rows[heads].getBoundingClientRect().height;
-    heads++;
-  }
-  for (var r = 0; r < rows.length; r++) {
-    var box = rows[r].getBoundingClientRect();
-    if (box.top < page.top - VW_SLACK || box.bottom <= page.end + VW_SLACK) continue;
-    if (r <= heads || box.top <= page.top + VW_SLACK) {
-      return vwBlockTop(blocks[b]) > page.top + VW_SLACK ? vwTurnBefore(blocks, b, page) : null;
+function vwTableTurn(blocks, b, page, memo) {
+  if (!memo.rows) {
+    var rows = vwRows(blocks[b]), heads = 0, headHeight = 0;
+    while (heads < rows.length && rows[heads].hasAttribute("data-vw-head")) {
+      headHeight += rows[heads].getBoundingClientRect().height;
+      heads++;
     }
-    if (!rows[r].hasAttribute("data-vw-r")) return null;
-    return { at: { r: Number(rows[r].getAttribute("data-vw-r")) }, y: box.top - (heads ? headHeight : 0) };
+    memo.rows = rows;
+    memo.boxes = [].map.call(rows, function (row) { return row.getBoundingClientRect(); });
+    memo.heads = heads;
+    memo.lift = heads ? headHeight : 0;
+    memo.from = 0;
+  }
+  for (var r = memo.from; r < memo.rows.length; r++) {
+    var box = memo.boxes[r];
+    if (box.top < page.top - VW_SLACK || vwFits(page, box.bottom)) continue;
+    var at = r;
+    if (r <= memo.heads) {
+      if (vwBlockTop(blocks[b]) > page.top + VW_SLACK) return vwTurnBefore(blocks, b, page);
+      at = memo.heads + 1;
+    } else if (box.top - memo.lift <= page.top + VW_SLACK) {
+      /* Already at the head of the page and still too tall: the next row starts the next one */
+      at = r + 1;
+    }
+    if (at >= memo.rows.length || !memo.rows[at].hasAttribute("data-vw-r")) return null;
+    memo.from = at;
+    return { at: { r: Number(memo.rows[at].getAttribute("data-vw-r")) }, y: memo.boxes[at].top - memo.lift };
   }
   return null;
 }
@@ -717,16 +905,18 @@ function vwTableTurn(blocks, b, page) {
 /*
  * A paragraph turns at the first of its lines that runs past the paper, keeping two lines at
  * the foot of the page and two at the head of the next, as Word's widow and orphan control
- * does, or before it when fewer would stay or it is to be kept together.
+ * does, or before it when fewer would stay or it is to be kept together. [memo] keeps its
+ * lines for its next turn, so a long paragraph is read once, not once a page.
  */
-function vwParagraphTurn(blocks, b, page) {
-  var el = blocks[b], lines = vwLineBoxes(el);
+function vwParagraphTurn(blocks, b, page, memo) {
+  var el = blocks[b], lines = memo.lines || (memo.lines = vwLineBoxes(el));
   /* A blank line has nothing on it to measure, so it goes to the next page whole */
   if (!lines.length) return vwBlockTop(el) <= page.top + VW_SLACK ? null : vwTurnBefore(blocks, b, page);
-  var first = 0;
+  var first = memo.first || 0;
   while (first < lines.length && lines[first].top < page.top - VW_SLACK) first++;
+  memo.first = first;
   var cut = first;
-  while (cut < lines.length && lines[cut].bottom <= page.end + VW_SLACK) cut++;
+  while (cut < lines.length && vwFits(page, lines[cut].bottom)) cut++;
   if (cut >= lines.length) return null;
   var atTop = (first ? lines[first].top : vwBlockTop(el)) <= page.top + VW_SLACK;
   if ((el.getAttribute("data-vw-keep") || "").indexOf("l") >= 0) {
@@ -739,7 +929,7 @@ function vwParagraphTurn(blocks, b, page) {
     if (!first && !atTop) return vwTurnBefore(blocks, b, page);
     /* Already at the head of the page, so as many lines as fit stay, at least one */
     cut = first + 1;
-    while (cut < lines.length && lines[cut].bottom <= page.end + VW_SLACK) cut++;
+    while (cut < lines.length && vwFits(page, lines[cut].bottom)) cut++;
   }
   for (var k = cut; k < lines.length; k++) {
     if (!lines[k].texts.length) continue;
@@ -750,20 +940,25 @@ function vwParagraphTurn(blocks, b, page) {
 }
 
 /*
- * A paragraph's lines in reading order, each with the pieces of named text drawn on it. A
- * piece starts a new line once it sits more than half its height below the line's top, which
- * holds where tight spacing makes neighbouring lines' text overlap.
+ * A paragraph's lines in reading order, each with the pieces of named text drawn on it, and
+ * where each line's part of the paragraph starts and ends. A piece starts a new line once it
+ * sits more than half its height below the line's ink, which holds where tight spacing makes
+ * neighbouring lines' text overlap.
+ *
+ * Text is drawn half its line's spacing inside the line, so a line reaches halfway to the
+ * next, and the first and last to the paragraph's edges. Measured by its text alone, a
+ * double-spaced page took one line more than its paper held.
  */
 function vwLineBoxes(p) {
   var lines = [], line = null, range = document.createRange();
   function add(r, piece) {
     if (!(r.height > 0)) return;
-    if (!line || r.top >= line.top + Math.min(line.bottom - line.top, r.height) / 2) {
-      line = { top: r.top, bottom: r.bottom, texts: [] };
+    if (!line || r.top >= line.inkTop + Math.min(line.inkBottom - line.inkTop, r.height) / 2) {
+      line = { inkTop: r.top, inkBottom: r.bottom, texts: [] };
       lines.push(line);
     } else {
-      line.top = Math.min(line.top, r.top);
-      line.bottom = Math.max(line.bottom, r.bottom);
+      line.inkTop = Math.min(line.inkTop, r.top);
+      line.inkBottom = Math.max(line.inkBottom, r.bottom);
     }
     if (piece) line.texts.push(piece);
   }
@@ -776,8 +971,18 @@ function vwLineBoxes(p) {
       for (var i = 0; i < rects.length; i++) {
         add(rects[i], node.vwT !== undefined ? { node: node, rect: rects[i] } : null);
       }
-    } else if (/^(img|svg|canvas)$/i.test(node.tagName)) {
+    } else if (/^(img|svg|canvas|br)$/i.test(node.tagName)) {
       add(node.getBoundingClientRect(), null);
+    }
+  }
+  if (lines.length) {
+    /* The rest of a paragraph a page cut in two keeps its padding and border, but no space before */
+    var box = p.getBoundingClientRect(), style = getComputedStyle(p);
+    var above = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0);
+    var below = (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    for (var k = 0; k < lines.length; k++) {
+      lines[k].top = k ? (lines[k - 1].inkBottom + lines[k].inkTop) / 2 - above : box.top;
+      lines[k].bottom = k + 1 < lines.length ? (lines[k].inkBottom + lines[k + 1].inkTop) / 2 + below : box.bottom;
     }
   }
   return lines;

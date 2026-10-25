@@ -850,6 +850,187 @@ def word_odd_even() -> None:
     written(target)
 
 
+def measured_base(line_pt: int):
+    """A Letter file with inch margins and every line exactly [line_pt], with no page records."""
+    from docx import Document
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.shared import Inches, Pt
+
+    doc = Document()
+    section = doc.sections[0]
+    section.page_width, section.page_height = Inches(8.5), Inches(11)
+    for side in ("top_margin", "bottom_margin", "left_margin", "right_margin"):
+        setattr(section, side, Inches(1))
+    fmt = doc.styles["Normal"].paragraph_format
+    fmt.space_before = fmt.space_after = Pt(0)
+    fmt.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    fmt.line_spacing = Pt(line_pt)
+    doc.styles["Normal"].font.size = Pt(12)
+    return doc
+
+
+def word_measured_fit() -> None:
+    """
+    Measured pages with nothing to spare, as students and offices write them. First 30
+    paragraphs of an essay in 12pt Times New Roman, double-spaced with an indented first line,
+    whose type sits a whole line's spacing inside its lines; then 60 paragraphs at exactly
+    20pt that open with a tab and wrap on their own, so their lines move once the tabs are
+    lined up; then three lines with tab stops at 2in and, right-aligned, at 6in. Then a page
+    break starts a page of 27 lines at exactly 24pt, and the next paragraph opens with a page
+    break, as LibreOffice writes one, which must not leave a page of its own.
+    """
+    import random
+
+    from docx.enum.text import WD_BREAK, WD_LINE_SPACING, WD_TAB_ALIGNMENT
+    from docx.shared import Inches, Pt
+
+    doc = measured_base(24)
+    normal = doc.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal.paragraph_format.line_spacing_rule = WD_LINE_SPACING.DOUBLE
+    normal.paragraph_format.first_line_indent = Inches(0.5)
+    words = ("survey river bank stone wall gate culvert meadow ledger reading weir gauge level "
+             "harbour lantern copper granite thistle willow ember tide marker field note").split()
+    rng = random.Random(55)
+
+    def sentence(count):
+        return " ".join(rng.choice(words) for _ in range(count)) + "."
+
+    for n in range(1, 31):
+        doc.add_paragraph(f"Essay {n:02d} " + sentence(rng.randint(80, 200)))
+    for n in range(1, 61):
+        fmt = doc.add_paragraph(f"\tTabbed {n:02d} " + sentence(rng.randint(25, 70))).paragraph_format
+        fmt.line_spacing_rule, fmt.line_spacing = WD_LINE_SPACING.EXACTLY, Pt(20)
+        fmt.first_line_indent = Inches(0)
+    for n in range(1, 4):
+        fmt = doc.add_paragraph(f"Stop {n}\tsecond column\tright").paragraph_format
+        fmt.first_line_indent = Inches(0)
+        fmt.tab_stops.add_tab_stop(Inches(2))
+        fmt.tab_stops.add_tab_stop(Inches(6), WD_TAB_ALIGNMENT.RIGHT)
+
+    def full(paragraph):
+        fmt = paragraph.paragraph_format
+        fmt.line_spacing_rule, fmt.line_spacing = WD_LINE_SPACING.EXACTLY, Pt(24)
+        fmt.first_line_indent = Inches(0)
+        return paragraph
+
+    run = full(doc.add_paragraph()).add_run()
+    run.add_break(WD_BREAK.PAGE)
+    run.add_text("Full 01")
+    for n in range(2, 28):
+        full(doc.add_paragraph(f"Full {n:02d}"))
+    run = full(doc.add_paragraph()).add_run()
+    run.add_break(WD_BREAK.PAGE)
+    run.add_text("After the break")
+    fix_core_properties(doc)
+    target = OUT / "word-measured-fit.docx"
+    doc.save(str(target))
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert "lastRenderedPageBreak" not in body and body.count('w:type="page"') == 2
+    normalize_zip(target)
+    written(target)
+
+
+def word_measured_notes() -> None:
+    """
+    Measured pages that hold footnotes: forty paragraphs of about three lines at exactly 20pt,
+    every other one citing a note of two lines. A page leaves room at its foot for the notes
+    its own references cite, and the notes are numbered through the document, as Word numbers
+    them, not from 1 on each page.
+    """
+    doc = measured_base(20)
+    words = "a reading taken at the weir after rain with the gauge and the level noted"
+    for n in range(1, 41):
+        p = doc.add_paragraph(f"Cited {n:02d} " + " ".join([words] * 3))
+        if n % 2:
+            p.add_run(f"NOTE{n:02d}")
+    fix_core_properties(doc)
+    target = OUT / "word-measured-notes.docx"
+    doc.save(str(target))
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    note = "This note on the reading runs to a second line, with the date, the gauge and who took it down"
+    with zipfile.ZipFile(target) as z:
+        items = {i.filename: z.read(i.filename) for i in z.infolist()}
+    body, notes = items["word/document.xml"].decode(), ""
+    for k, n in enumerate(range(1, 41, 2), start=1):
+        assert body.count(f"<w:t>NOTE{n:02d}</w:t>") == 1
+        body = body.replace(
+            f"<w:t>NOTE{n:02d}</w:t>",
+            f'<w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="{k}"/>',
+        )
+        notes += f'<w:footnote w:id="{k}"><w:p><w:r><w:t>Note {k}. {note}.</w:t></w:r></w:p></w:footnote>'
+    items["word/document.xml"] = body.encode()
+    items["word/footnotes.xml"] = (
+        f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:footnotes {w}>'
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+        '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r>'
+        "<w:continuationSeparator/></w:r></w:p></w:footnote>" + notes + "</w:footnotes>"
+    ).encode()
+    items["word/_rels/document.xml.rels"] = items["word/_rels/document.xml.rels"].decode().replace(
+        "</Relationships>",
+        '<Relationship Id="rIdFootnotes" Target="footnotes.xml" Type="http://schemas.'
+        'openxmlformats.org/officeDocument/2006/relationships/footnotes"/></Relationships>',
+    ).encode()
+    items["[Content_Types].xml"] = items["[Content_Types].xml"].decode().replace(
+        "</Types>",
+        '<Override PartName="/word/footnotes.xml" ContentType="application/vnd.'
+        'openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>',
+    ).encode()
+    with zipfile.ZipFile(target, "w") as z:
+        for name, data in items.items():
+            z.writestr(name, data)
+    normalize_zip(target)
+    written(target)
+
+
+def word_measured_sections() -> None:
+    """
+    Measured pages whose room changes from page to page, every line exactly 20pt. A different
+    first page has a header of one line, and every later page one of six, which runs 84pt past
+    its margin. Then a section runs on with two-inch margins. Then a table with a header row has
+    a row of 40 lines, taller than a page, and 40 rows after it that still turn where their
+    pages fill.
+    """
+    from docx.enum.section import WD_SECTION
+    from docx.oxml import OxmlElement
+    from docx.shared import Inches
+
+    doc = measured_base(20)
+    first = doc.sections[0]
+    first.different_first_page_header_footer = True
+    first.first_page_header.paragraphs[0].text = "First page header"
+    first.header.paragraphs[0].text = "Header line 1"
+    for k in range(2, 7):
+        first.header.add_paragraph(f"Header line {k}")
+    for n in range(1, 81):
+        doc.add_paragraph(f"Opening {n:03d}")
+    narrow = doc.add_section(WD_SECTION.CONTINUOUS)
+    narrow.different_first_page_header_footer = False
+    narrow.top_margin = narrow.bottom_margin = Inches(2)
+    for n in range(1, 81):
+        doc.add_paragraph(f"Narrow {n:03d}")
+    table = doc.add_table(rows=42, cols=2)
+    table.rows[0].cells[0].text, table.rows[0].cells[1].text = "Entry", "Reading"
+    table.rows[0]._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
+    run = table.rows[1].cells[0].paragraphs[0].add_run("Tall line 1")
+    for n in range(2, 41):
+        run.add_break()
+        run.add_text(f"Tall line {n}")
+    table.rows[1].cells[1].text = "Value 01"
+    for n in range(2, 42):
+        table.rows[n].cells[0].text, table.rows[n].cells[1].text = f"Row {n:02d}", f"Value {n:02d}"
+    doc.add_paragraph("Last line")
+    fix_core_properties(doc)
+    target = OUT / "word-measured-sections.docx"
+    doc.save(str(target))
+    with zipfile.ZipFile(target) as z:
+        body = z.read("word/document.xml").decode()
+    assert "lastRenderedPageBreak" not in body and '<w:type w:val="continuous"/>' in body
+    normalize_zip(target)
+    written(target)
+
+
 def word_colours() -> None:
     """
     Issue #47's night mode for Word: ink, a coloured heading, a colour given only by
@@ -3766,7 +3947,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     print(f"Writing fixtures into {OUT}")
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_measured,
-                 word_odd_even, word_colours, word_lines,
+                 word_odd_even, word_measured_fit, word_measured_notes, word_measured_sections, word_colours, word_lines,
                  cell_directions, xlsx, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,

@@ -8,6 +8,8 @@ Word could save no record; make_fixtures.py says where each one ends and why.
 import re
 import zipfile
 
+import pytest
+
 from helpers import wait_until_done
 from port import _HANDSHAKE
 
@@ -384,6 +386,141 @@ def test_a_turn_leaves_at_least_half_a_page_above_it(viewer, page, made, fixture
     seen = pages(open_word(viewer, page, target))
     assert body(seen[0]).endswith("Ledger line 8 of page two.")
     assert len(seen) == 3
+
+
+# ---------------------------------------------------------------------------
+# Measured pages with nothing to spare; make_fixtures.py says what each file holds
+# ---------------------------------------------------------------------------
+
+FIT = "word-measured-fit.docx"
+NOTES = "word-measured-notes.docx"
+SECTIONS = "word-measured-sections.docx"
+
+PAGES_PAST = """() => {
+  document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+  return [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => ({
+    lines: [...s.querySelectorAll(':scope > article')].map(a => a.innerText).join('\\n')
+      .split('\\n').map(l => l.trim()).filter(Boolean),
+    past: s.getBoundingClientRect().height - parseFloat(getComputedStyle(s).minHeight)
+  }));
+}"""
+
+
+def fitted(viewer, page, fixture):
+    open_word(viewer, page, fixture)
+    assert page.evaluate("vwPages.measure") is True
+    return page.evaluate(PAGES_PAST)
+
+
+@pytest.mark.parametrize("fixture", [FIT, NOTES])
+def test_measured_pages_fit_their_paper(viewer, page, fixture):
+    """
+    Lines measured by their text alone left out half their spacing at each end of a page,
+    a page's footnotes were left out of its room, and tabs were measured before docx-preview
+    lined them up: each ran pages past their paper, and print gave each a sheet more.
+    """
+    seen = fitted(viewer, page, fixture)
+    assert len(seen) > 3
+    for n, p in enumerate(seen, 1):
+        assert p["past"] <= 0.5, (n, p["past"], p["lines"][-1:])
+
+
+def test_a_page_break_after_a_full_page_leaves_no_blank_page(viewer, page, made, fixture_path):
+    """
+    A page break opening the paragraph after a full page: the break's empty line had no room
+    on that page, so it turned a page of its own. How many lines fill a page depends on the
+    fonts here, so the file is remade to fill its page with as many as the first opening held.
+    """
+    seen = fitted(viewer, page, FIT)
+    start = next(p for p in seen if p["lines"][0] == "Full 01")
+    held = sum(1 for line in start["lines"] if line.startswith("Full "))
+    assert 20 < held < 27
+
+    def keep(xml):
+        return re.sub(rb"<w:p>(?:(?!</w:p>).)*?<w:t>Full (\d\d)</w:t>(?:(?!</w:p>).)*?</w:p>",
+                      lambda m: b"" if int(m.group(1)) > held else m.group(0), xml, flags=re.S)
+
+    target = remade(made, fixture_path, FIT, {"word/document.xml": keep})
+    seen = fitted(viewer, page, target)
+    full = next(n for n, p in enumerate(seen) if p["lines"][0] == "Full 01")
+    assert seen[full]["lines"][-1] == f"Full {held:02d}"
+    assert seen[full + 1]["lines"] == ["After the break"]
+
+
+TAB_STOPS = """() => {
+  document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+  return [...document.querySelectorAll('.docx-wrapper p')].filter(p => /^Stop \\d/.test(p.textContent)).map(p => {
+    const box = p.getBoundingClientRect(), style = getComputedStyle(p);
+    const left = box.left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+    const edge = (text, side) => {
+      const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const at = n.nodeValue.indexOf(text);
+        if (at < 0) continue;
+        const range = document.createRange();
+        range.setStart(n, at);
+        range.setEnd(n, at + text.length);
+        return (range.getBoundingClientRect()[side] - left) * 0.75;
+      }
+      return null;
+    };
+    return [edge('second column', 'left'), edge('right', 'right')];
+  });
+}"""
+
+
+def test_a_tab_takes_the_text_after_it_to_its_stop(viewer, page):
+    """
+    docx-preview lines tabs up from where getBoundingClientRect puts them, which takes the
+    pages' zoom to the screen in from about Chromium 128. Lined up after that zoom, tabs fell
+    short of their stops by a tenth. In points: stops at 2in, and right-aligned at 6in.
+    """
+    open_word(viewer, page, FIT)
+    stops = page.evaluate(TAB_STOPS)
+    assert len(stops) == 3
+    for second, right in stops:
+        assert abs(second - 144) <= 4.3, stops
+        assert abs(right - 432) <= 13, stops
+
+
+def test_footnotes_are_numbered_through_a_measured_document(viewer, page):
+    """docx-preview numbered each page's notes from 1, as its own list."""
+    open_word(viewer, page, NOTES)
+    seen = page.evaluate("""() => [...document.querySelectorAll('.docx-wrapper > section.docx')].map(s => ({
+      refs: [...s.querySelectorAll(':scope > article sup')].filter(e => !e.querySelector('sup'))
+        .map(e => e.textContent.trim()),
+      start: s.querySelector(':scope > ol') ? s.querySelector(':scope > ol').start : null,
+      notes: s.querySelectorAll(':scope > ol > li').length
+    }))""")
+    assert [r for p in seen for r in p["refs"]] == [str(n) for n in range(1, 21)]
+    cited = [p for p in seen if p["refs"]]
+    assert len(cited) > 2
+    for p in cited:
+        assert p["start"] == int(p["refs"][0]) and p["notes"] == len(p["refs"]), cited
+
+
+def test_a_page_has_the_room_its_own_header_and_margins_leave(viewer, page):
+    """
+    A later page's header, six lines where the first page's is one, and a section running on
+    with wider margins each took room their pages were measured without. The page with the
+    row taller than a page is the one allowed past its paper.
+    """
+    seen = fitted(viewer, page, SECTIONS)
+    tall = next(n for n, p in enumerate(seen) if "Tall line 1" in p["lines"])
+    assert any("Narrow 080" in p["lines"] for p in seen[:tall + 1])
+    for n, p in enumerate(seen):
+        if n != tall:
+            assert p["past"] <= 0.5, (n + 1, p["past"], p["lines"][-1:])
+
+
+def test_a_table_turns_again_after_a_row_taller_than_its_page(viewer, page):
+    """The row's page could not end, and the table's 40 rows after it went on as one page."""
+    seen = fitted(viewer, page, SECTIONS)
+    tall = next(n for n, p in enumerate(seen) if "Tall line 1" in p["lines"])
+    after = seen[tall + 1:]
+    assert len(after) >= 2
+    assert after[0]["lines"][:3] == ["Entry", "Reading", "Row 02"]
+    assert after[-1]["lines"][-1] == "Last line"
 
 
 # ---------------------------------------------------------------------------

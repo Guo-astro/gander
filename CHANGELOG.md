@@ -6,12 +6,18 @@
   readout and Go to page, where Gander showed it as one long sheet (#55, thanks @BenjaminSk-04,
   who sent a file). These apps don't save where their pages end, as Word does, so Gander works it
   out from the page size: a page ends between paragraphs, between table rows or between the lines
-  of a long paragraph, keeps a heading with the text after it where the file asks for that, and
-  draws a table's header rows again on the next page. Page numbers in the footer count these
-  pages. A break can land a little away from where the app that saved the file put it, since the
-  phone's fonts differ from that app's.
+  of a long paragraph, keeps a heading with the text after it where the file asks for that,
+  draws a table's header rows again on the next page, and leaves room at its foot for its
+  footnotes. Page numbers in the footer count these pages. A break can land a little away from
+  where the app that saved the file put it, since the phone's fonts differ from that app's.
 - A Word file with a footer prints one sheet per page. Each footer printed on a sheet of its own,
   so six pages took twelve sheets, and a full page could send its last line to a sheet of its own.
+  A page that runs a little past its paper, as a page set in the phone's fonts can, prints on one
+  sheet too.
+- A tab in a Word file takes the text after it to its stop. On newer phones tabs were lined up
+  after the pages were fitted to the screen, which left them about a tenth short.
+- Footnotes in a Word file are numbered through the document, as Word numbers them. A file drawn
+  in pages started each page's notes again at 1.
 - A Graphviz graph saved as .dot opens as text, where Gander took it for a Word template and said
   it couldn't read it (#58, thanks @IsakTheHacker). Word 97-2003 templates, which end in .dot
   too, still open as documents, and a .gv no longer says "unknown format" under its name.

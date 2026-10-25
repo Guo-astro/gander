@@ -155,23 +155,29 @@ function fitPageWidth() {
   }
 }
 
+/* A page this much taller than its paper still prints on one sheet, as lines set in the phone's fonts can run */
+var VW_PRINT_OVER = 0.02;
+
 /*
  * docx-preview sets a footer in the bottom margin with a negative margin below it, and print
  * keeps each sheet's whole margin free, so the footer printed on a sheet of its own. In print
  * the part of the margin it reaches into is the page's instead (docx.html), which leaves the
- * footer where it was. Read before fitPageWidth zooms the pages.
+ * footer where it was. A page that runs a little past its paper gives up the part of the margin
+ * it runs into as well, and prints on one sheet with its foot that much lower, where it took a
+ * second sheet for a line or less. Read before fitPageWidth zooms the pages.
  */
 function vwPrintFooters(sheets) {
   for (var i = 0; i < sheets.length; i++) {
     var footer = sheets[i].querySelector(":scope > footer");
-    var into = footer ? -parseFloat(getComputedStyle(footer).marginBottom) : 0;
-    if (!(into > 0)) continue;
+    var into = footer ? Math.max(0, -parseFloat(getComputedStyle(footer).marginBottom) || 0) : 0;
     var style = getComputedStyle(sheets[i]);
-    /* A page too long for one sheet keeps its whole margin, which it repeats on every sheet */
-    if (sheets[i].getBoundingClientRect().height > (parseFloat(style.minHeight) || 0) + into + 0.5) continue;
+    var paper = parseFloat(style.minHeight) || 0;
+    var over = Math.max(0, sheets[i].getBoundingClientRect().height - paper);
     var pad = parseFloat(style.paddingBottom) || 0;
-    sheets[i].style.setProperty("--vw-print-pad", Math.max(0, pad - into) + "px");
-    sheets[i].classList.add("vw-print-footer");
+    /* A page too long for one sheet keeps its whole margin, which it repeats on every sheet */
+    if (!(into + over > 0.5) || over > paper * VW_PRINT_OVER || into + over > pad) continue;
+    sheets[i].style.setProperty("--vw-print-pad", (pad - into - over) + "px");
+    sheets[i].classList.add(into > 0 ? "vw-print-footer" : "vw-print-fit");
   }
 }
 
@@ -250,13 +256,20 @@ if (!vwWebViewTooOld("Word documents")) {
         .then(function (missing) { if (missing) return vwDrawWordAgain(buf); });
     })
     .then(function () {
+      /* Tabs are lined up once the fonts are in, which docx-preview's own pass waited half a second for */
+      document.body.getBoundingClientRect();
+      return document.fonts.ready;
+    })
+    .then(function () {
       vwPages.settled = true;
       var container = document.getElementById("container");
       container.style.visibility = "";
       vwDisarmLinks(container);
       fixSymbolChars(container);
       vwNumberPages(vwSheets());
+      vwLineUpTabs();
       if (vwNightOn) vwPrepareNight();
+      vwHideTails(vwSheets());
       vwPrintFooters(vwSheets());
       /* Width first: it decides whether the document still overflows 980, which is the
          one thing that moves the height vwFitHeight is about to read. */

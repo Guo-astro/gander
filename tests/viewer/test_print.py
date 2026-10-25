@@ -94,6 +94,51 @@ def test_a_full_word_page_prints_on_one_sheet(viewer, page, made, fixture_path, 
     assert sheets(page, paper) == drawn
 
 
+@pytest.mark.parametrize("paper", ["A4", "Letter"])
+@pytest.mark.parametrize("fixture", ["word-measured-fit.docx", "word-measured-notes.docx"])
+def test_measured_pages_print_a_sheet_each(viewer, page, fixture, paper):
+    """
+    Pages measured with nothing to spare (#55). A page that ran past its paper, by its lines'
+    spacing, its footnotes or its tabs, printed on a sheet more, most of them blank.
+    """
+    viewer("docx.html", fixture)
+    wait_until_done(page)
+    drawn = page.evaluate("document.querySelectorAll('.docx-wrapper > section.docx').length")
+    assert drawn > 3
+    assert sheets(page, paper) == drawn
+
+
+RUN_PAST = """past => {
+  document.querySelector('.docx-wrapper').style.setProperty('--vw-page-zoom', '1');
+  const sheets = document.querySelectorAll('.docx-wrapper > section.docx'), first = sheets[0];
+  const paper = parseFloat(getComputedStyle(first).minHeight);
+  const spacer = document.createElement('div');
+  first.querySelector(':scope > article').appendChild(spacer);
+  spacer.style.height = '5000px';
+  const free = 5000 - (first.getBoundingClientRect().height - paper);
+  spacer.style.height = (free + past) + 'px';
+  for (const s of sheets) {
+    s.classList.remove('vw-print-footer', 'vw-print-fit');
+    s.style.removeProperty('--vw-print-pad');
+  }
+  vwPrintFooters(sheets);
+  return first.getBoundingClientRect().height - paper;
+}"""
+
+
+@pytest.mark.parametrize("past,printed", [(10, 6), (32, 7)])
+def test_a_page_a_little_past_its_paper_prints_on_one_sheet(viewer, page, past, printed):
+    """
+    Lines set in the phone's fonts can run one of Word's pages a little past its paper, and a
+    page over by a line or less printed it on a sheet of its own. Here the first of six pages
+    runs 10px past, about a hundredth of its paper, and then 32px, a thirtieth, which is too far.
+    """
+    viewer("docx.html", "word-pages.docx")
+    wait_until_done(page)
+    assert abs(page.evaluate(RUN_PAST, past) - past) < 1
+    assert sheets(page, "Letter") == printed
+
+
 def test_a_printed_footer_stays_where_the_page_draws_it(viewer, page):
     viewer("docx.html", "word-pages.docx")
     wait_until_done(page)
