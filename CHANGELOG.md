@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.7 (2026-10-25)
 
 - A Word file saved by WPS Office, LibreOffice or Google Docs now opens as pages, with the page
   readout and Go to page, where Gander showed it as one long sheet (#55, thanks @BenjaminSk-04,
