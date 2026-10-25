@@ -427,23 +427,35 @@ def test_measured_pages_fit_their_paper(viewer, page, fixture):
         assert p["past"] <= 0.5, (n, p["past"], p["lines"][-1:])
 
 
+def full_line(n):
+    """The paragraph of FIT that reads "Full <n>", n as a pattern."""
+    return rb"<w:p>(?:(?!</w:p>).)*?<w:t>Full " + n + rb"</w:t>(?:(?!</w:p>).)*?</w:p>"
+
+
 def test_a_page_break_after_a_full_page_leaves_no_blank_page(viewer, page, made, fixture_path):
     """
     A page break opening the paragraph after a full page: the break's empty line had no room
     on that page, so it turned a page of its own. How many lines fill a page depends on the
-    fonts here, so the file is remade to fill its page with as many as the first opening held.
+    fonts here: the file's 27 fit on one page in CI's container and on Windows, and 26 on a Mac.
+    So the file is first remade with 45, which no fonts fit, and then with as many as its page
+    held.
     """
-    seen = fitted(viewer, page, FIT)
+    def more(xml):
+        last = re.search(full_line(b"27"), xml, flags=re.S)
+        assert last
+        copies = b"".join(last.group(0).replace(b"Full 27", b"Full %02d" % n) for n in range(28, 46))
+        return xml[:last.end()] + copies + xml[last.end():]
+
+    seen = fitted(viewer, page, remade(made, fixture_path, FIT, {"word/document.xml": more}))
     start = next(p for p in seen if p["lines"][0] == "Full 01")
     held = sum(1 for line in start["lines"] if line.startswith("Full "))
-    assert 20 < held < 27
+    assert 20 < held < 45
 
     def keep(xml):
-        return re.sub(rb"<w:p>(?:(?!</w:p>).)*?<w:t>Full (\d\d)</w:t>(?:(?!</w:p>).)*?</w:p>",
-                      lambda m: b"" if int(m.group(1)) > held else m.group(0), xml, flags=re.S)
+        return re.sub(full_line(rb"(\d\d)"), lambda m: b"" if int(m.group(1)) > held else m.group(0),
+                      more(xml), flags=re.S)
 
-    target = remade(made, fixture_path, FIT, {"word/document.xml": keep})
-    seen = fitted(viewer, page, target)
+    seen = fitted(viewer, page, remade(made, fixture_path, FIT, {"word/document.xml": keep}))
     full = next(n for n, p in enumerate(seen) if p["lines"][0] == "Full 01")
     assert seen[full]["lines"][-1] == f"Full {held:02d}"
     assert seen[full + 1]["lines"] == ["After the break"]
