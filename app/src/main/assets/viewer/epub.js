@@ -2122,11 +2122,6 @@ var vwEpub = (function () {
   });
 
   /*
-   * A link in a chapter. One to somewhere else in the book goes there. One to a web address
-   * shows the address, for the reader to copy: Gander opens no web address, here or in any
-   * other viewer, and nothing a document says is handed on to a browser.
-   */
-  /*
    * The link a tap on [el] is inside: the nearest a or area above it with an address. An a
    * with none is a name for a place and not a link.
    */
@@ -2153,6 +2148,11 @@ var vwEpub = (function () {
     return null;
   }
 
+  /*
+   * A link in a chapter. One to somewhere else in the book goes there. One to a web address
+   * shows the address, for the reader to copy: Gander opens no web address, here or in any
+   * other viewer, and nothing a document says is handed on to a browser.
+   */
   shadow.addEventListener("click", function (e) {
     var a = linkAt(e.target);
     if (!a) return;

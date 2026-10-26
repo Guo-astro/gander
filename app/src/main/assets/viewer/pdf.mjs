@@ -1159,6 +1159,11 @@ function textLayerFor(slot, page, viewport) {
  * find the hole rather than to put this back.
  */
 
+/* Rows are sorted twice, so the comparators are shared rather than a fresh closure
+   per row per page. */
+function byTopThenLeft(a, b) { return a.top - b.top || a.left - b.left; }
+function byLeft(a, b) { return a.left - b.left; }
+
 /*
  * Pads the text layer's spans until they cover the whole page, so a finger dragging a
  * selection always has a word under it (#22). pdf.js sizes each span to its glyphs, which
@@ -1168,11 +1173,6 @@ function textLayerFor(slot, page, viewport) {
  * cap, since a capped gap leaves its middle uncovered. The cost is that a selection highlight
  * fills the padded box, so a short line highlights full width.
  */
-/* Rows are sorted twice, so the comparators are shared rather than a fresh closure
-   per row per page. */
-function byTopThenLeft(a, b) { return a.top - b.top || a.left - b.left; }
-function byLeft(a, b) { return a.left - b.left; }
-
 function padRows(container, divs) {
   var layer = container.getBoundingClientRect();
   /*
@@ -1971,8 +1971,7 @@ function onCommand(msg) {
   } else if (verb === "p") {
     stepTo(finding.active - 1);
   } else if (verb === "i") {
-    /* Night mode on or off. The only command that is not about finding something, apart
-       from "g", and like it the app holds the state: nothing is reported back. */
+    /* Night mode on or off. The app holds the state, so nothing is reported back. */
     setNight(msg.charAt(1) === "1");
   } else if (verb === "c") {
     finding.query = "";

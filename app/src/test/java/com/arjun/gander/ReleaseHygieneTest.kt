@@ -268,6 +268,26 @@ class ReleaseHygieneTest {
     }
 
     /**
+     * A doc comment belongs to what is directly under it, so one stacked on another describes
+     * nothing and is left over from a rewrite. Gander's own Kotlin and viewer pages, not the
+     * vendored libraries in viewer/lib.
+     */
+    @Test
+    fun noCommentSitsOnTopOfAnother() {
+        val kotlin = listOf("main", "test", "androidTest", "debug").flatMap { set ->
+            File(REPO, "app/src/$set/java").walkTopDown().filter { it.extension == "kt" }.toList()
+        }
+        val pages = File(REPO, "app/src/main/assets/viewer").listFiles().orEmpty()
+            .filter { it.isFile && it.extension in setOf("js", "mjs", "html", "css") }
+        val stacked = (kotlin + pages).flatMap { file ->
+            file.readLines().zipWithNext().withIndex()
+                .filter { (_, lines) -> lines.first.trim() == "*/" && lines.second.trim().startsWith("/*") }
+                .map { (i, _) -> "${file.relativeTo(REPO).invariantSeparatorsPath}:${i + 2}" }
+        }
+        assertWithMessage("a comment on top of another comment").that(stacked).isEmpty()
+    }
+
+    /**
      * [text] without its comment lines, the ones starting with [marker], so a
      * guard above is not satisfied by the line it guards having been commented
      * out.

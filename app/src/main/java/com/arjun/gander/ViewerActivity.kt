@@ -596,10 +596,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     /**
      * Takes Back while the search bar is open, so it closes the bar instead of the
-     * document. Until this existed, Back on a document with the search box open threw
-     * away the reading position and the query together, and from targetSdk 35 on it did
-     * it while playing the predictive back animation, so the app visibly peeled away
-     * toward the launcher with the cursor still in the box.
+     * document, which would throw away the reading position and the query together.
      *
      * Nothing here calls finish(). The callback closes the bar and switches itself off,
      * and the next press falls through to the default, which is what keeps predictive
@@ -765,8 +762,8 @@ open class ViewerActivity : AppCompatActivity() {
      * readout that only appeared on crossing a boundary would be absent exactly when
      * somebody goes looking for it.
      *
-     * A no-op for everything that is not a PDF or Word document of more than one page,
-     * because nothing else ever sets the total.
+     * A no-op until a paged document, a PDF in either view, a Word document or a book, has said
+     * it is more than one page long, since nothing else sets the total.
      */
     private fun showPageIndicator() {
         if (pageTotal < 2 || searchBarOpen) return
@@ -810,11 +807,9 @@ open class ViewerActivity : AppCompatActivity() {
     /**
      * Asks for a page number and goes there.
      *
-     * A bare EditText rather than a TextInputLayout. That widget is used nowhere else
-     * here, and pulling more of Material in for a floating label is a poor trade in a
-     * release whose headline was the download halving. setError is also what Android 16
-     * names as the way to report a bad value now that announcements are deprecated, so
-     * the small answer is the accessible one too.
+     * A bare EditText rather than a TextInputLayout, which is used nowhere else here, so a
+     * floating label would pull more of Material into the APK. setError is also what Android 16
+     * names as the way to report a bad value, so the small answer is the accessible one too.
      */
     private fun askForPage() {
         val total = pageTotal
@@ -1148,10 +1143,9 @@ open class ViewerActivity : AppCompatActivity() {
      * events faster than the screen refreshes, and every scrollTo is a hop into the
      * renderer process.
      *
-     * The horizontal offset is carried through rather than zeroed. Five of the viewer
-     * pages have no viewport meta and lay out at 980 CSS px, and a spreadsheet or a slide
-     * is routinely wider than the screen even unzoomed, so scrolling to x = 0 would snap
-     * the reader back to the left edge on every move.
+     * The horizontal offset is carried through rather than zeroed. The pages with no viewport
+     * meta lay out at 980 CSS px, and a spreadsheet or a slide is routinely wider than the screen
+     * even unzoomed, so scrolling to x = 0 would snap the reader back to the left edge on every move.
      */
     private fun queueScroll(y: Int) {
         pendingScrollY = y
@@ -1164,12 +1158,7 @@ open class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * The readout during a drag. It stays where it always is, at the foot of the screen.
-     *
-     * An earlier version had it leave and ride beside the thumb, so the number sat next
-     * to the finger. One readout that never moves turned out to be the better trade.
-     */
+    /** The readout during a drag, where it always is, at the foot of the screen, rather than beside the thumb. */
     private fun showDragReadout(fraction: Float) {
         if (searchBarOpen) return
         val pill = pageIndicator
@@ -1233,16 +1222,10 @@ open class ViewerActivity : AppCompatActivity() {
         // pictures of its pages.
         val wordless = kind == FileKind.MODEL || kind == FileKind.PDF_SIMPLE
         if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked || wordless) {
-            // No WebView at all, or a WebView too old to carry a message channel. The
-            // second is close to unreachable: message channels landed long before the
-            // Chromium 125 pdf.html already refuses to run below. Hiding the button is
-            // what PDF did in every release up to this one, so it is a known-good
-            // place to land rather than a new failure.
-            //
-            // Or a PDF, Word or Markdown file under the card saying the WebView is too
-            // old, which has no document to search. The button stayed on that card
-            // until issue #31 showed it there, though night mode already hid itself
-            // from it.
+            // No WebView at all, or one too old to carry a message channel, which is close to
+            // unreachable since channels came long before the Chromium 125 pdf.html needs. Or a
+            // PDF, Word or Markdown file under the card saying the WebView is too old, which has
+            // no document on it to search.
             searchItem.isVisible = false
             return
         }
@@ -1381,8 +1364,8 @@ open class ViewerActivity : AppCompatActivity() {
      * addJavascriptInterface. That call reflects a Java object into script running on
      * an untrusted document and lets it call methods on it; this passes strings, in
      * the same direction the query parameters on the URL already go. Nothing on
-     * either side is evaluated, and what comes back is read as three integers and
-     * dropped if it is anything else. See the note beside vwAskPassword in pdf.mjs
+     * either side is evaluated, and what comes back is read as a few integers or one of a
+     * few fixed words, and dropped if it is anything else: see [parsePortMessage]. See the note beside vwAskPassword in pdf.mjs
      * about why that boundary is most of what keeps a document away from the app.
      *
      * Posted on page finished rather than at load, because the listener that takes it
@@ -1865,9 +1848,8 @@ open class ViewerActivity : AppCompatActivity() {
         fastScrollEnabled = false
         hideFastScrollNow()
         // Night mode goes with the search item: the channel both of them speak over is
-        // closed two lines down, so leaving either on screen offers a control that does
-        // nothing, and night mode would go on rewriting the stored preference at a port
-        // nothing is listening to.
+        // closed below, so leaving either on screen offers a control that does nothing, and
+        // night mode would go on rewriting the stored preference at a port nothing hears.
         val goneBar = findViewById<MaterialToolbar>(R.id.toolbar)
         // The line under an unknown file's name says how the page was shown, and the page is
         // gone. Reload reads the file's first bytes again and writes it back. Issue #51.

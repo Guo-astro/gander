@@ -34,9 +34,8 @@ internal object PortCommand {
     fun goToPage(n: Int) = "g$n"
 
     /**
-     * Turn the pages over, or back. The second verb here that is not about
-     * finding something, after [goToPage]; the channel is named for search
-     * because search is what it was opened for, not because that is all it says.
+     * Turn the pages over, or back. The channel is named for search because search is
+     * what it was opened for, not because that is all it carries.
      */
     fun nightMode(on: Boolean) = if (on) "i1" else "i0"
 
