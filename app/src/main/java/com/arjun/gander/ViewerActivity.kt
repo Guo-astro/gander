@@ -1,14 +1,11 @@
 package com.arjun.gander
 
 import android.annotation.SuppressLint
-import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
@@ -17,8 +14,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
-import android.os.SystemClock
 import android.print.PrintManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -29,43 +24,34 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebViewAssetLoader
@@ -76,25 +62,25 @@ import com.arjun.gander.FileKind.Companion.detect
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.progressindicator.LinearProgressIndicator
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 open class ViewerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PATH = "path"
+
+        /**
+         * The one part of the cache Gander's FileProvider covers: the files of its own the viewer
+         * can share, which are text another app shared and About's pages.
+         */
+        fun shareableDir(context: Context): File = File(context.cacheDir, "shared").apply { mkdirs() }
         private const val STATE_COPY_SOURCE = "copy_source"
         private const val STATE_ARCHIVE_FOLDER = "archive_folder"
         private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
-        private const val STATE_PLAYER_POSITION = "player_position"
-        private const val STATE_FULL_SCREEN = "full_screen"
         private const val STATE_SIMPLE_VIEW = "simple_view"
-        private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /**
          * Opens a PDF in the simple view whatever the WebView, so that a phone pdf.js runs on can
@@ -143,20 +129,6 @@ open class ViewerActivity : AppCompatActivity() {
         private const val OVERLAY_IDLE_MS = 2000L
         private const val OVERLAY_FADE_IN_MS = 120L
         private const val OVERLAY_FADE_OUT_MS = 180L
-
-        /** Cover art target while the view has not been measured yet. */
-        private const val ART_FALLBACK_PX = 512
-
-        /**
-         * How long a video or a track has to have been ready to play before an error is put
-         * down to something giving out underneath it rather than to the file. See onPlayerError
-         * in [showPlayer].
-         *
-         * Long enough that a file damaged partway, which fails again as soon as it is tried
-         * again from just before the damage, is not tried for ever.
-         */
-        @androidx.annotation.VisibleForTesting
-        internal const val PLAYER_RETRY_AFTER_MS = 5000L
     }
 
     private var webView: ScrollProbeWebView? = null
@@ -166,11 +138,9 @@ open class ViewerActivity : AppCompatActivity() {
      * rather than being searched by Chromium's own find. Decided once the WebView exists.
      */
     private var pageSearches = false
-    private var player: ExoPlayer? = null
 
-    /** Play and pause on the lock screen, for a track. A video has none: see [onStop]. */
-    @androidx.annotation.VisibleForTesting
-    internal var lockScreen: LockScreenControls? = null
+    /** A video or a track, while one is on show. See [PlayerScreen]. Read by tests. */
+    internal var playerScreen: PlayerScreen? = null
         private set
 
     /** The list of what is in a zip, when this is one. */
@@ -179,13 +149,6 @@ open class ViewerActivity : AppCompatActivity() {
     /** Where that list reads the archive; tests swap in one that runs inline. */
     @androidx.annotation.VisibleForTesting
     internal var archiveLoader: java.util.concurrent.Executor? = null
-
-    /**
-     * Whether Save a copy is reporting on the bar under the toolbar. A zip's list waits on the
-     * same bar and leaves it alone meanwhile.
-     */
-    @androidx.annotation.VisibleForTesting
-    internal var saving = false
 
     /** The file the destination picker is currently open for. */
     private var copySource: Uri? = null
@@ -205,16 +168,6 @@ open class ViewerActivity : AppCompatActivity() {
     @Volatile
     private var simplePdf: SimplePdf? = null
 
-    /** Where a video or a track picks up when the viewer is rebuilt around it, as a change of theme does. */
-    private var playerStartAt = 0L
-
-    /** The title bar and the phone's bars over a video. See [VideoChrome]. Read by tests. */
-    internal var videoChrome: VideoChrome? = null
-        private set
-
-    /** How the screen was held for a video in full screen, before the viewer was made again. */
-    private var playerHeld: Int? = null
-
     /** The title bar over a document, which goes up out of sight as it is read. See [DocumentChrome]. Read by tests. */
     internal var documentChrome: DocumentChrome? = null
         private set
@@ -222,102 +175,16 @@ open class ViewerActivity : AppCompatActivity() {
     /** The double tap of a document's pages or a picture in the WebView. See [DoubleTapZoom]. */
     private var doubleTapZoom: DoubleTapZoom? = null
 
-    /**
-     * ACTION_CREATE_DOCUMENT with the type set per file. The stock contract fixes
-     * it at construction, and the viewer does not know what it is showing until an
-     * intent arrives, so the picker would otherwise have to be told that every file
-     * is of unknown type and would suggest names without extensions.
-     */
-    private inner class CreateTypedDocument : ActivityResultContracts.CreateDocument("*/*") {
-        var type: String = "*/*"
-        override fun createIntent(context: Context, input: String): Intent =
-            super.createIntent(context, input).setType(type)
-    }
-
     private val createDocument = CreateTypedDocument()
 
-    /**
-     * Writes the open file to wherever the reader pointed the picker.
-     *
-     * No permission is involved. The picker returns a write grant for the single
-     * document it just created and for nothing around it, which is the same shape
-     * of grant the home screen already takes for folders, and it is why this can
-     * exist in an app whose permission list has to stay empty.
-     */
+    /** Writes the open file wherever the reader points the picker. See [SaveCopy]. */
+    @androidx.annotation.VisibleForTesting
+    internal val copier by lazy { SaveCopy(this) }
+
     private val saveCopy = registerForActivityResult(createDocument) { dest ->
         val src = copySource
         copySource = null
-        if (dest == null || src == null) return@registerForActivityResult
-
-        // Off the main thread. A document is small enough that it would not matter,
-        // but Gander opens video too, and copying a few hundred megabytes inline is
-        // an ANR rather than a slow save.
-        val app = applicationContext
-        val main = Handler(Looper.getMainLooper())
-        val bar = findViewById<LinearProgressIndicator>(R.id.saveProgress)
-
-        // Asked once, up front: a provider that cannot say how long the file is
-        // gets a spinner rather than a bar that would have to invent a position.
-        val total = documentLength(this, src)
-        bar.isIndeterminate = total <= 0L
-        if (total > 0L) {
-            bar.max = 100
-            bar.progress = 0
-        }
-        bar.visibility = View.VISIBLE
-        saving = true
-
-        // Shut down immediately after submitting: the already-queued copy still
-        // runs to completion, and the worker thread ends with it instead of idling
-        // for the life of the process once per save
-        val worker = Executors.newSingleThreadExecutor()
-        worker.execute {
-            val saved = runCatching {
-                contentResolver.openInputStream(src).use { input ->
-                    contentResolver.openOutputStream(dest).use { output ->
-                        val from = checkNotNull(input)
-                        val to = checkNotNull(output)
-                        // copyTo would be one line, but it reports nothing on the way
-                        // through, and the whole point here is to be able to say how
-                        // far along a large file is
-                        val buffer = ByteArray(64 * 1024)
-                        var copied = 0L
-                        var shown = -1
-                        while (true) {
-                            val read = from.read(buffer)
-                            if (read < 0) break
-                            to.write(buffer, 0, read)
-                            copied += read
-                            if (total > 0L) {
-                                // Whole percent only: a 500 MB file would otherwise
-                                // post thousands of updates nobody can see
-                                val percent = ((copied * 100) / total).toInt()
-                                if (percent != shown) {
-                                    shown = percent
-                                    main.post {
-                                        if (!isDestroyed) bar.setProgressCompat(percent, true)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }.isSuccess
-            // A failed copy has already created the document and may have written
-            // part of it, and half a file under the right name is worse than none:
-            // it opens, it looks complete, and it is not.
-            if (!saved) runCatching { DocumentsContract.deleteDocument(contentResolver, dest) }
-            main.post {
-                saving = false
-                if (!isDestroyed) bar.visibility = View.GONE
-                Toast.makeText(
-                    app,
-                    if (saved) R.string.save_copy_done else R.string.save_copy_failed,
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-        worker.shutdown()
+        if (dest != null && src != null) copier.copy(src, dest)
     }
 
     /**
@@ -330,8 +197,7 @@ open class ViewerActivity : AppCompatActivity() {
         outState.putString(STATE_COPY_SOURCE, copySource?.toString())
         outState.putString(STATE_ARCHIVE_FOLDER, archiveBrowser?.folder)
         outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
-        player?.let { outState.putLong(STATE_PLAYER_POSITION, it.currentPosition) }
-        videoChrome?.held?.let { outState.putInt(STATE_FULL_SCREEN, it) }
+        playerScreen?.save(outState)
         outState.putBoolean(STATE_SIMPLE_VIEW, simpleAsked)
     }
 
@@ -345,9 +211,6 @@ open class ViewerActivity : AppCompatActivity() {
         pageIndicator.setOnClickListener { askForPage() }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
-        playerStartAt = savedInstanceState?.getLong(STATE_PLAYER_POSITION) ?: 0L
-        playerHeld = savedInstanceState?.takeIf { it.containsKey(STATE_FULL_SCREEN) }
-            ?.getInt(STATE_FULL_SCREEN)
         simpleAsked = savedInstanceState?.getBoolean(STATE_SIMPLE_VIEW) == true
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
@@ -396,7 +259,10 @@ open class ViewerActivity : AppCompatActivity() {
         fun show(kind: FileKind) {
             when (kind) {
                 FileKind.IMAGE -> showPicture(container, uri, name, ext)
-                FileKind.PLAYER -> showPlayer(container, uri, name, ext)
+                FileKind.PLAYER -> playerScreen = PlayerScreen(
+                    this, nightChrome, ::touchExplorationOn, ::applySystemBarInsets, savedInstanceState,
+                    failed = { showWeb(container, uri, FileKind.UNSUPPORTED, name, ext) },
+                ).apply { show(container, uri, name, ext) }
                 FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
                 else -> showWeb(container, uri, kind, name, ext)
             }
@@ -573,11 +439,10 @@ open class ViewerActivity : AppCompatActivity() {
      */
     private fun setUpNightMode(toolbar: MaterialToolbar, kind: FileKind) {
         val item = toolbar.menu.findItem(R.id.action_night_mode)
-        // The last test is the card pdf.html shows instead of a document when the
-        // WebView is too old for the renderer: webViewFloorParams is non-empty exactly
-        // then, and turning a card that says "update your WebView" dark is not a
-        // feature. Same standard as the two above, and as action_search.
-        val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
+        // Not for a card in place of the document, saying the WebView is too old or isn't there:
+        // turning a card dark is not a feature. webViewFloorParams is non-empty exactly for the first.
+        val blocked = webView == null ||
+            webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
         if (!kind.turnsOver || !pageGetsChannel(kind) || blocked) {
             item.isVisible = false
             return
@@ -590,7 +455,7 @@ open class ViewerActivity : AppCompatActivity() {
             Settings.setNight(this, on)
             nightChrome.show(on)
             if (searchPort != null) loadedNight = on
-            searchPort?.postMessage(WebMessageCompat(PortCommand.nightMode(on)))
+            tellPage(PortCommand.nightMode(on))
             true
         }
     }
@@ -599,8 +464,9 @@ open class ViewerActivity : AppCompatActivity() {
     private fun setUpPrint(toolbar: MaterialToolbar, kind: FileKind, uri: Uri, name: String) {
         val item = toolbar.menu.findItem(R.id.action_print)
         val route = printRoute(kind)
-        // The card saying the WebView is too old has no document on it to print
-        val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
+        // A card saying the WebView is too old or isn't there has no document on it to print
+        val blocked = webView == null ||
+            webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
         if (route == null || blocked || !packageManager.hasSystemFeature(PackageManager.FEATURE_PRINTING)) {
             item.isVisible = false
             return
@@ -656,14 +522,9 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Best-effort document URI of the folder holding [uri], for the Files app.
-     * Null when the source provider does not expose a real filesystem location,
-     * which hides the menu item.
-     */
-    /**
-     * The folder this document is in. The MediaStore lookup is supplied here
-     * because it needs a resolver; the rest is provider id string work and
-     * lives in StorageUris.kt.
+     * The folder this document is in, for the Files app, or null where its provider has no place
+     * on the phone's storage, which hides the menu item. The MediaStore lookup is here because it
+     * needs a resolver; the rest is provider id string work in StorageUris.kt.
      */
     private fun containingFolder(uri: Uri): Uri? = parentDocUri(
         uri,
@@ -711,7 +572,7 @@ open class ViewerActivity : AppCompatActivity() {
         override fun clear() = web.clearMatches()
     }
 
-    /** The page end of the PDF search channel, held so it can be closed. */
+    /** Gander's own end of the channel to the page, for every page that is given one. */
     private var searchPort: WebMessagePortCompat? = null
 
     /**
@@ -735,10 +596,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     /**
      * Takes Back while the search bar is open, so it closes the bar instead of the
-     * document. Until this existed, Back on a document with the search box open threw
-     * away the reading position and the query together, and from targetSdk 35 on it did
-     * it while playing the predictive back animation, so the app visibly peeled away
-     * toward the launcher with the cursor still in the box.
+     * document, which would throw away the reading position and the query together.
      *
      * Nothing here calls finish(). The callback closes the bar and switches itself off,
      * and the next press falls through to the default, which is what keeps predictive
@@ -768,6 +626,7 @@ open class ViewerActivity : AppCompatActivity() {
      * Robolectric it never does, so tests set the count themselves.
      */
     private var pageAt = 0
+
     @androidx.annotation.VisibleForTesting
     internal var pageTotal = 0
 
@@ -796,10 +655,6 @@ open class ViewerActivity : AppCompatActivity() {
      */
     @androidx.annotation.VisibleForTesting
     internal var documentLoader: java.util.concurrent.Executor? = null
-
-    /** The document's length as its provider gave it, or -1; set before the page loads. */
-    @Volatile
-    private var documentTotal = -1L
 
     /**
      * True while the find box is up. The page readout stands down for it: two counters
@@ -908,8 +763,8 @@ open class ViewerActivity : AppCompatActivity() {
      * readout that only appeared on crossing a boundary would be absent exactly when
      * somebody goes looking for it.
      *
-     * A no-op for everything that is not a PDF or Word document of more than one page,
-     * because nothing else ever sets the total.
+     * A no-op until a paged document, a PDF in either view, a Word document or a book, has said
+     * it is more than one page long, since nothing else sets the total.
      */
     private fun showPageIndicator() {
         if (pageTotal < 2 || searchBarOpen) return
@@ -953,12 +808,12 @@ open class ViewerActivity : AppCompatActivity() {
     /**
      * Asks for a page number and goes there.
      *
-     * A bare EditText rather than a TextInputLayout. That widget is used nowhere else
-     * here, and pulling more of Material in for a floating label is a poor trade in a
-     * release whose headline was the download halving. setError is also what Android 16
-     * names as the way to report a bad value now that announcements are deprecated, so
-     * the small answer is the accessible one too.
+     * A bare EditText rather than a TextInputLayout, which is used nowhere else here, so a
+     * floating label would pull more of Material into the APK. setError is also what Android 16
+     * names as the way to report a bad value, so the small answer is the accessible one too.
      */
+    // The field starts with the page in the digits the number keyboard types, whatever the locale
+    @SuppressLint("SetTextI18n")
     private fun askForPage() {
         val total = pageTotal
         if (total < 2 || book) return
@@ -1016,7 +871,7 @@ open class ViewerActivity : AppCompatActivity() {
                 entry.error = getString(R.string.page_out_of_range, total)
             } else {
                 // Straight down the channel search uses. See PortFinder for the shape.
-                searchPort?.postMessage(WebMessageCompat(PortCommand.goToPage(n)))
+                tellPage(PortCommand.goToPage(n))
                 dialog.dismiss()
             }
         }
@@ -1144,6 +999,7 @@ open class ViewerActivity : AppCompatActivity() {
      * down has to be turned down here too, or its scrolls would put a thumb up anyway.
      */
     private var fastScrollEnabled = false
+
     /** The rect last handed to the window manager; see excludeThumbFromBackGesture. */
     private var excludedRect: Rect? = null
 
@@ -1291,10 +1147,9 @@ open class ViewerActivity : AppCompatActivity() {
      * events faster than the screen refreshes, and every scrollTo is a hop into the
      * renderer process.
      *
-     * The horizontal offset is carried through rather than zeroed. Five of the viewer
-     * pages have no viewport meta and lay out at 980 CSS px, and a spreadsheet or a slide
-     * is routinely wider than the screen even unzoomed, so scrolling to x = 0 would snap
-     * the reader back to the left edge on every move.
+     * The horizontal offset is carried through rather than zeroed. The pages with no viewport
+     * meta lay out at 980 CSS px, and a spreadsheet or a slide is routinely wider than the screen
+     * even unzoomed, so scrolling to x = 0 would snap the reader back to the left edge on every move.
      */
     private fun queueScroll(y: Int) {
         pendingScrollY = y
@@ -1307,12 +1162,7 @@ open class ViewerActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * The readout during a drag. It stays where it always is, at the foot of the screen.
-     *
-     * An earlier version had it leave and ride beside the thumb, so the number sat next
-     * to the finger. One readout that never moves turned out to be the better trade.
-     */
+    /** The readout during a drag, where it always is, at the foot of the screen, rather than beside the thumb. */
     private fun showDragReadout(fraction: Float) {
         if (searchBarOpen) return
         val pill = pageIndicator
@@ -1376,16 +1226,10 @@ open class ViewerActivity : AppCompatActivity() {
         // pictures of its pages.
         val wordless = kind == FileKind.MODEL || kind == FileKind.PDF_SIMPLE
         if (web == null || (kind == FileKind.PDF && !canPortSearch()) || blocked || wordless) {
-            // No WebView at all, or a WebView too old to carry a message channel. The
-            // second is close to unreachable: message channels landed long before the
-            // Chromium 125 pdf.html already refuses to run below. Hiding the button is
-            // what PDF did in every release up to this one, so it is a known-good
-            // place to land rather than a new failure.
-            //
-            // Or a PDF, Word or Markdown file under the card saying the WebView is too
-            // old, which has no document to search. The button stayed on that card
-            // until issue #31 showed it there, though night mode already hid itself
-            // from it.
+            // No WebView at all, or one too old to carry a message channel, which is close to
+            // unreachable since channels came long before the Chromium 125 pdf.html needs. Or a
+            // PDF, Word or Markdown file under the card saying the WebView is too old, which has
+            // no document on it to search.
             searchItem.isVisible = false
             return
         }
@@ -1501,6 +1345,7 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /** Down the channel, once the page has one: a search, and the title bar over a document. */
+    @SuppressLint("RequiresFeature") // A channel exists only where canPortSearch() found the feature
     private fun tellPage(command: String) {
         searchPort?.postMessage(WebMessageCompat(command))
     }
@@ -1508,8 +1353,9 @@ open class ViewerActivity : AppCompatActivity() {
     private fun canPortSearch(): Boolean =
         WebViewFeature.isFeatureSupported(WebViewFeature.CREATE_WEB_MESSAGE_CHANNEL) &&
             WebViewFeature.isFeatureSupported(WebViewFeature.POST_WEB_MESSAGE) &&
-            WebViewFeature.isFeatureSupported(
-                WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK)
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_PORT_POST_MESSAGE) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_PORT_CLOSE)
 
     /**
      * Whether the page is handed the channel: a page that searches itself, and a paged document
@@ -1524,13 +1370,14 @@ open class ViewerActivity : AppCompatActivity() {
      * addJavascriptInterface. That call reflects a Java object into script running on
      * an untrusted document and lets it call methods on it; this passes strings, in
      * the same direction the query parameters on the URL already go. Nothing on
-     * either side is evaluated, and what comes back is read as three integers and
-     * dropped if it is anything else. See the note beside vwAskPassword in pdf.mjs
+     * either side is evaluated, and what comes back is read as a few integers or one of a
+     * few fixed words, and dropped if it is anything else: see [parsePortMessage]. See the note beside vwAskPassword in pdf.mjs
      * about why that boundary is most of what keeps a document away from the app.
      *
      * Posted on page finished rather than at load, because the listener that takes it
      * lives in the page and is not there until the page has run.
      */
+    @SuppressLint("RequiresFeature") // Checked by canPortSearch() on the first line, which lint can't follow
     private fun openSearchChannel(web: WebView, kind: FileKind) {
         if (!canPortSearch() || searchPort != null) return
         val ends = WebViewCompat.createWebMessageChannel(web)
@@ -1581,8 +1428,7 @@ open class ViewerActivity : AppCompatActivity() {
         searchPort = mine
         // Addressed to Gander's own origin rather than to "*", so the port is only ever
         // handed to a page served from it, whatever the WebView is showing by then.
-        WebViewCompat.postWebMessage(
-            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("https://$ASSET_HOST"))
+        WebViewCompat.postWebMessage(web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), "https://$ASSET_HOST".toUri())
         // Anything typed while there was nowhere to send it.
         if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat(PortCommand.query(pendingQuery)))
         // And any night mode tapped in the same window. Compared against what the URL
@@ -1595,6 +1441,7 @@ open class ViewerActivity : AppCompatActivity() {
         documentChrome?.replay()
     }
 
+    @SuppressLint("RequiresFeature") // A channel exists only where canPortSearch() found the feature
     private fun closeSearchChannel() {
         runCatching { searchPort?.close() }
         searchPort = null
@@ -1615,12 +1462,16 @@ open class ViewerActivity : AppCompatActivity() {
         }
     }
 
+    /** The file shared text was written to, which goes when the viewer closes. */
+    private var sharedText: File? = null
+
     /** Shared plain text becomes a temp file shown in the text viewer. */
     private fun sharedTextUri(): Uri? {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
         return runCatching {
-            val f = File(cacheDir, "shared-text.txt")
+            val f = File(shareableDir(this), "shared-text.txt")
             f.writeText(text)
+            sharedText = f
             Uri.fromFile(f)
         }.getOrNull()
     }
@@ -1658,27 +1509,23 @@ open class ViewerActivity : AppCompatActivity() {
 
     /**
      * A photo, or a WebP or PNG that moves, which goes to the page that plays GIFs, since the
-     * photo view draws one frame. Issue #49. Whether it moves is read off the main thread, as a
-     * document's length is, since a provider can be slow to hand over even the first bytes.
+     * photo view draws one frame. Issue #49. Whether it moves and which way up it was taken are
+     * read off the main thread, as a document's length is, since a provider can be slow to hand
+     * over even the first bytes.
      */
     private fun showPicture(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        if (ext != "webp" && ext != "png") return showImage(container, uri, name, ext)
-        val app = applicationContext
-        val main = Handler(Looper.getMainLooper())
-        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
-        worker.execute {
-            val moves = runCatching { app.contentResolver.openInputStream(uri)?.use(::isAnimated) }
-                .getOrNull() == true
-            main.post {
-                if (isDestroyed) return@post
-                if (moves) showWeb(container, uri, FileKind.IMAGE_WEB, name, ext)
-                else showImage(container, uri, name, ext)
-            }
+        val mayMove = ext == "webp" || ext == "png"
+        offMain({ (moves, rotation): Pair<Boolean, Int> ->
+            if (moves) showWeb(container, uri, FileKind.IMAGE_WEB, name, ext)
+            else showImage(container, uri, name, ext, rotation)
+        }) { app ->
+            val moves = mayMove &&
+                runCatching { app.contentResolver.openInputStream(uri)?.use(::isAnimated) }.getOrNull() == true
+            moves to if (moves) 0 else Thumbs.exifRotation(app.contentResolver, uri)
         }
-        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
 
-    private fun showImage(container: FrameLayout, uri: Uri, name: String, ext: String) {
+    private fun showImage(container: FrameLayout, uri: Uri, name: String, ext: String, rotation: Int) {
         val imageView = SubsamplingScaleImageView(this)
         imageView.contentDescription = name
         imageView.setBackgroundColor(Color.BLACK)
@@ -1688,7 +1535,7 @@ open class ViewerActivity : AppCompatActivity() {
         // and a small picture not at all, so it goes to twice the fit as a page's does
         imageView.setDoubleTapZoomDuration(DOUBLE_TAP_MS)
         imageView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitDoubleTap(imageView) }
-        imageView.orientation = Thumbs.exifRotation(contentResolver, uri)
+        imageView.orientation = rotation
         imageView.setOnImageEventListener(object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
             override fun onReady() = fitDoubleTap(imageView)
 
@@ -1707,173 +1554,6 @@ open class ViewerActivity : AppCompatActivity() {
         if (view.isReady) view.setDoubleTapZoomScale(DOUBLE_TAP_ZOOM * view.minScale)
     }
 
-    /**
-     * Video, and audio, which used to be handed the same screen.
-     *
-     * A track got a black rectangle with a scrubber that took itself away after two and a
-     * half seconds, leaving nothing at all, and the screen was held awake for the length
-     * of it: an hour of podcast with the display lit and no reason for it. Three things
-     * differ now. The controls do not hide, because on a file with no picture they are
-     * the only thing on screen. The screen is allowed to sleep, because nothing is being
-     * looked at. And where a video would show its first frame, a track shows its cover
-     * art if it has any, or a plain note if it does not.
-     *
-     * What this deliberately does not do is play on in the background. That needs a
-     * foreground service, a foreground service needs a permission, and a permission fails
-     * the build. Audio stops when Gander does, which is the honest consequence of the
-     * promise on the front of the app.
-     */
-    /**
-     * Album art at the size it will be drawn, not the size it was stored.
-     *
-     * A bounds pass reads the header only, then inSampleSize halves until one more halving
-     * would go under the view. The target is the view's own width, with a fallback for the
-     * first frame, where it has not been measured yet.
-     */
-    private fun sampledArt(bytes: ByteArray, target: Int): Bitmap? {
-        val want = if (target > 0) target else ART_FALLBACK_PX
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= want) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-    }
-
-    private fun showPlayer(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        val audio = FileKind.isAudioExt(ext)
-        // Audio comes from a layout because its transport does: controller_layout_id is
-        // an XML attribute with no setter behind it.
-        val playerView =
-            if (audio) layoutInflater.inflate(R.layout.view_audio_player, container, false) as PlayerView
-            else PlayerView(this)
-        // The cover, and the note that stands in for one. It sits in the transport layout
-        // rather than PlayerView's own artwork slot, because that slot centres what it is
-        // given and centred is where the play button is: the picture came out underneath
-        // the control covering it.
-        val cover: ImageView?
-        if (audio) {
-            // Nothing is being looked at, so the screen may sleep, and the transport is
-            // the only thing on the display, so it stays put. The track plays on when the
-            // screen sleeps: see onStop.
-            playerView.keepScreenOn = false
-            playerView.controllerShowTimeoutMs = 0
-            // Warm near-black rather than pure black. A track is a screen somebody sits
-            // and looks at, so it may as well be the dark the rest of the app uses.
-            container.setBackgroundColor(ContextCompat.getColor(this, R.color.audio_backdrop))
-            cover = playerView.findViewById<ImageView>(R.id.audioCover)?.apply {
-                contentDescription = name
-            }
-
-            playerView.setBackgroundColor(Color.TRANSPARENT)
-            playerView.setShutterBackgroundColor(Color.TRANSPARENT)
-            playerView.artworkDisplayMode = PlayerView.ARTWORK_DISPLAY_MODE_OFF
-            playerView.controllerHideOnTouch = false
-            // One file, so there is nothing to be previous or next to.
-            playerView.setShowPreviousButton(false)
-            playerView.setShowNextButton(false)
-        } else {
-            cover = null
-            playerView.keepScreenOn = true
-            playerView.controllerShowTimeoutMs = 2500
-            playerView.setBackgroundColor(Color.BLACK)
-        }
-        container.addView(playerView, matchParent())
-        if (!audio) {
-            videoChrome = VideoChrome(
-                this, playerView, nightChrome, ::touchExplorationOn, ::applySystemBarInsets
-            ).apply {
-                float()
-                playerHeld?.let { hold(it) }
-            }
-        }
-
-        val exo = ExoPlayer.Builder(this)
-            // Asks for the speaker as a player is expected to, so a call or another app's
-            // sound pauses this one, and pauses when headphones come out rather than carrying
-            // on out loud. Both matter most with the screen off, with nobody watching.
-            .setAudioAttributes(AudioAttributes.DEFAULT, true)
-            .setHandleAudioBecomingNoisy(true)
-            .build()
-        player = exo
-        playerView.player = exo
-        if (audio) lockScreen = LockScreenControls(this, exo, name)
-        exo.addListener(object : Player.Listener {
-            /**
-             * Cover art, once the extractor has read the tags. Taken from the player
-             * rather than opened a second time with a MediaMetadataRetriever, because
-             * ExoPlayer has already parsed the ID3 or Vorbis picture by the time this
-             * fires and holds the bytes.
-             *
-             * Sampled down first, the same way Thumbs decodes a photo. Embedded art is
-             * commonly 1500 square and not rarely 3000, and this callback arrives on the
-             * main thread as playback starts: decoded whole, a 3000 square picture is
-             * some 36 MB of ARGB for a view a couple of hundred dp wide, which is the
-             * one moment on this screen that cannot afford it. The tags are also
-             * re-delivered as they arrive, so the same bytes are decoded once.
-             */
-            private var artDecoded: ByteArray? = null
-
-            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-                val view = cover ?: return
-                val bytes = mediaMetadata.artworkData ?: return
-                if (bytes === artDecoded) return
-                val bmp = runCatching { sampledArt(bytes, view.width) }.getOrNull() ?: return
-                artDecoded = bytes
-                view.setImageBitmap(bmp)
-                lockScreen?.art = bmp
-            }
-
-            /** Which way round the picture is, which decides whether full screen is offered. */
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                videoChrome?.sized(videoSize)
-            }
-
-            /**
-             * Since when the player has been ready to play, by elapsedRealtime, counted afresh
-             * each time it is prepared. Null while it has not been. See onPlayerError.
-             */
-            private var readySince: Long? = null
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && readySince == null) {
-                    readySince = SystemClock.elapsedRealtime()
-                }
-            }
-
-            /**
-             * A file that fails as it opens is one Gander cannot play, and gets the page that
-             * says so. One that fails after it has been ready to play for a while is one it
-             * can, and something gave out underneath it instead: on an emulator, Android's
-             * decoder did as a call ended over a track (issue #38). That gets another go: a
-             * player prepared again after an error carries on from where it stopped, playing
-             * if it was playing.
-             *
-             * Failing again soon after means the file is damaged there, and gets the page.
-             */
-            override fun onPlayerError(error: PlaybackException) {
-                val since = readySince
-                readySince = null
-                if (since != null && SystemClock.elapsedRealtime() - since >= PLAYER_RETRY_AFTER_MS) {
-                    exo.prepare()
-                    return
-                }
-                lockScreen?.release()
-                lockScreen = null
-                exo.release()
-                player = null
-                videoChrome?.land()
-                videoChrome = null
-                container.removeAllViews()
-                showWeb(container, uri, FileKind.UNSUPPORTED, name, ext)
-            }
-        })
-        exo.setMediaItem(MediaItem.fromUri(uri), playerStartAt)
-        exo.prepare()
-        exo.playWhenReady = true
-    }
-
     /** A zip, listed rather than drawn. See [ArchiveBrowser]. */
     private fun showArchive(container: FrameLayout, uri: Uri, name: String, state: Bundle?) {
         val browser = ArchiveBrowser(
@@ -1882,7 +1562,7 @@ open class ViewerActivity : AppCompatActivity() {
             // The bar under the toolbar that a save reports on, doing the same job for the
             // list that the home screen's does for a folder
             progress = findViewById(R.id.saveProgress),
-            saving = { saving },
+            saving = { copier.saving },
             archive = uri,
             archiveName = name,
             restoredFolder = state?.getString(STATE_ARCHIVE_FOLDER),
@@ -1895,7 +1575,12 @@ open class ViewerActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
-        val web = ScrollProbeWebView(this)
+        // Android throws here when it has no working WebView: while Android System WebView is
+        // being updated, or where someone has turned it off
+        val web = runCatching { ScrollProbeWebView(this) }.getOrElse {
+            showCard(container, R.string.no_webview, R.string.no_webview_detail)
+            return
+        }
         webView = web
         pageSearches = canPortSearch() &&
             searchesInPage(kind, webViewChromiumMajor(web.settings.userAgentString))
@@ -1973,15 +1658,18 @@ open class ViewerActivity : AppCompatActivity() {
             setAcceptThirdPartyCookies(web, false)
         }
 
-        val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
-            .build()
-
         // Neither of these can change while the document is open, and a ranged load
         // asks for hundreds of pieces, so they are resolved once rather than per request:
         // the type here, and the length before the page loads, below, since that is a
         // round trip to the provider.
-        val mime = documentMime(ext)
+        val server = DocumentServer(
+            contentResolver,
+            WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+                .build(),
+            uri, kind, documentMime(ext),
+            simplePdf = { simplePdf },
+        )
 
         web.webViewClient = object : WebViewClientCompat() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -2017,38 +1705,7 @@ open class ViewerActivity : AppCompatActivity() {
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
-            ): WebResourceResponse? {
-                val url = request.url
-                // The document is served here rather than through WebViewAssetLoader
-                // because a PathHandler is only given the path, and answering range
-                // requests needs the Range header off the request itself. Never to the
-                // simple view's page: its WebView is one too old for pdf.js, and nothing on
-                // that page needs the file, which only the isolated renderer reads.
-                if (kind != FileKind.PDF_SIMPLE &&
-                    url.scheme == "https" && url.host == ASSET_HOST &&
-                    url.path?.startsWith("/doc/") == true
-                ) {
-                    return docResponse(uri, mime, documentTotal, request.requestHeaders["Range"])
-                }
-                // The simple view's pages, drawn by its isolated renderer. See SimplePdf.
-                if (kind == FileKind.PDF_SIMPLE &&
-                    url.scheme == "https" && url.host == ASSET_HOST &&
-                    url.path?.startsWith("/render/") == true
-                ) {
-                    return simplePdf?.respond(url) ?: notFound()
-                }
-                return assetLoader.shouldInterceptRequest(url)?.withViewerPolicy() ?: when (url.scheme) {
-                    // Anything else a page asks the network for is answered here, with
-                    // nothing, instead of being handed on to the network stack. The missing
-                    // INTERNET permission would stop it there, but that would make one
-                    // control the whole of the guarantee; this is a second one, and it
-                    // holds even for a request from script that should never have run.
-                    "http", "https" -> notFound()
-                    // data: is bytes the page already holds. file: and content: are
-                    // refused by allowFileAccess and allowContentAccess above.
-                    else -> null
-                }
-            }
+            ): WebResourceResponse? = server.respond(request)
 
             override fun shouldOverrideUrlLoading(
                 view: WebView,
@@ -2115,48 +1772,49 @@ open class ViewerActivity : AppCompatActivity() {
         // before handing it over, as a cloud one does, answers when it has it, and asked on
         // the main thread that held the whole viewer still for the length of a download. The
         // page waits for the answers, since it would be waiting on the same provider anyway.
-        val main = Handler(Looper.getMainLooper())
-        val app = applicationContext
-        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
-        worker.execute {
+        offMain({ (total, key, placeAt, resumeAt): Opening ->
+            if (webView !== web) return@offMain
+            server.total = total
+            positionKey = key
+            // The load strategy is decided here, not in the page, so the headers we serve
+            // and the loader the page picks cannot disagree
+            val ranged = if (useRanges(total)) 1 else 0
+            // The length goes on the URL too, when the provider gave one, because the
+            // Content-Length a page sees is not ours. The WebView adds one of its own,
+            // made from what the stream has to hand when it starts, which for a file
+            // coming out of a zip through a pipe is nothing: a 1 KB model inside a zip
+            // arrived saying it was 0 bytes long. model.js reads it from here instead.
+            // Never 0, which is as likely to be a provider that could not tell as a file
+            // that is empty, and an empty one says so anyway when there is nothing to read.
+            web.loadUrl(
+                "https://$ASSET_HOST/assets/viewer/${kind.page}" +
+                    "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
+                    (if (total > 0) "&length=$total" else "") +
+                    "&night=$night" +
+                    (if (resumeAt > 1) "&resume=$resumeAt" else "") +
+                    (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
+                    // The zoom the phone itself asks for, which a book's page keeps its
+                    // own words at whatever size the reader gives the book's
+                    (if (kind == FileKind.EPUB) "&type=$phoneTextZoom" else "") +
+                    // The room to leave at the top for the title bar floating over it
+                    (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
+                    floor +
+                    (if (cardOffersSimple) "&simple=1" else "")
+            )
+        }) { app ->
             val total = documentLength(app, uri)
             val key = if (keepsPosition) Positions.keyFor(app.contentResolver, uri, total) else null
             // A book reopens at its place, which is finer than the page it also files
-            val placeAt = if (kind == FileKind.EPUB) key?.let { Positions.place(app, it) } else null
-            val resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0
-            main.post {
-                if (isDestroyed || webView !== web) return@post
-                documentTotal = total
-                positionKey = key
-                // The load strategy is decided here, not in the page, so the headers we serve
-                // and the loader the page picks cannot disagree
-                val ranged = if (useRanges(total)) 1 else 0
-                // The length goes on the URL too, when the provider gave one, because the
-                // Content-Length a page sees is not ours. The WebView adds one of its own,
-                // made from what the stream has to hand when it starts, which for a file
-                // coming out of a zip through a pipe is nothing: a 1 KB model inside a zip
-                // arrived saying it was 0 bytes long. model.js reads it from here instead.
-                // Never 0, which is as likely to be a provider that could not tell as a file
-                // that is empty, and an empty one says so anyway when there is nothing to read.
-                web.loadUrl(
-                    "https://$ASSET_HOST/assets/viewer/${kind.page}" +
-                        "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
-                        (if (total > 0) "&length=$total" else "") +
-                        "&night=$night" +
-                        (if (resumeAt > 1) "&resume=$resumeAt" else "") +
-                        (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
-                        // The zoom the phone itself asks for, which a book's page keeps its
-                        // own words at whatever size the reader gives the book's
-                        (if (kind == FileKind.EPUB) "&type=$phoneTextZoom" else "") +
-                        // The room to leave at the top for the title bar floating over it
-                        (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
-                        floor +
-                        (if (cardOffersSimple) "&simple=1" else "")
-                )
-            }
+            Opening(
+                total, key,
+                placeAt = if (kind == FileKind.EPUB) key?.let { Positions.place(app, it) } else null,
+                resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0,
+            )
         }
-        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
+
+    /** What a document's page is told before it loads that has to be asked of its provider: see [showWeb]. */
+    private data class Opening(val total: Long, val key: String?, val placeAt: Positions.Place?, val resumeAt: Int)
 
     /**
      * Takes the WebView away, which can no longer show its document, and puts the card saying so
@@ -2197,9 +1855,8 @@ open class ViewerActivity : AppCompatActivity() {
         fastScrollEnabled = false
         hideFastScrollNow()
         // Night mode goes with the search item: the channel both of them speak over is
-        // closed two lines down, so leaving either on screen offers a control that does
-        // nothing, and night mode would go on rewriting the stored preference at a port
-        // nothing is listening to.
+        // closed below, so leaving either on screen offers a control that does nothing, and
+        // night mode would go on rewriting the stored preference at a port nothing hears.
         val goneBar = findViewById<MaterialToolbar>(R.id.toolbar)
         // The line under an unknown file's name says how the page was shown, and the page is
         // gone. Reload reads the file's first bytes again and writes it back. Issue #51.
@@ -2224,90 +1881,20 @@ open class ViewerActivity : AppCompatActivity() {
         // the phone's colours along with the page that was dark
         nightChrome.show(false)
         container.removeAllViews()
-        val card = layoutInflater.inflate(R.layout.view_render_gone, container, false)
-        card.findViewById<TextView>(R.id.renderGoneTitle).setText(
-            if (didCrash) R.string.render_gone_crashed else R.string.render_gone_reclaimed
+        showCard(
+            container,
+            if (didCrash) R.string.render_gone_crashed else R.string.render_gone_reclaimed,
+            R.string.render_gone_detail,
         )
+    }
+
+    /** A card where the document would be, saying why it isn't, with Reload, which starts the viewer again. */
+    private fun showCard(container: FrameLayout, @StringRes title: Int, @StringRes detail: Int) {
+        val card = layoutInflater.inflate(R.layout.view_render_gone, container, false)
+        card.findViewById<TextView>(R.id.renderGoneTitle).setText(title)
+        card.findViewById<TextView>(R.id.renderGoneDetail).setText(detail)
         card.findViewById<View>(R.id.renderGoneReload).setOnClickListener { recreate() }
         container.addView(card)
-    }
-
-    /**
-     * Serves the open document at /doc/<anything>, answering range requests.
-     *
-     * Told that ranges are available, pdf.js pulls a large file in pieces as it
-     * needs them instead of buffering all of it before drawing anything. On a
-     * 53 MB scan that read was about 400 ms of a one second open, and it kept the
-     * whole document in memory for as long as it was on screen.
-     *
-     * A fresh stream per request: the page asks for many, and out of order.
-     */
-    private fun docResponse(
-        uri: Uri,
-        mime: String,
-        total: Long,
-        range: String?
-    ): WebResourceResponse {
-        return try {
-            // Ranges are only offered for documents big enough to be worth the extra
-            // round trips. Measured on a Nothing Phone 2: a 53 MB scan opened 177 ms
-            // faster ranged, while a 251 KB document opened 67 ms slower. Below the
-            // threshold one bulk read wins; above it, reading the lot dominates.
-            val rangeable = useRanges(total)
-            val span = if (rangeable) range?.let { parseRange(it, total) } else null
-            // The document is on the pages' own host, which ViewerPolicy trusts for
-            // scripts and styles. nosniff means the browser will only run it as either
-            // if its type says it is one, so markup that a renderer let slip cannot load
-            // a crafted file as the script that script-src 'self' would otherwise allow.
-            val nosniff = "X-Content-Type-Options" to "nosniff"
-            if (span == null) {
-                val headers = mutableMapOf(nosniff)
-                if (rangeable) headers["Accept-Ranges"] = "bytes"
-                if (total >= 0) headers["Content-Length"] = total.toString()
-                WebResourceResponse(
-                    mime, null, 200, "OK", headers,
-                    contentResolver.openInputStream(uri)
-                )
-            } else {
-                val (start, end) = span
-                WebResourceResponse(
-                    mime, null, 206, "Partial Content",
-                    mapOf(
-                        nosniff,
-                        "Accept-Ranges" to "bytes",
-                        "Content-Range" to "bytes $start-$end/$total",
-                        "Content-Length" to (end - start + 1).toString()
-                    ),
-                    slice(uri, start, end)
-                )
-            }
-        } catch (e: Exception) {
-            notFound()
-        }
-    }
-
-    /** See [ViewerPolicy]: the header is what carries the policy into the pdf.js worker. */
-    private fun WebResourceResponse.withViewerPolicy(): WebResourceResponse = apply {
-        responseHeaders = responseHeaders.orEmpty() + ("Content-Security-Policy" to ViewerPolicy.CSP)
-    }
-
-    private fun notFound(): WebResourceResponse = WebResourceResponse(
-        "text/plain", "utf-8", 404, "Not Found",
-        null, ByteArrayInputStream(ByteArray(0))
-    )
-
-    /**
-     * Gander's own pages, which is everything a viewer may navigate to: unsupported.html
-     * hands a file on to text.html, and a link inside a document may jump to a heading in
-     * the page it is on. Nothing off this host is opened, in the viewer or anywhere else,
-     * so a link cannot hand the browser a URL either. Nor the document at /doc/, the one
-     * thing on the host that is not Gander's: opened as a page, a file would be rendered
-     * as whatever its type says rather than by the viewer that makes it safe to look at.
-     */
-    private fun isViewerPage(url: Uri): Boolean {
-        val path = url.path ?: return false
-        return url.scheme == "https" && url.host == ASSET_HOST &&
-            path.startsWith("/assets/viewer/") && path.endsWith(".html") && ".." !in path
     }
 
     /**
@@ -2333,30 +1920,6 @@ open class ViewerActivity : AppCompatActivity() {
     private fun webViewFloorParamsFor(kind: FileKind, userAgent: String?): String {
         if (minChromiumMajor(kind) == null) return ""
         return webViewFloorParams(kind, webViewChromiumMajor(userAgent), webViewProviderIsLocked())
-    }
-
-    /** Length in bytes, or -1 when the provider declines to say. */
-    private fun documentLength(context: Context, uri: Uri): Long = runCatching {
-        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
-    }.getOrNull()?.takeIf { it >= 0 } ?: -1L
-
-    /**
-     * Exactly [start, end], seeking to the offset rather than reading up to it.
-     *
-     * Asked for as an asset descriptor, which is allowed to be a window onto a larger file,
-     * rather than as a plain one, which is not: ContentResolver refuses openFileDescriptor
-     * outright for a window. That is how a file stored inside a zip arrives, so the range is
-     * counted from where the window starts, which is zero for every other file.
-     */
-    private fun slice(uri: Uri, start: Long, end: Long): InputStream {
-        val afd = contentResolver.openAssetFileDescriptor(uri, "r")
-            ?: throw java.io.IOException("cannot open $uri")
-        val stream = java.io.FileInputStream(afd.fileDescriptor)
-        val from = afd.startOffset + start
-        // Seekable for anything file backed; a pipe has to be read through instead
-        runCatching { stream.channel.position(from) }
-            .onFailure { runCatching { stream.skip(from) } }
-        return LimitedInputStream(stream, end - start + 1, afd)
     }
 
     private fun matchParent() = FrameLayout.LayoutParams(
@@ -2387,7 +1950,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        videoChrome?.focusChanged(hasFocus)
+        playerScreen?.videoChrome?.focusChanged(hasFocus)
         documentChrome?.focusChanged(hasFocus)
     }
 
@@ -2406,32 +1969,12 @@ open class ViewerActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        lockScreen?.inFront()
+        playerScreen?.started()
     }
 
-    /**
-     * Pauses whatever is playing, unless this is a track and the screen has gone off with it
-     * playing, or the lock screen has come back over it, neither of which is leaving it. Issue #38.
-     *
-     * Playing on after leaving would need a foreground service, and so a permission. Playing on
-     * with the screen off needs none: the viewer is still the thing in front, only asleep, and
-     * Android's audio service keeps the phone awake while a track plays. A video stops all the
-     * same, since there is nothing left of it to watch.
-     *
-     * The lock screen counts because of calls. A call wakes the screen over the lock screen, and
-     * when it ends the lock screen comes back with the screen still on, which stops the viewer.
-     * Taken as leaving, that paused the track for good and took its controls away.
-     */
+    /** A track may play on with the screen off: see [PlayerScreen.stopped]. */
     override fun onStop() {
-        val screenOn = getSystemService(PowerManager::class.java)?.isInteractive ?: true
-        val locked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked ?: false
-        val controls = lockScreen
-        if (controls != null && player?.playWhenReady == true && (!screenOn || locked)) {
-            controls.playingOn()
-        } else {
-            player?.pause()
-            controls?.leftPaused()
-        }
+        playerScreen?.stopped()
         savePosition()
         super.onStop()
     }
@@ -2459,15 +2002,15 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        lockScreen?.release()
-        lockScreen = null
-        player?.release()
-        player = null
+        playerScreen?.release()
         doubleTapZoom?.cancel()
         webView?.destroy()
         webView = null
         simplePdf?.close()
         simplePdf = null
+        // Written again from the intent whenever the viewer is made again, so only a closing one
+        // takes it away
+        if (isFinishing) sharedText?.delete()
         super.onDestroy()
     }
 }

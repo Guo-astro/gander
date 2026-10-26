@@ -13,7 +13,9 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class FakeRenderer : IPdfRenderer.Stub() {
 
     @Volatile var pages = 3
+
     @Volatile var size = (595L shl 32) or 842L
+
     @Volatile var dead = false
 
     /** How many bytes to send for an answer that takes the given number. */
@@ -21,7 +23,9 @@ internal class FakeRenderer : IPdfRenderer.Stub() {
 
     /** What a page drawn at a size is, as the renderer's rows of blue, green, red and alpha. */
     @Volatile var pixels: (page: Int, width: Int, height: Int) -> ByteArray = { _, w, h -> page(4 * w * h) }
+
     @Volatile var onOpen: () -> Unit = {}
+
     @Volatile var onRender: () -> Unit = {}
 
     val entered = CountDownLatch(1)

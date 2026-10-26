@@ -52,7 +52,7 @@ done
 # library silently.
 get docx-preview.min.js "https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js"
 get xlsx.full.min.js    "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
-get marked.min.js       "https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"
+get marked.umd.js       "https://cdn.jsdelivr.net/npm/marked@18/lib/marked.umd.js"
 get purify.min.js       "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"
 
 P="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master"
@@ -63,8 +63,10 @@ get pptx/d3.min.js      "$P/js/d3.min.js"
 get pptx/nv.d3.min.js   "$P/js/nv.d3.min.js"
 get pptx/pptxjs.js      "$P/js/pptxjs.js"
 # Gander's one change to PPTXjs, for #48 (docs/VENDORED.md). patch stops this script
-# if upstream's file has moved under it, rather than the change going quietly.
-patch -s "$LIB/pptx/pptxjs.js" < "$(dirname "$0")/pptxjs.patch" && echo "patched pptx/pptxjs.js"
+# if upstream's file has moved under it, rather than the change going quietly: on a line
+# of its own, since set -e lets a command fail unnoticed on the left of &&.
+patch -s "$LIB/pptx/pptxjs.js" < "$(dirname "$0")/pptxjs.patch"
+echo "patched pptx/pptxjs.js"
 # Not upstream's dingbat.js: pptx.js makes PPTXjs's Wingdings 2 and 3 table itself (docs/VENDORED.md).
 get pptx/divs2slides.js "$P/js/divs2slides.js"
 get pptx/pptxjs.css     "$P/css/pptxjs.css"

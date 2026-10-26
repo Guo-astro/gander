@@ -31,42 +31,14 @@ internal class DecodedNames(
 )
 
 /**
- * The names inside a .zip, decoded. Issue #30.
- *
- * A zip stores each name as bytes and one flag, and the flag only ever means UTF-8. Without
- * it the format says code page 437, which no Windows tool has taken literally: Explorer
- * writes the machine's own DOS code page, GBK on a Chinese Windows, CP866 on a Russian one,
- * Shift_JIS on a Japanese one, and leaves the flag clear. macOS writes UTF-8 and leaves it
- * clear as well.
- *
- * Android's own java.util.zip reads all of these as UTF-8 and puts U+FFFD wherever that
- * fails, without an error: a zip of Chinese folder names lists as rows of question marks,
- * and the bytes that said what they were are gone by the time there is a String. Measured
- * on API 36, and the system Files app shows such a zip the same way.
- *
- * Nothing in the file says which code page it was, and neither obvious tool can tell. ICU's
- * charset detector is not public API on Android. Decoding strictly and keeping whatever does
- * not fail cannot choose: GBK bytes decode without one error under eleven of the fourteen
- * charsets tried, and Japanese names decode under GBK into Chinese characters that are all
- * real and all wrong. What separates the candidates is whether the result is text people
- * write, so each one is scored on that over every such name in the archive together, and
- * the phone's language decides whatever the score leaves tied.
- *
- * Korean and Chinese are the pair that scoring by kind of character cannot split. A Korean
- * Windows zip's names are Hangul in rows the GBK table fills with its commonest hanzi, so
- * both readings are made of nothing but everyday characters, and the tie went to Chinese on
- * every phone not set to Korean. What does split them is which everyday characters: read as
- * Korean, the bytes are the syllables Korean is mostly written in, and read as Chinese, the
- * same bytes are characters Chinese rarely uses. See [COMMON_BONUS].
- *
- * Western Europe and those same code pages are the other such pair, the other way about. An
- * accented letter and the letter beside it are two bytes, and two bytes are one character of a
- * language written that way, so "Größe.xlsx" reads as "Gr批e.xlsx" as readily as itself, out of
- * characters just as everyday. What separates those two is where the character sits and what its
- * bytes spell read the Western way: see [westernLetterPairedUp].
- *
- * A guess can still be wrong, most of all for an archive of one short name, so the reader
- * can also say which code page it is: [CHOICES].
+ * The names inside a .zip, decoded (#30). A zip's name is bytes and one flag that only ever
+ * means UTF-8, and without it the bytes are in whatever made the zip used: the machine's DOS
+ * code page on Windows, UTF-8 on a Mac. Nothing says which, and java.util.zip reads them all as
+ * UTF-8, turning the rest into question marks. So each candidate code page is scored on whether
+ * the names come out as text people write, over every name in the archive, and the phone's
+ * language breaks ties. Korean against Chinese and Western European against the double-byte
+ * pages score alike that way, and take a check each: [COMMON_BONUS] and [westernLetterPairedUp].
+ * A guess can still be wrong, so the reader can also choose the code page: [CHOICES].
  */
 internal object ZipNames {
 

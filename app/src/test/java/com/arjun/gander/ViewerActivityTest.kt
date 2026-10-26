@@ -10,20 +10,21 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
-import android.widget.TextView
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.CookieManager
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.TextView
+import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
@@ -866,13 +867,29 @@ class ViewerActivityTest {
         val controller = open("unknown.xyz")
         assertThat(controller.underTheName()).isNotNull()
         val web = controller.webView()!!
-        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
-            override fun didCrash() = false
-            override fun rendererPriorityAtExit() = 0
-        })
+        web.webViewClient.onRenderProcessGone(web, rendererReclaimed())
         shadowOf(Looper.getMainLooper()).idle()
         assertThat(controller.webView()).isNull()
         assertThat(controller.underTheName()).isNull()
+    }
+
+    /**
+     * With no working WebView, as while Android System WebView updates, a document gets a card
+     * saying so, where it was a crash, and nothing on the toolbar speaks to a page that isn't there.
+     */
+    @Test
+    @Config(shadows = [ShadowMissingWebView::class])
+    fun withNoWorkingWebViewADocumentGetsACardRatherThanACrash() {
+        // So Print would be offered, as on a phone
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_PRINTING, true)
+        val controller = open("six-pages.pdf")
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.get().findViewById<TextView>(R.id.renderGoneTitle).text.toString())
+            .isEqualTo(context.getString(R.string.no_webview))
+        for (item in listOf(R.id.action_search, R.id.action_night_mode, R.id.action_print)) {
+            assertWithMessage(context.resources.getResourceEntryName(item))
+                .that(controller.toolbarItem(item).isVisible).isFalse()
+        }
     }
 
     /**
@@ -1199,8 +1216,58 @@ class ViewerActivityTest {
         val controller = start(intent)
 
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
-        assertThat(File(context.cacheDir, "shared-text.txt").readText())
+        assertThat(File(ViewerActivity.shareableDir(context), "shared-text.txt").readText())
             .isEqualTo("Something copied out of another app")
+    }
+
+    /**
+     * FileProvider keeps the folders it covers in a static map, read from the first test's cache,
+     * and Robolectric gives every test a cache of its own: forgotten, so this test's are read.
+     */
+    private fun forgetFileProviderRoots() {
+        val roots = FileProvider::class.java.getDeclaredField("sCache").apply { isAccessible = true }
+        (roots.get(null) as MutableMap<*, *>).clear()
+    }
+
+    /** It can be shared on, through the FileProvider, and goes once the viewer has closed. */
+    @Test
+    fun sharedTextCanBeSharedOnAndGoesWithTheViewer() {
+        forgetFileProviderRoots()
+        val intent = Intent(context, ViewerActivity::class.java)
+            .setAction(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, "Something copied out of another app")
+        val controller = start(intent)
+        val file = File(ViewerActivity.shareableDir(context), "shared-text.txt")
+
+        controller.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
+            .performIdentifierAction(R.id.action_share, 0)
+        val chooser = shadowOf(controller.get()).nextStartedActivity
+        val send = IntentCompat.getParcelableExtra(chooser, Intent.EXTRA_INTENT, Intent::class.java)!!
+        val shared = IntentCompat.getParcelableExtra(send, Intent.EXTRA_STREAM, Uri::class.java)
+        assertThat(shared.toString())
+            .isEqualTo("content://${context.packageName}.fileprovider/shared/shared-text.txt")
+
+        assertThat(file.exists()).isTrue()
+        controller.get().finish()
+        controller.pause().stop().destroy()
+        assertThat(file.exists()).isFalse()
+    }
+
+    /**
+     * Nothing else in the cache can be handed to another app through the FileProvider, a
+     * thumbnail least of all, since it is a copy of someone's photo.
+     */
+    @Test
+    fun theFileProviderReachesOnlyTheFilesTheViewerShares() {
+        forgetFileProviderRoots()
+        val authority = "${context.packageName}.fileprovider"
+        val page = File(ViewerActivity.shareableDir(context), "Open source licences.md").apply { writeText("x") }
+        assertThat(FileProvider.getUriForFile(context, authority, page)).isNotNull()
+        val thumb = File(context.cacheDir, "thumbs/x.png").apply { parentFile!!.mkdirs(); writeText("x") }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            FileProvider.getUriForFile(context, authority, thumb)
+        }
     }
 
     @Test
@@ -1319,6 +1386,28 @@ class ViewerActivityTest {
         controller.saveInstanceState(state)
 
         assertThat(state.getString("copy_source")).contains("six-pages.pdf")
+    }
+
+    /** The copy is the whole file, and the bar goes once it has been written. */
+    @Test
+    fun aSavedCopyIsTheWholeFile() {
+        val activity = open("six-pages.pdf").get()
+        val dest = Uri.parse("content://test.saved/copy.pdf")
+        val written = java.io.ByteArrayOutputStream()
+        shadowOf(activity.contentResolver).registerOutputStream(dest, written)
+
+        activity.copier.copy(FixtureProvider.uriFor("six-pages.pdf"), dest)
+        val deadline = System.currentTimeMillis() + 10_000
+        while (activity.copier.saving && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+
+        assertThat(activity.copier.saving).isFalse()
+        assertThat(written.toByteArray()).isEqualTo(Fixtures.bytes("six-pages.pdf"))
+        assertThat(activity.findViewById<LinearProgressIndicator>(R.id.saveProgress).visibility)
+            .isEqualTo(android.view.View.GONE)
+        assertThat(ShadowToast.getTextOfLatestToast()).isEqualTo(context.getString(R.string.save_copy_done))
     }
 
     @Test
@@ -1570,6 +1659,7 @@ class ViewerActivityTest {
 
     // ---------------------------------------------------------------
     // The code page names are read in
+
     /**
      * Cancel means the file stays shut, even when the password typed before it was right and was
      * still being tried: the answer came back after the box had gone and opened the file anyway,
@@ -1668,7 +1758,7 @@ class ViewerActivityTest {
         val activity = controller.get()
         val bar = activity.findViewById<LinearProgressIndicator>(R.id.saveProgress)
         // As Save a copy leaves it partway through
-        activity.saving = true
+        activity.copier.saving = true
         bar.isIndeterminate = false
         bar.visibility = android.view.View.VISIBLE
         activity.findViewById<MaterialToolbar>(R.id.toolbar).menu
@@ -2006,6 +2096,37 @@ class ViewerActivityTest {
             assertThat(controller.loadedUrl()).contains("&resume=3")
         } finally {
             FixtureProvider.gate.countDown()
+        }
+    }
+
+    /** The same for a photo, whose rotation is read from the file's first bytes. */
+    @Test
+    fun aProviderSlowToHandAPhotoOverDoesNotHoldTheViewerUp() {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        FixtureProvider.gate = gate
+        Thread { Thread.sleep(15_000); gate.countDown() }.apply { isDaemon = true }.start()
+        try {
+            val intent = Intent(context, ViewerActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setDataAndType(FixtureProvider.uriFor(FixtureProvider.SLOW_PHOTO), "image/jpeg")
+            val started = System.nanoTime()
+            val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertWithMessage("the viewer waited for the provider on the main thread")
+                .that(tookMs).isLessThan(10_000L)
+
+            // And the photo is turned the right way up once the provider answers
+            gate.countDown()
+            val deadline = System.currentTimeMillis() + 10_000
+            var photo: SubsamplingScaleImageView? = null
+            while (photo == null && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20)
+                shadowOf(Looper.getMainLooper()).idle()
+                photo = controller.container().children().filterIsInstance<SubsamplingScaleImageView>().firstOrNull()
+            }
+            assertThat(photo?.orientation).isEqualTo(90)
+        } finally {
+            gate.countDown()
         }
     }
 

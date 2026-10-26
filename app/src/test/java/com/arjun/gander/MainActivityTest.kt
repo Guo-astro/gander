@@ -678,6 +678,21 @@ class MainActivityTest {
         assertThat(controller.rowTitles()).doesNotContain("Documents")
     }
 
+    /** And the thumbnails of the files in it, each a copy of a picture in it, only smaller. */
+    @Test
+    fun removingAFolderTakesItsThumbnailsWithIt() {
+        val tree = grantedFolder()
+        val thumbs = checkNotNull(Thumbs.folderDir(context, tree))
+        val thumb = File(thumbs, "f1.png").apply { parentFile!!.mkdirs(); writeBytes(Fixtures.bytes("tiny.png")) }
+        val controller = home()
+        controller.swipeRow("Documents")
+
+        answer(AlertDialog.BUTTON_POSITIVE)
+        waitOutTheUndoBar()
+
+        assertThat(thumb.exists()).isFalse()
+    }
+
     /**
      * Gander's own primary is a burnt red, so tinting only the destructive button left
      * the two within dE 4.6 of each other on the light palette: near enough to the 2.3 a

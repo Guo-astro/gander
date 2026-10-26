@@ -58,9 +58,8 @@ internal class LockScreenControls(
     internal var session: MediaSession? = null
         private set
 
-    private val notification = PlayerNotificationManager.Builder(
-        context, NOTIFICATION_ID, CHANNEL_ID,
-        object : PlayerNotificationManager.MediaDescriptionAdapter {
+    private val notification = PlayerNotificationManager.Builder(context, NOTIFICATION_ID, CHANNEL_ID)
+        .setMediaDescriptionAdapter(object : PlayerNotificationManager.MediaDescriptionAdapter {
             override fun getCurrentContentTitle(player: Player): CharSequence = title
 
             // The viewer is what the screen shows once it is unlocked, so there is nowhere else to go
@@ -72,8 +71,7 @@ internal class LockScreenControls(
                 player: Player,
                 callback: PlayerNotificationManager.BitmapCallback
             ): Bitmap? = art
-        }
-    )
+        })
         .setChannelNameResourceId(R.string.audio_controls_channel)
         .setSmallIconResourceId(R.drawable.ic_notification)
         .build()

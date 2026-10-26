@@ -18,6 +18,15 @@ def test_markdown_becomes_html(viewer, page):
     assert "Willowmere site notes" in page.text_content("#content h1")
 
 
+def test_a_crafted_file_cannot_stall_the_page(viewer, page, made):
+    """
+    marked 15 backtracked over an open link followed by no-break spaces, taking minutes over
+    16 KB, where marked 18.1 reads it at once.
+    """
+    viewer("md.html", made("stall.md", "[](" + "\u00a0" * 8000))
+    wait_for_render(page, timeout=5000)
+
+
 def test_lists_and_links_render(viewer, page):
     viewer("md.html", "notes.md")
     wait_for_render(page)
@@ -169,12 +178,12 @@ def test_the_prose_after_the_injected_markup_survives(viewer, page):
 # ---------------------------------------------------------------------------
 
 def test_an_engine_too_old_for_marked_is_told_to_update_it(viewer, page, server):
-    viewer("md.html", "notes.md", webview=64, needs=92)
+    viewer("md.html", "notes.md", webview=64, needs=93)
     page.wait_for_selector(".vw-error", timeout=15000)
     page.wait_for_load_state("networkidle")
     said = status_text(page)
     assert "too old to show Markdown files" in said
-    assert "64" in said and "92" in said
+    assert "64" in said and "93" in said
     assert "updating android system webview" in said.lower()
     # The card is the whole page: the document is never read
     assert server.full_requests() == []
@@ -182,16 +191,16 @@ def test_an_engine_too_old_for_marked_is_told_to_update_it(viewer, page, server)
 
 def test_the_card_is_all_that_shows_when_marked_cannot_parse(viewer, page):
     """
-    Below Chromium 80, which is issue #31's WebView 64: marked could not parse and
+    Below Chromium 84, as on issue #31's WebView 64, marked can't parse and
     the reader was told "marked is not defined". The browser here parses it, so the
     file is swapped for one that no engine can.
     """
     page.route(
-        "**/assets/viewer/lib/marked.min.js",
+        "**/assets/viewer/lib/marked.umd.js",
         lambda route: route.fulfill(content_type="text/javascript", body="var x = ;"),
     )
     with page.expect_event("pageerror"):
-        viewer("md.html", "notes.md", webview=64, needs=92)
+        viewer("md.html", "notes.md", webview=64, needs=93)
     page.wait_for_load_state("networkidle")
     said = status_text(page)
     assert "too old to show Markdown files" in said
@@ -200,13 +209,13 @@ def test_the_card_is_all_that_shows_when_marked_cannot_parse(viewer, page):
 
 def test_the_card_is_all_that_shows_where_marked_parses_but_cannot_run(viewer, page):
     """
-    From Chromium 80 to 91 marked parses, and then fails on the first document it
-    is given, because its lexer calls Array.prototype.at, which arrived in 92. So
-    the floor is 92, not the 80 its syntax alone would suggest. Taking .at away
-    here is that engine.
+    From Chromium 84 to 92 marked parses, and then fails on a document with a bracket
+    in it, because its check for a reference link calls Object.hasOwn, which arrived
+    in 93. So the floor is 93, not the 84 its syntax alone would suggest. Taking
+    Object.hasOwn away here is that engine.
     """
-    page.add_init_script("delete Array.prototype.at; delete String.prototype.at;")
-    viewer("md.html", "notes.md", webview=91, needs=92)
+    page.add_init_script("delete Object.hasOwn;")
+    viewer("md.html", "notes.md", webview=92, needs=93)
     page.wait_for_selector(".vw-error", timeout=15000)
     page.wait_for_load_state("networkidle")
     said = status_text(page)

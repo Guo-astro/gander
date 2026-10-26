@@ -24,20 +24,20 @@ commit.
 | `jszip3.min.js` | JSZip | 3.10.1 | MIT or GPL-3.0 dual | https://github.com/Stuk/jszip |
 | `docx-preview.min.js` | docx-preview | 0.4.1 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
-| `marked.min.js` | marked | 15.0.12 | MIT | https://github.com/markedjs/marked |
-| `purify.min.js` | DOMPurify | 3.4.12 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
+| `marked.umd.js` | marked | 18.1.1 | MIT | https://github.com/markedjs/marked |
+| `purify.min.js` | DOMPurify | 3.4.17 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
 | `pptx/pptxjs.js` | PPTXjs | 1.21.1, with one change (below) | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/divs2slides.js` | divs2slides (PPTXjs) | 1.3.2 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/filereader.js` | FileReader.js (PPTXjs bundle) | 0.99 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/jquery.min.js` | jQuery | 1.11.3 | MIT | https://github.com/jquery/jquery |
-| `pptx/jszip2.min.js` | JSZip 2.x (PPTXjs bundle) | 2.x | MIT or GPL-3.0 dual | https://github.com/meshesha/PPTXjs |
+| `pptx/jszip2.min.js` | JSZip 2 (PPTXjs bundle) | 2.4.0 | MIT or GPL-3.0 dual | https://github.com/meshesha/PPTXjs |
 | `pptx/d3.min.js` | D3 | 3.5.10 | BSD-3-Clause | https://github.com/d3/d3 |
-| `pptx/nv.d3.min.js` | NVD3 | 1.8.1 | Apache-2.0 | https://github.com/novus/nvd3 |
+| `pptx/nv.d3.min.js` | NVD3 | 1.8.1-dev | Apache-2.0 | https://github.com/novus/nvd3 |
 | `pptx/pptxjs.css`, `pptx/nv.d3.min.css` | PPTXjs / NVD3 styles | see above | see above | see above |
 
 ## The CMap tables
 
-`cmaps/` is 1.6 MB of Adobe's predefined CMap tables, which pdf.js loads from
+`cmaps/` is 1.2 MB of Adobe's predefined CMap tables, which pdf.js loads from
 the assets on demand. They are not optional decoration: a PDF that uses a CJK
 font without embedding it carries no glyph mapping of its own and names an
 encoding like `UniGB-UCS2-H` instead, and without the matching table pdf.js
@@ -87,7 +87,7 @@ fetched into `wasm/` beside them and repeated in
 ## The Word and Markdown floors
 
 `docx.html` and `md.html` show the same card as `pdf.html` when the WebView is too
-old for the library that draws them: below Chromium 80 for docx-preview and 92 for
+old for the library that draws them: below Chromium 80 for docx-preview and 93 for
 marked, which are `DOCX_PREVIEW_MIN_CHROMIUM_MAJOR` and `MARKED_MIN_CHROMIUM_MAJOR`
 in `app/src/main/java/com/arjun/gander/WebViewFloor.kt`. Until issue #31 they had no
 floor, and on WebView 64 a .docx said "docx is not defined" and a .md "marked is not
@@ -99,13 +99,14 @@ two pages load, JSZip and DOMPurify included, and fails when a refetch changes o
 which the newest-in-the-major fetches of marked and DOMPurify make likely. Measure
 the new file before updating its fingerprint:
 
-    node scripts/js-floor.mjs app/src/main/assets/viewer/lib/marked.min.js
+    node scripts/js-floor.mjs app/src/main/assets/viewer/lib/marked.umd.js
 
 It lists every construct newer than ES2015 with the Chromium that shipped it, which
 is exact, and the newer runtime names the file mentions, which are only candidates:
-a name in the file is not a call every document makes. marked's
-`Array.prototype.at` is one that counts. Without it a single line of prose fails,
-which is why its floor is 92 rather than the 80 its syntax alone would give. JSZip
+a name in the file is not a call every document makes. marked's `Object.hasOwn` is
+one that counts: its check for a reference link runs on any text with a bracket in it,
+as plain as "see [1]", which is why its floor is 93 rather than the 84 its syntax
+alone would give. JSZip
 and DOMPurify parse as ES2015 and reach for newer names only behind `typeof` checks,
 so neither sets a floor today.
 
@@ -317,7 +318,7 @@ itself. That makes the Chromium floor a fact to check rather than a preference.
   measured 11 ms each on a phone against 0.04 ms on a desktop, so a page carrying sixty small
   figures spent 684 ms deciding what they were and nothing on the desktop said so.
 
-Bumping pdf.js means editing together the two `pdf.*.mjs` rows above, `PDFJS` in
+Bumping pdf.js means editing together the two `pdf.*.mjs` rows above, `PDFJS_VER` in
 `scripts/fetch-viewer-libs.sh`, and `PDFJS_MIN_CHROMIUM_MAJOR`. The card's
 wording lives in `app.js`, called from `pdf-setup.js`, and reads both version
 numbers out of the query string, so it needs no edit. It also reads `locked`,

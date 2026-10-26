@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Stands in for a WebView whose renderer process Android took away. Native on
-     purpose: the page that would normally draw a message like this one died with
-     the renderer, so nothing inside the WebView can be asked to say anything. -->
+<!-- Stands in for a document the WebView can't show, because its renderer process has gone or
+     there is no working WebView at all. Native, since neither leaves a page to say so. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -23,7 +22,6 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:paddingTop="8dp"
-        android:text="@string/render_gone_detail"
         android:textAppearance="?attr/textAppearanceBodyMedium"
         android:textColor="?attr/colorOnSurfaceVariant" />
 

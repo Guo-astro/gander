@@ -10,9 +10,8 @@ import java.io.File
 /**
  * The fixture documents, on the device.
  *
- * They travel in the test APK's assets and are copied into the app's own cache
- * directory, where res/xml/file_paths.xml already exposes them through the
- * FileProvider the app ships. So a test hands the viewer the same kind of
+ * They travel in the test APK's assets and are copied into the cache folder the
+ * FileProvider the app ships covers (res/xml/file_paths.xml). So a test hands the viewer the same kind of
  * content:// URI a file manager would, with a real read grant behind it, and
  * nothing in the app knows it came from a test.
  */
@@ -24,7 +23,7 @@ object DeviceFixtures {
     private val testAssets
         get() = InstrumentationRegistry.getInstrumentation().context.assets
 
-    private fun dir(): File = File(target.cacheDir, "fixtures").apply { mkdirs() }
+    private fun dir(): File = File(ViewerActivity.shareableDir(target), "fixtures").apply { mkdirs() }
 
     /** Copies [name] out of the test APK, once, and answers a URI for it. */
     fun uriFor(name: String): Uri {

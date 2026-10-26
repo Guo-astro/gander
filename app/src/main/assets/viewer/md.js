@@ -1,6 +1,6 @@
 /* Nothing is read below marked's floor. The card is already up, and the library in the
-   head either did not parse, below Chromium 80, or would fail on its first document,
-   below 92: issue #31, where this said "marked is not defined" instead. See
+   head either did not parse, below Chromium 84, or would fail on its first document,
+   below 93: issue #31, where this said "marked is not defined" instead. See
    vwWebViewTooOld in app.js. */
 if (!vwWebViewTooOld("Markdown files")) {
   vwFetchDoc("text")

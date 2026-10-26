@@ -234,15 +234,18 @@ class ReleaseHygieneTest {
 
     /**
      * Zero permissions is the whole promise, and app/build.gradle.kts fails
-     * the build if the merged manifest requests one. That gate is the thing
-     * that must not quietly disappear, so its absence fails here too.
+     * the build if the merged manifest requests one, or exports a component nobody
+     * signed off on. That gate is the thing that must not quietly disappear, so
+     * its absence fails here too.
      */
     @Test
-    fun thePermissionGateIsStillWiredToBothOutputs() {
+    fun thePermissionGateIsStillWiredToEveryOutput() {
         val build = code(BUILD_FILE, "//")
         assertThat(build).contains("checkPermissions")
         assertThat(build).contains("assemble\$suffix")
         assertThat(build).contains("bundle\$suffix")
+        assertThat(build).contains("package\$suffix")
+        assertThat(build).contains("exportedAllowlist")
     }
 
     /**
@@ -255,6 +258,33 @@ class ReleaseHygieneTest {
         val rules = code(File(REPO, "app/proguard-rules.pro").readText(), "#")
         assertThat(rules).contains("-keepattributes SourceFile,LineNumberTable")
         assertThat(code(BUILD_FILE, "//")).contains("isMinifyEnabled = true")
+    }
+
+    /** The APK carries no dependency list that only Google can read, which AGP adds unless told not to. */
+    @Test
+    fun theApkCarriesNoDependencyListOnlyGoogleCanRead() {
+        assertThat(code(BUILD_FILE, "//"))
+            .containsMatch("""dependenciesInfo\s*\{[^}]*includeInApk\s*=\s*false""")
+    }
+
+    /**
+     * A doc comment belongs to what is directly under it, so one stacked on another describes
+     * nothing and is left over from a rewrite. Gander's own Kotlin and viewer pages, not the
+     * vendored libraries in viewer/lib.
+     */
+    @Test
+    fun noCommentSitsOnTopOfAnother() {
+        val kotlin = listOf("main", "test", "androidTest", "debug").flatMap { set ->
+            File(REPO, "app/src/$set/java").walkTopDown().filter { it.extension == "kt" }.toList()
+        }
+        val pages = File(REPO, "app/src/main/assets/viewer").listFiles().orEmpty()
+            .filter { it.isFile && it.extension in setOf("js", "mjs", "html", "css") }
+        val stacked = (kotlin + pages).flatMap { file ->
+            file.readLines().zipWithNext().withIndex()
+                .filter { (_, lines) -> lines.first.trim() == "*/" && lines.second.trim().startsWith("/*") }
+                .map { (i, _) -> "${file.relativeTo(REPO).invariantSeparatorsPath}:${i + 2}" }
+        }
+        assertWithMessage("a comment on top of another comment").that(stacked).isEmpty()
     }
 
     /**

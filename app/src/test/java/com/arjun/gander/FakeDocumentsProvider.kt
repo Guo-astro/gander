@@ -73,7 +73,7 @@ internal class FakeDocumentsProvider : ContentProvider() {
                             DocumentsContract.Document.COLUMN_LAST_MODIFIED -> child.modified
                             else -> null
                         }
-                    }.toTypedArray()
+                    }.toTypedArray<Any?>()
                 )
             }
         }

@@ -39,7 +39,6 @@
  * Bytes
  * ---------------------------------------------------------------------------------- */
 
-function docU8(b, at) { return b[at]; }
 function docU16(b, at) { return b[at] | (b[at + 1] << 8); }
 function docI16(b, at) { var v = docU16(b, at); return v & 0x8000 ? v - 0x10000 : v; }
 function docU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16)) + b[at + 3] * 0x1000000; }
@@ -671,11 +670,6 @@ function docPieceAt(doc, cp) {
     if (cp < pieces[mid].end) hi = mid; else lo = mid + 1;
   }
   return pieces[lo];
-}
-
-function docFcOf(doc, cp) {
-  var piece = docPieceAt(doc, cp);
-  return piece.fc + (cp - piece.cp) * (piece.wide ? 2 : 1);
 }
 
 /* ------------------------------------------------------------------------------------
@@ -1675,113 +1669,63 @@ function docDrawStory(state, cpFrom, cpTo, into) {
 }
 
 /*
- * A table from its rows. As in Rich Text, each row brings its own column edges and
- * the rows are laid on one grid, each cell spanning the grid columns between its own
- * two edges.
+ * A table from its rows, each with the table properties its row mark carried, laid out by
+ * vwProseTable. A cell's lines are its own or, where it has none, the table's: the outside
+ * lines on the table's edge and the inside ones between cells.
  */
 function docDrawTable(state, rows, into) {
-  var prose = state.prose;
-  var edges = [];
-  var r, c, i;
-  function edge(x) {
-    for (var k = 0; k < edges.length; k++) if (Math.abs(edges[k] - x) <= 0.75) return;
-    edges.push(x);
-  }
-  for (r = 0; r < rows.length; r++) {
-    var tap = rows[r].tap;
-    if (!tap || !tap.edges.length) continue;
-    for (c = 0; c < tap.edges.length; c++) edge(tap.edges[c]);
-  }
-  edges.sort(function (a, b) { return a - b; });
-  function column(x) {
-    var best = 0;
-    for (var k = 0; k < edges.length; k++) if (Math.abs(edges[k] - x) < Math.abs(edges[best] - x)) best = k;
-    return best;
-  }
-
-  var table = document.createElement("table");
-  var body = document.createElement("tbody");
   var first = rows[0].tap || {};
-  if (edges.length > 1) {
-    var group = document.createElement("colgroup");
-    for (i = 1; i < edges.length; i++) {
-      var col = document.createElement("col");
-      col.style.width = vwProsePt(edges[i] - edges[i - 1]);
-      group.appendChild(col);
-    }
-    table.appendChild(group);
-    table.style.tableLayout = "fixed";
-    table.style.width = vwProsePt(edges[edges.length - 1] - edges[0]);
-    if (first.align === "center") { table.style.marginLeft = "auto"; table.style.marginRight = "auto"; }
-    else if (first.align === "right") table.style.marginLeft = "auto";
-    else if (edges[0] + (first.gap || 0) < 0) table.style.marginLeft = vwProsePt(Math.max(-72, edges[0] + (first.gap || 0)));
-  }
-  table.appendChild(body);
-
-  for (r = 0; r < rows.length; r++) {
-    var row = rows[r];
-    var tap = row.tap || { edges: [], cells: [], pad: [], gap: 5.4 };
-    row.spans = [];
-    for (c = 0; c < row.cells.length; c++) {
-      var def = tap.cells[c] || {};
-      var from = tap.edges.length > c ? column(tap.edges[c]) : c;
-      var to = tap.edges.length > c + 1 ? column(tap.edges[c + 1]) : from + 1;
-      row.spans.push({ from: from, to: Math.max(to, from + 1), def: def, cell: row.cells[c] });
-    }
-    for (c = row.spans.length - 1; c > 0; c--) {
-      if (row.spans[c].def.mergedAcross) {
-        row.spans[c - 1].to = Math.max(row.spans[c - 1].to, row.spans[c].to);
-        row.spans.splice(c, 1);
-      }
-    }
-  }
-
-  for (r = 0; r < rows.length; r++) {
-    var tr = document.createElement("tr");
-    var rowTap = rows[r].tap || { pad: [], borders: null, gap: 5.4 };
-    if (rowTap.height) tr.style.height = vwProsePt(Math.abs(rowTap.height));
-    for (c = 0; c < rows[r].spans.length; c++) {
-      var span = rows[r].spans[c];
-      if (span.def.vertMerge && !span.def.vertRestart) continue;
-      var td = document.createElement("td");
-      if (span.to - span.from > 1) td.colSpan = span.to - span.from;
-      if (span.def.vertRestart) {
-        var down = 1;
-        for (var below = r + 1; below < rows.length; below++) {
-          var under = null;
-          for (var k = 0; k < rows[below].spans.length; k++) if (rows[below].spans[k].from === span.from) under = rows[below].spans[k];
-          if (!under || !under.def.vertMerge || under.def.vertRestart) break;
-          down++;
-        }
-        if (down > 1) td.rowSpan = down;
-      }
+  var shaped = rows.map(function (row) {
+    var tap = row.tap || { edges: [], cells: [] };
+    return {
+      edges: tap.edges,
+      height: tap.height,
+      cells: row.cells.map(function (content, c) {
+        var def = tap.cells[c] || {};
+        return {
+          content: content,
+          def: def,
+          left: c < tap.edges.length ? tap.edges[c] : null,
+          right: c + 1 < tap.edges.length ? tap.edges[c + 1] : null,
+          mergedAcross: def.mergedAcross,
+          mergesDown: def.vertRestart,
+          mergedDown: def.vertMerge && !def.vertRestart
+        };
+      })
+    };
+  });
+  into.appendChild(vwProseTable(state.prose, shaped, {
+    near: 0.75,
+    pt: function (x) { return x; },
+    align: first.align,
+    // Pulled left of the margin only, by as much as its first cell's text would start left of it
+    indent: function (left) {
+      var x = left + (first.gap || 0);
+      return x < 0 ? x : 0;
+    },
+    style: function (cell, r, outside) {
+      var def = cell.def;
+      var rowTap = rows[r].tap || { pad: [], borders: null, gap: 5.4 };
       var bag = {};
-      var sides = ["Top", "Right", "Bottom", "Left"];
-      var tableBorders = rowTap.borders;
       for (var s = 0; s < 4; s++) {
-        var pad = span.def["pad" + sides[s]];
+        var side = VW_PROSE_SIDES[s];
+        var pad = def["pad" + side];
         if (pad == null) pad = rowTap.pad[s];
         if (pad == null && (s === 1 || s === 3)) pad = rowTap.gap;
         if (pad == null) pad = 0;
-        bag["pad" + sides[s]] = pad;
-        var line = span.def["border" + sides[s]];
-        if ((!line || !line.width) && tableBorders) {
-          // The table's own: outside edges on the outside, inside lines between cells
-          var outside = (s === 0 && r === 0) || (s === 2 && r === rows.length - 1) ||
-            (s === 3 && c === 0) || (s === 1 && c === rows[r].spans.length - 1);
-          line = outside ? tableBorders[s === 0 ? 0 : s === 3 ? 1 : s === 2 ? 2 : 3] : tableBorders[s === 0 || s === 2 ? 4 : 5];
+        bag["pad" + side] = pad;
+        var line = def["border" + side];
+        if ((!line || !line.width) && rowTap.borders) {
+          line = outside[s] ? rowTap.borders[s === 0 ? 0 : s === 3 ? 1 : s === 2 ? 2 : 3] :
+            rowTap.borders[s === 0 || s === 2 ? 4 : 5];
         }
-        if (line && line.width) bag["border" + sides[s]] = line;
+        if (line && line.width) bag["border" + side] = line;
       }
-      if (span.def.background) bag.background = span.def.background;
-      if (span.def.valign && span.def.valign !== "top") bag.valign = span.def.valign;
-      td.className = vwProseClass(prose, bag);
-      td.appendChild(span.cell);
-      tr.appendChild(td);
+      if (def.background) bag.background = def.background;
+      if (def.valign && def.valign !== "top") bag.valign = def.valign;
+      return bag;
     }
-    body.appendChild(tr);
-  }
-  into.appendChild(table);
+  }));
 }
 
 /* ------------------------------------------------------------------------------------

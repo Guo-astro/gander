@@ -1,0 +1,20 @@
+# Newer Gradle dependencies, plugins and GitHub Actions, checked once a month. Minor and patch
+# releases come as one pull request per ecosystem, and a major release on its own, since it can
+# need code to change. The vendored viewer libraries are outside its reach; docs/VENDORED.md
+# says how they are upgraded.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      gradle:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        update-types: [minor, patch]

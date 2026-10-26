@@ -1,10 +1,10 @@
 package com.arjun.gander
 
 import com.google.common.truth.Truth.assertThat
-import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import kotlin.random.Random
+import org.junit.Test
 
 /** Print, issue #45: which files print, what the job is called, and the copy a PDF prints from. */
 class PrintTest {

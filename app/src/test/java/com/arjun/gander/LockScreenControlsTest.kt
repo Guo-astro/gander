@@ -64,7 +64,7 @@ class LockScreenControlsTest {
         }
 
     private fun screen(on: Boolean) =
-        shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(on)
+        shadowOf(context.getSystemService(PowerManager::class.java)).turnScreenOn(on)
 
     private fun locked(on: Boolean) =
         shadowOf(context.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(on)
@@ -110,7 +110,7 @@ class LockScreenControlsTest {
     @Test
     fun aVideoPausesWhenTheScreenGoesOff() {
         val viewer = play(video)
-        assertThat(viewer.get().lockScreen).isNull()
+        assertThat(viewer.get().playerScreen!!.lockScreen).isNull()
         screen(on = false)
         viewer.stopped()
         assertThat(viewer.player.playWhenReady).isFalse()
@@ -159,7 +159,7 @@ class LockScreenControlsTest {
         val viewer = play(track)
         screen(on = false)
         viewer.stopped()
-        val controls = viewer.get().lockScreen!!
+        val controls = viewer.get().playerScreen!!.lockScreen!!
         controls.callback.onPause()
         assertThat(viewer.player.playWhenReady).isFalse()
         controls.callback.onPlay()
@@ -173,13 +173,13 @@ class LockScreenControlsTest {
     @Test
     fun onlyATrackInFrontOrPlayingOnAnswersAHeadset() {
         val viewer = play(track)
-        assertThat(viewer.get().lockScreen!!.session?.isActive).isTrue()
+        assertThat(viewer.get().playerScreen!!.lockScreen!!.session?.isActive).isTrue()
         viewer.stopped()
-        assertThat(viewer.get().lockScreen!!.session).isNull()
+        assertThat(viewer.get().playerScreen!!.lockScreen!!.session).isNull()
         viewer.start()
-        assertThat(viewer.get().lockScreen!!.session?.isActive).isTrue()
+        assertThat(viewer.get().playerScreen!!.lockScreen!!.session?.isActive).isTrue()
         screen(on = false)
         viewer.stopped()
-        assertThat(viewer.get().lockScreen!!.session?.isActive).isTrue()
+        assertThat(viewer.get().playerScreen!!.lockScreen!!.session?.isActive).isTrue()
     }
 }

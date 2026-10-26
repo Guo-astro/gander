@@ -15,17 +15,17 @@ class WebViewFloorTest {
         /** A current Android System WebView on a Pixel. */
         const val UA_MODERN =
             "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, " +
-            "like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36"
+                "like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36"
 
         /** An engine below the pdf.js floor, but plainly a Chromium one. */
         const val UA_OLD =
             "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Version/4.0 Chrome/110.0.5481.65 Mobile Safari/537.36"
+                "Version/4.0 Chrome/110.0.5481.65 Mobile Safari/537.36"
 
         /** A vendor engine whose user agent carries no Chrome/ token at all. */
         const val UA_NO_TOKEN =
             "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Version/4.0 Mobile Safari/537.36"
+                "Version/4.0 Mobile Safari/537.36"
     }
 
     // ---------------------------------------------------------------
@@ -135,15 +135,15 @@ class WebViewFloorTest {
         assertThat(webViewFloorParams(FileKind.DOCX, 64, locked = false))
             .isEqualTo("&webview=64&needs=80")
         assertThat(webViewFloorParams(FileKind.MD, 64, locked = false))
-            .isEqualTo("&webview=64&needs=92")
+            .isEqualTo("&webview=64&needs=93")
     }
 
-    /** marked parses from 80, so between there and 92 only running it fails. */
+    /** marked parses from 84, so between there and 93 only running it fails. */
     @Test
     fun markdownIsBlockedWhereMarkedParsesButCannotRun() {
-        assertThat(webViewFloorParams(FileKind.MD, 91, locked = false))
-            .isEqualTo("&webview=91&needs=92")
-        assertThat(webViewFloorParams(FileKind.DOCX, 91, locked = false)).isEmpty()
+        assertThat(webViewFloorParams(FileKind.MD, 92, locked = false))
+            .isEqualTo("&webview=92&needs=93")
+        assertThat(webViewFloorParams(FileKind.DOCX, 92, locked = false)).isEmpty()
     }
 
     /** On a locked provider the page drops the advice to go and update. */
@@ -169,7 +169,7 @@ class WebViewFloorTest {
 
     /**
      * But only for a PDF. That rests on no Huawei build reaching 125, and nothing
-     * says the same of 80 or 92, so a Word or Markdown file there is let through.
+     * says the same of 80 or 93, so a Word or Markdown file there is let through.
      */
     @Test
     fun anUnreadableLockedVersionBlocksOnlyPdfs() {
@@ -208,9 +208,9 @@ class WebViewFloorTest {
      * way docs/VENDORED.md describes.
      */
     @Test
-    fun theWordAndMarkdownFloorsAreEightyAndNinetyTwo() {
+    fun theWordAndMarkdownFloorsAreEightyAndNinetyThree() {
         assertThat(DOCX_PREVIEW_MIN_CHROMIUM_MAJOR).isEqualTo(80)
-        assertThat(MARKED_MIN_CHROMIUM_MAJOR).isEqualTo(92)
+        assertThat(MARKED_MIN_CHROMIUM_MAJOR).isEqualTo(93)
     }
 
     @Test
@@ -311,4 +311,3 @@ class WebViewFloorTest {
         for (sdk in listOf(26, 27)) assertThat(pdfCardOffersSimple(110, locked = false, sdk)).isFalse()
     }
 }
-

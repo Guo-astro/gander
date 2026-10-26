@@ -35,11 +35,12 @@ internal fun doubleTapTarget(zoom: Float): Float =
 
 /**
  * The scroll offset that keeps a place in the document under the finger at [at] px along the
- * view. [place] is how far along the fitted document it is, and [range] and [extent] are the
- * document's and the view's lengths at [zoom].
+ * view. [place] is how far along the document it was when the zoom began, [grown] how many times
+ * that size the document is drawn at now, and [range] and [extent] are the document's and the
+ * view's lengths now.
  */
-internal fun anchoredScroll(place: Float, zoom: Float, at: Float, range: Int, extent: Int): Int =
-    (place * zoom - at).roundToInt().coerceIn(0, maxOf(0, range - extent))
+internal fun anchoredScroll(place: Float, grown: Float, at: Float, range: Int, extent: Int): Int =
+    (place * grown - at).roundToInt().coerceIn(0, maxOf(0, range - extent))
 
 /** The WebView as a double tap needs it, so the zoom can be tested against a stand-in. */
 internal interface ZoomSurface {
@@ -113,38 +114,61 @@ internal class DoubleTapZoom(context: Context, private val surface: ZoomSurface)
     private fun zoomAbout(x: Float, y: Float) {
         val from = zoom() ?: return
         val to = doubleTapTarget(from)
-        // The place under the finger, as far along and down the fitted document
-        val placeX = (surface.scrolledX() + x) / from
-        val placeY = (surface.scrolledY() + y) / from
+        val began = ZoomStart(surface)
         cancel()
         running = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = DOUBLE_TAP_MS.toLong()
             interpolator = DecelerateInterpolator()
             addUpdateListener {
                 // By ratio, so the page grows at an even rate rather than fastest at the start
-                step(from * (to / from).pow(it.animatedFraction), placeX, placeY, x, y)
+                step(from * (to / from).pow(it.animatedFraction), began, x, y)
             }
             start()
         }
     }
 
     /** One frame: the document at [to] times its fitted width, with the place tapped under the finger. */
-    private fun step(to: Float, placeX: Float, placeY: Float, x: Float, y: Float) {
+    private fun step(to: Float, began: ZoomStart, x: Float, y: Float) {
         val now = zoom() ?: return
         // The fitted page is the WebView's floor, and asking for a little less lands on it exactly
         val by = if (to <= 1f && now > 1f) UNDER / now else to / now
         // WebView.zoomBy throws outside 0.01 to 100
         if (by != 1f) surface.zoomBy(by.coerceIn(0.02f, 50f))
         // Read back, since the WebView stops at its own limits
-        val zoom = zoom() ?: return
+        val grown = began.grown() ?: return
         surface.scrollTo(
-            anchoredScroll(placeX, zoom, x, surface.rangeX(), surface.viewWidth()),
-            anchoredScroll(placeY, zoom, y, surface.rangeY(), surface.viewHeight()),
+            anchoredScroll(began.x + x, grown, x, surface.rangeX(), surface.viewWidth()),
+            anchoredScroll(began.y + y, grown, y, surface.rangeY(), surface.viewHeight()),
         )
     }
 
     private companion object {
         /** A little under the fitted page, as a zoom. */
         const val UNDER = 0.9f
+    }
+}
+
+/** Where a double tap's zoom began, which each of its frames measures from. */
+private class ZoomStart(private val surface: ZoomSurface) {
+    val x = surface.scrolledX().toFloat()
+    val y = surface.scrolledY().toFloat()
+    private val wide = surface.rangeX()
+    private val long = surface.rangeY()
+
+    /**
+     * How many times its size at the start the document is drawn at now, or null once it is not
+     * laid out. Read off its length while that runs past the view: a length is whole px, so the
+     * longer one measures finer, and deep in a long document the scroll multiplies whatever the
+     * measure misses.
+     */
+    fun grown(): Float? {
+        val view = surface.viewHeight()
+        val longNow = surface.rangeY()
+        val wideNow = surface.rangeX()
+        return when {
+            long > view && longNow > view -> longNow.toFloat() / long
+            wideNow > 0 -> wideNow.toFloat() / wide
+            else -> null
+        }
     }
 }

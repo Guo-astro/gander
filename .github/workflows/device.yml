@@ -6,8 +6,9 @@ name: Device tests
 # before anything ships.
 on:
   schedule:
-    # 03:00 UTC, so a failure is waiting in the morning rather than mid-work
-    - cron: '0 3 * * *'
+    # 02:47 IST, so a failure is waiting in the morning rather than mid-work. Off the
+    # hour, because GitHub starts a job scheduled on the hour hours late.
+    - cron: '17 21 * * *'
   push:
     tags: ['v*']
   workflow_dispatch:

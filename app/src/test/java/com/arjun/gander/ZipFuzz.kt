@@ -173,7 +173,7 @@ internal object ZipFuzz {
         while (total < READ_CAP) {
             val n = input.read(buffer)
             if (n < 0) {
-                if (total != entry.size) throw Broken("read ${total} bytes of a file listed as ${entry.size}")
+                if (total != entry.size) throw Broken("read $total bytes of a file listed as ${entry.size}")
                 return
             }
             if (n == 0) throw Broken("a read of nothing, which a caller would repeat forever")

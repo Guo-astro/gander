@@ -11,9 +11,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.util.LruCache
 import android.view.View
 import android.widget.ImageView
+import androidx.core.graphics.scale
+import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.security.MessageDigest
@@ -21,8 +24,8 @@ import java.util.concurrent.Executors
 
 /**
  * Small preview thumbnails for images, videos and PDFs.
- * Memory LRU + PNG disk cache under cacheDir/thumbs, generated off the
- * main thread. Kinds without a cheap visual preview simply keep their badge.
+ * Memory LRU + PNG disk cache under cacheDir/thumbs, a folder's files' in a subfolder of
+ * their own, generated off the main thread. Kinds without a cheap visual preview simply keep their badge.
  * A PDF's is drawn in an isolated process: see PdfThumbs.
  *
  * A file inside a zip gets the memory cache and never the disk. Nothing in a zip is written
@@ -81,11 +84,12 @@ object Thumbs {
         val onDisk = !ArchiveProvider.isEntry(appCtx, uri)
         val pdf = if (kind == FileKind.PDF) pdfs ?: PdfThumbs(appCtx, SIZE).also { pdfs = it } else null
         executor.execute {
-            val cached = if (onDisk) fromDisk(appCtx, key) else null
+            val file = diskFile(appCtx, uri, key)
+            val cached = if (onDisk) fromDisk(file) else null
             if (cached != null) return@execute show(key, cached, into, badge)
             val make = Runnable {
                 val bmp = generate(appCtx, uri, kind, key, pdf) ?: return@Runnable
-                if (onDisk) toDisk(appCtx, key, bmp)
+                if (onDisk) toDisk(file, bmp)
                 show(key, bmp, into, badge)
             }
             // A PDF takes its turn for the renderer, which holds one document at a time. One
@@ -123,7 +127,15 @@ object Thumbs {
     fun evict(context: Context, uriString: String) {
         val key = md5(uriString)
         mem.remove(key)
-        diskFile(context, key).delete()
+        diskFile(context, uriString.toUri(), key).delete()
+    }
+
+    /**
+     * Drops the thumbnails of every file reached through the folder [tree], which the reader has
+     * removed: each is a copy of a picture in it, only smaller.
+     */
+    fun forgetFolder(context: Context, tree: Uri) {
+        folderDir(context, tree)?.deleteRecursively()
     }
 
     fun exifRotation(resolver: ContentResolver, uri: Uri): Int = runCatching {
@@ -176,9 +188,7 @@ object Thumbs {
             val frame = retriever.frameAtTime ?: return null
             val scale = SIZE.toFloat() / maxOf(frame.width, frame.height)
             if (scale >= 1f) frame
-            else Bitmap.createScaledBitmap(
-                frame, (frame.width * scale).toInt(), (frame.height * scale).toInt(), true
-            )
+            else frame.scale((frame.width * scale).toInt(), (frame.height * scale).toInt())
         } finally {
             runCatching { retriever.release() }
         }
@@ -187,20 +197,28 @@ object Thumbs {
     private fun diskDir(ctx: Context): File =
         File(ctx.cacheDir, "thumbs").apply { mkdirs() }
 
-    private fun diskFile(ctx: Context, key: String): File =
-        File(diskDir(ctx), "$key.png")
+    /** Where [uri]'s thumbnail is kept: with its folder's, for a file reached through one, so they go together. */
+    private fun diskFile(ctx: Context, uri: Uri, key: String): File =
+        File(folderDir(ctx, uri) ?: diskDir(ctx), "$key.png")
 
-    private fun fromDisk(ctx: Context, key: String): Bitmap? {
-        val f = diskFile(ctx, key)
-        if (!f.exists()) return null
-        return runCatching { BitmapFactory.decodeFile(f.absolutePath) }.getOrNull()
+    /** Where the thumbnails of the folder [uri] was reached through are kept, or null for a file opened on its own. */
+    internal fun folderDir(ctx: Context, uri: Uri): File? = folderKey(uri)?.let { File(diskDir(ctx), it) }
+
+    /** The folder grant [uri] was reached through, as a key, or null for a file opened on its own. */
+    private fun folderKey(uri: Uri): String? = runCatching {
+        if (!DocumentsContract.isTreeUri(uri)) return null
+        md5(DocumentsContract.buildTreeDocumentUri(uri.authority, DocumentsContract.getTreeDocumentId(uri)).toString())
+    }.getOrNull()
+
+    private fun fromDisk(file: File): Bitmap? {
+        if (!file.exists()) return null
+        return runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
     }
 
-    private fun toDisk(ctx: Context, key: String, bmp: Bitmap) {
+    private fun toDisk(file: File, bmp: Bitmap) {
         runCatching {
-            diskFile(ctx, key).outputStream().use {
-                bmp.compress(Bitmap.CompressFormat.PNG, 90, it)
-            }
+            file.parentFile?.mkdirs()
+            file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 90, it) }
         }
     }
 

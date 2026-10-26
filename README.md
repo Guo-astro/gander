@@ -21,7 +21,6 @@ access at all**.
 [![Downloads](https://img.shields.io/github/downloads/mokshablr/gander/total)](../../releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/mokshablr/gander/build.yml?branch=main)](../../actions)
 ![Min API](https://img.shields.io/badge/minSdk-26%20(Android%208)-brightgreen)
-![Kotlin](https://img.shields.io/badge/Kotlin-100%25-purple)
 
 Every phone ships with a dozen half-viewers that bounce your documents to cloud services.
 Gander is the opposite: one small APK (about 5 MB) that renders everything **on the device**.
@@ -118,7 +117,7 @@ works.
 Runs on **Android 8.0 (API 26) and up**.
 
 Some formats need a recent Android System WebView, the browser engine built into the
-phone: Word documents 80, Markdown files 92 and PDFs 125 (May 2024). Any phone still
+phone: Word documents 80, Markdown files 93 and PDFs 125 (May 2024). Any phone still
 receiving WebView updates is well past all three; if yours is not, Gander says so when
 you open the file rather than failing quietly.
 
@@ -169,9 +168,9 @@ Signing certificate SHA-256:
 
 Gander receives files through the Storage Access Framework and "Open with" intents,
 so the OS hands it exactly the documents you chose and nothing else. Office formats
-render inside a locked-down WebView whose every request is intercepted by
-`WebViewAssetLoader`: bundled JS libraries load from app assets and the document
-streams from the content URI. No network stack is ever touched, and the app does
+render inside a locked-down WebView whose every request Gander answers itself:
+bundled JS libraries load from app assets, the document streams from the content
+URI, and anything else gets an empty 404. No network stack is ever touched, and the app does
 not declare the INTERNET permission, so there is nothing to audit or trust.
 
 Folder browsing uses `ACTION_OPEN_DOCUMENT_TREE` grants. Note that Android itself
@@ -219,14 +218,17 @@ ExoPlayer for video and audio, a sandboxed WebView for everything rendered by
 vendored JS libraries (`app/src/main/assets/viewer/`), PDF included, or a list
 (`ArchiveBrowser.kt`) for a `.zip`, whose entries `ArchiveProvider` serves back to
 those same surfaces without ever touching the disk. Documents
-under 16 MB are handed to the WebView whole; larger ones are served in ranges so
-only the pages being read are held in memory. Where pdf.js can't run (`pdfRoute` in
+are handed to the WebView whole. Where pdf.js can't run (`pdfRoute` in
 `WebViewFloor.kt`), a PDF's pages are drawn by the platform's `PdfRenderer` in an isolated
 process (`PdfRenderService`) and shown as pictures in that same WebView (`SimplePdf.kt`). The
 home screen (`MainActivity`) lists recents
 (persisted SAF grants) and granted folders (DocumentsContract child queries), with
 thumbnails generated off-thread and cached (`Thumbs.kt`), a PDF's by an isolated renderer of
 their own (`PdfThumbs.kt`).
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the rest: what the viewer accepts from other
+apps, how a document reaches the WebView, the channel between Kotlin and the pages, and what
+guards each constraint.
 
 Vendored viewer libraries and their licenses: pdf.js (Apache-2.0), JSZip (MIT),
 docx-preview (Apache-2.0), SheetJS CE (Apache-2.0), PPTXjs + divs2slides (MIT),

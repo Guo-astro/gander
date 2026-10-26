@@ -417,7 +417,7 @@ var vwFind = (function () {
     if (!e.ports || !e.ports.length || port) return;
     port = e.ports[0];
     port.onmessage = function (m) {
-      /* Nothing thrown in here may reach the port: it does not come back from that */
+      /* An error would reach window.onerror, which puts the error card over a document that is fine */
       try { onCommand(String(m.data || "")); } catch (err) { report(); }
     };
     port.start();

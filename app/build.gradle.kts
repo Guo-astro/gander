@@ -3,6 +3,7 @@ import com.android.build.api.artifact.SingleArtifact
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jlleitschuh.gradle.ktlint")
 }
 
 android {
@@ -47,12 +48,10 @@ android {
 
     buildTypes {
         release {
-            // The app is 1,700 lines of Kotlin; the dex was 14.8 MB, nearly all of it
-            // library code that nothing here calls. R8 keeps the reachable part and
-            // drops the rest, and shrinkResources does the same for the resource table.
-            // Kept in the open, so obfuscation buys no secrecy: what it buys is the
-            // shrinking and optimisation that come with it. See proguard-rules.pro for
-            // why line numbers survive it.
+            // Most of the dex is library code nothing here calls, which R8 drops, as
+            // shrinkResources drops unused resources. Obfuscation buys no secrecy in an
+            // open repo; the shrinking is the point. proguard-rules.pro says why line
+            // numbers survive it.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -79,12 +78,21 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // A new warning fails the commit that adds it. An incremental build prints only the files
+        // it recompiles, so a warning left alone would otherwise scroll past once and be gone.
+        allWarningsAsErrors = true
     }
 
     buildFeatures {
         // IPdfRenderer.aidl is how Gander talks to the isolated PDF renderer, and AGP 8
         // builds no AIDL unless asked.
         aidl = true
+    }
+
+    // AGP signs an encrypted list of the dependencies into the APK, which only Google can read and
+    // F-Droid flags. The bundle keeps its copy, which Play Console reads to warn about an SDK.
+    dependenciesInfo {
+        includeInApk = false
     }
 
     lint {
@@ -173,24 +181,50 @@ val permissionAllowlistSuffixes = setOf(
     ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
 )
 
+// The components other apps may start or send to, for the same reason: a dependency can export
+// one without a word, as androidx.profileinstaller did.
+val exportedAllowlist = setOf(
+    // The launcher's icon
+    "com.arjun.gander.MainActivity",
+    // Open with and Share from other apps, which take only a content URI: see INTERNAL_VIEWER
+    "com.arjun.gander.ViewerActivity",
+    // Only a sender holding android.permission.DUMP, the shell's, can reach it
+    "androidx.profileinstaller.ProfileInstallReceiver",
+    // Debug builds only, from src/debug: the PDF renderer's spike, which adb hands a document to
+    "com.arjun.gander.PdfSpikeActivity",
+)
+
+// The Kotlin style, as .editorconfig at the root sets it: ./gradlew ktlintCheck, or ktlintFormat
+ktlint {
+    version.set("1.8.0")
+}
+
 androidComponents.onVariants { variant ->
     val suffix = variant.name.replaceFirstChar { it.uppercase() }
     val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
     val appId = variant.applicationId
 
     val checkPermissions = tasks.register("check${suffix}Permissions") {
-        description = "Fails if the merged manifest requests any permission we did not sign off on."
+        description = "Fails if the merged manifest requests a permission or exports a component we did not sign off on."
         val manifestFile = mergedManifest
         val allowedSuffixes = permissionAllowlistSuffixes
+        val allowedExports = exportedAllowlist
         val applicationId = appId
         val stamp = layout.buildDirectory.file("reports/permissions/$suffix.txt")
         inputs.file(manifestFile)
         outputs.file(stamp)
         doLast {
-            val requested = Regex("""<uses-permission[^>]*android:name="([^"]+)"""")
-                .findAll(manifestFile.get().asFile.readText())
-                .map { it.groupValues[1] }
-                .toList()
+            val android = "http://schemas.android.com/apk/res/android"
+            val manifest = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                .apply { isNamespaceAware = true }
+                .newDocumentBuilder()
+                .parse(manifestFile.get().asFile)
+            fun elements(vararg tags: String) = tags.flatMap { tag ->
+                val found = manifest.getElementsByTagName(tag)
+                (0 until found.length).map { found.item(it) as org.w3c.dom.Element }
+            }
+            val requested = elements("uses-permission", "uses-permission-sdk-23")
+                .map { it.getAttributeNS(android, "name") }
             val allowed = allowedSuffixes.map { applicationId.get() + it }.toSet()
             val unexpected = requested.filterNot { it in allowed }
             if (unexpected.isNotEmpty()) {
@@ -201,24 +235,39 @@ androidComponents.onVariants { variant ->
                         appendLine()
                         appendLine("A dependency added these. Either strip each one with")
                         appendLine("tools:node=\"remove\" in AndroidManifest.xml, or add it to")
-                        append("permissionAllowlist in app/build.gradle.kts with a reason.")
+                        append("permissionAllowlistSuffixes in app/build.gradle.kts with a reason.")
+                    }
+                )
+            }
+            val exported = elements("activity", "activity-alias", "service", "receiver", "provider")
+                .filter { it.getAttributeNS(android, "exported") == "true" }
+                .map { it.getAttributeNS(android, "name") }
+            val unexpectedExports = exported.filterNot { it in allowedExports }
+            if (unexpectedExports.isNotEmpty()) {
+                throw GradleException(
+                    buildString {
+                        appendLine("$suffix exports components other apps can reach that nobody signed off on:")
+                        unexpectedExports.forEach { appendLine("    $it") }
+                        appendLine()
+                        appendLine("A dependency added these. Either set android:exported=\"false\" on each")
+                        appendLine("with tools:replace=\"android:exported\" in AndroidManifest.xml, or add it")
+                        append("to exportedAllowlist in app/build.gradle.kts with a reason.")
                     }
                 )
             }
             stamp.get().asFile.apply {
                 parentFile.mkdirs()
-                writeText(requested.joinToString("\n"))
+                writeText((requested + exported).joinToString("\n"))
             }
         }
     }
 
     // Variant tasks are not registered yet while onVariants runs, so match lazily.
     //
-    // Both outputs, and that is the point. assemble builds the APK that goes to
-    // GitHub releases; bundle builds the AAB that goes to Play, and it does not
-    // depend on assemble. Guarding only the first left the store upload, the one
-    // build whose permission list is read by users as a promise, unchecked.
-    tasks.matching { it.name == "assemble$suffix" || it.name == "bundle$suffix" }
+    // Every output: assemble builds the APK that goes to GitHub releases, bundle the AAB that goes
+    // to Play, which doesn't depend on assemble, and package the APK that install puts on a phone,
+    // which doesn't either.
+    tasks.matching { it.name == "assemble$suffix" || it.name == "bundle$suffix" || it.name == "package$suffix" }
         .configureEach { dependsOn(checkPermissions) }
 }
 
@@ -238,8 +287,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.google.truth:truth:1.4.5")
-    // 4.16.1 is the newest stable; it is also the first to support SDK 36, which is
-    // why the toolchain has to be JDK 21. 4.17 is still in beta.
+    // 4.16.1 is the first to support SDK 36, which is why the toolchain has to be JDK 21.
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:core-ktx:1.7.0")
     testImplementation("androidx.test.ext:junit-ktx:1.3.0")

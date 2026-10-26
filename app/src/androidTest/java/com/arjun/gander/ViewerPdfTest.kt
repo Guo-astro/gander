@@ -36,15 +36,6 @@ class ViewerPdfTest {
     private fun open(fixture: String): ActivityScenario<ViewerActivity> =
         ActivityScenario.launch(DeviceFixtures.viewIntent(fixture))
 
-    /** A drawn canvas is the page width across; an untouched one is 300. */
-    private val DRAWN =
-        "[].slice.call(document.querySelectorAll('#pages .pg canvas'))" +
-            ".filter(function (c) { return c.width > 300; }).length"
-
-    private val TEXT_LAYER =
-        "[].slice.call(document.querySelectorAll('#pages .pg .textLayer'))" +
-            ".map(function (l) { return l.textContent; }).join(' ')"
-
     @Test
     fun aDocumentRendersOnTheDevicesOwnWebView() {
         open("six-pages.pdf").use { scenario ->
@@ -134,5 +125,16 @@ class ViewerPdfTest {
             val origin = WebViewProbe.text(scenario, "location.origin")
             assertThat(origin).isEqualTo("https://appassets.androidplatform.net")
         }
+    }
+
+    private companion object {
+        /** A drawn canvas is the page width across; an untouched one is 300. */
+        const val DRAWN =
+            "[].slice.call(document.querySelectorAll('#pages .pg canvas'))" +
+                ".filter(function (c) { return c.width > 300; }).length"
+
+        const val TEXT_LAYER =
+            "[].slice.call(document.querySelectorAll('#pages .pg .textLayer'))" +
+                ".map(function (l) { return l.textContent; }).join(' ')"
     }
 }

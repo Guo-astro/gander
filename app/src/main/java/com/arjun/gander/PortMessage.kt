@@ -1,7 +1,7 @@
 package com.arjun.gander
 
 /**
- * The wire between ViewerActivity and pdf.html.
+ * The wire between ViewerActivity and the viewer pages.
  *
  * One HTML5 message channel carries every word spoken in either direction, and
  * it is deliberately not addJavascriptInterface: that call reflects a Java
@@ -34,9 +34,8 @@ internal object PortCommand {
     fun goToPage(n: Int) = "g$n"
 
     /**
-     * Turn the pages over, or back. The second verb here that is not about
-     * finding something, after [goToPage]; the channel is named for search
-     * because search is what it was opened for, not because that is all it says.
+     * Turn the pages over, or back. The channel is named for search because search is
+     * what it was opened for, not because that is all it carries.
      */
     fun nightMode(on: Boolean) = if (on) "i1" else "i0"
 
@@ -59,7 +58,7 @@ internal object PortCommand {
     fun closeOver() = "x"
 }
 
-/** What pdf.html sends back, once it has been read and found sound. */
+/** What a page sends back, once it has been read and found sound. */
 internal sealed interface PortMessage {
 
     /**

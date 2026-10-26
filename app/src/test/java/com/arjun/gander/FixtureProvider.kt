@@ -34,10 +34,12 @@ internal class FixtureProvider : ContentProvider() {
         const val NO_LENGTH = "nolength.pdf"
 
         /**
-         * six-pages.pdf, handed over only once [gate] opens, as a cloud provider hands over a
-         * file once it has fetched it.
+         * six-pages.pdf and exif-6.jpg, handed over only once [gate] opens, as a cloud provider
+         * hands over a file once it has fetched it.
          */
         const val SLOW = "slow.pdf"
+        const val SLOW_PHOTO = "slow.jpg"
+        private val SLOW_STAND_INS = mapOf(SLOW to "six-pages.pdf", SLOW_PHOTO to "exif-6.jpg")
 
         @Volatile
         var gate = java.util.concurrent.CountDownLatch(0)
@@ -78,7 +80,7 @@ internal class FixtureProvider : ContentProvider() {
         val name = nameOf(uri)
         if (name == BROKEN) throw FileNotFoundException("this provider is having a bad day")
         extra[name]?.let { return it }
-        return Fixtures.file(if (name == SLOW) "six-pages.pdf" else name)
+        return Fixtures.file(SLOW_STAND_INS[name] ?: name)
     }
 
     override fun query(
@@ -93,7 +95,7 @@ internal class FixtureProvider : ContentProvider() {
         val columns = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         return MatrixCursor(columns).apply {
             addRow(
-                arrayOf(
+                arrayOf<Any?>(
                     uri.getQueryParameter("name") ?: name,
                     if (name == NO_LENGTH) null else fileFor(uri).length(),
                 )
@@ -107,7 +109,7 @@ internal class FixtureProvider : ContentProvider() {
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        if (nameOf(uri) == SLOW) gate.await()
+        if (nameOf(uri) in SLOW_STAND_INS) gate.await()
         return ParcelFileDescriptor.open(fileFor(uri), ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
