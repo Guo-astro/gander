@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import java.time.Duration
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import org.junit.After
@@ -29,8 +30,8 @@ import org.robolectric.shadows.ShadowChoreographer
 @RunWith(AndroidJUnit4::class)
 class DoubleTapZoomTest {
 
-    /** A phone's screen over a document nine screens long, drawn at [zoom] times its fitted width. */
-    private class Page(private val most: Float = 10f) : ZoomSurface {
+    /** A phone's screen over a document [length] px long when fitted, drawn at [zoom] times its fitted width. */
+    private class Page(private val most: Float = 10f, private val length: Int = LENGTH) : ZoomSurface {
         var zoom = 1f
         var x = 0
         var y = 0
@@ -41,7 +42,7 @@ class DoubleTapZoomTest {
         override fun scrolledX() = x
         override fun scrolledY() = y
         override fun rangeX() = (WIDTH * zoom).roundToInt()
-        override fun rangeY() = (LENGTH * zoom).roundToInt()
+        override fun rangeY() = (length * zoom).roundToInt()
 
         override fun zoomBy(factor: Float) {
             // WebView's own check, in doubles as it makes it: 0.01f is under 0.01 and is thrown out
@@ -66,6 +67,8 @@ class DoubleTapZoomTest {
     private companion object {
         const val WIDTH = 1080
         const val HEIGHT = 2000
+
+        /** Nine screens. */
         const val LENGTH = 18000
     }
 
@@ -189,6 +192,40 @@ class DoubleTapZoomTest {
 
         assertThat(page.zoom).isEqualTo(1f)
         assertThat(page.y).isEqualTo(LENGTH - HEIGHT)
+    }
+
+    /**
+     * Deep in a long document the scroll is a big number, and it multiplies any error in how far
+     * the zoom has got, so every frame is checked and not only where the zoom ends.
+     */
+    @Test
+    fun theTappedPlaceStaysUnderTheFingerThroughEveryFrameDeepInALongDocument() {
+        page = Page(length = 200_000)
+        doubleTap = DoubleTapZoom(context, page)
+        page.scrollTo(0, 150_000)
+
+        assertThat(worstStrayThroughADoubleTap(300f, 1200f)).isAtMost(2f)
+        assertThat(page.zoom).isWithin(0.01f).of(DOUBLE_TAP_ZOOM)
+
+        assertThat(worstStrayThroughADoubleTap(300f, 1200f)).isAtMost(2f)
+        assertThat(page.zoom).isEqualTo(1f)
+    }
+
+    /** A double tap run a frame at a time, and how far in px the place under the finger moved from it. */
+    private fun worstStrayThroughADoubleTap(x: Float, y: Float): Float {
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+        val held = page.under(x, y)
+        tap(x, y)
+        pass(80)
+        tap(x, y)
+        var worst = 0f
+        repeat(30) {
+            pass(16)
+            val now = page.under(x, y)
+            worst = maxOf(worst, abs(now.first - held.first) * page.zoom, abs(now.second - held.second) * page.zoom)
+        }
+        return worst
     }
 
     /** A WebView on a very wide screen cannot reach the full zoom, and must still come back. */
