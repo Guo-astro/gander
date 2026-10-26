@@ -17,6 +17,8 @@
   thumbnails.
 - The APK no longer carries a list of its libraries encrypted so that only Google can read it,
   which F-Droid flags.
+- A double tap zooms smoothly far down a long document, where the page jumped up and down as it
+  zoomed.
 
 ## 2.7 (2026-10-25)
 
