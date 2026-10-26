@@ -180,24 +180,45 @@ val permissionAllowlistSuffixes = setOf(
     ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
 )
 
+// The components other apps may start or send to, for the same reason: a dependency can export
+// one without a word, as androidx.profileinstaller did.
+val exportedAllowlist = setOf(
+    // The launcher's icon
+    "com.arjun.gander.MainActivity",
+    // Open with and Share from other apps, which take only a content URI: see INTERNAL_VIEWER
+    "com.arjun.gander.ViewerActivity",
+    // Only a sender holding android.permission.DUMP, the shell's, can reach it
+    "androidx.profileinstaller.ProfileInstallReceiver",
+    // Debug builds only, from src/debug: the PDF renderer's spike, which adb hands a document to
+    "com.arjun.gander.PdfSpikeActivity",
+)
+
 androidComponents.onVariants { variant ->
     val suffix = variant.name.replaceFirstChar { it.uppercase() }
     val mergedManifest = variant.artifacts.get(SingleArtifact.MERGED_MANIFEST)
     val appId = variant.applicationId
 
     val checkPermissions = tasks.register("check${suffix}Permissions") {
-        description = "Fails if the merged manifest requests any permission we did not sign off on."
+        description = "Fails if the merged manifest requests a permission or exports a component we did not sign off on."
         val manifestFile = mergedManifest
         val allowedSuffixes = permissionAllowlistSuffixes
+        val allowedExports = exportedAllowlist
         val applicationId = appId
         val stamp = layout.buildDirectory.file("reports/permissions/$suffix.txt")
         inputs.file(manifestFile)
         outputs.file(stamp)
         doLast {
-            val requested = Regex("""<uses-permission[^>]*android:name="([^"]+)"""")
-                .findAll(manifestFile.get().asFile.readText())
-                .map { it.groupValues[1] }
-                .toList()
+            val android = "http://schemas.android.com/apk/res/android"
+            val manifest = javax.xml.parsers.DocumentBuilderFactory.newInstance()
+                .apply { isNamespaceAware = true }
+                .newDocumentBuilder()
+                .parse(manifestFile.get().asFile)
+            fun elements(vararg tags: String) = tags.flatMap { tag ->
+                val found = manifest.getElementsByTagName(tag)
+                (0 until found.length).map { found.item(it) as org.w3c.dom.Element }
+            }
+            val requested = elements("uses-permission", "uses-permission-sdk-23")
+                .map { it.getAttributeNS(android, "name") }
             val allowed = allowedSuffixes.map { applicationId.get() + it }.toSet()
             val unexpected = requested.filterNot { it in allowed }
             if (unexpected.isNotEmpty()) {
@@ -212,20 +233,35 @@ androidComponents.onVariants { variant ->
                     }
                 )
             }
+            val exported = elements("activity", "activity-alias", "service", "receiver", "provider")
+                .filter { it.getAttributeNS(android, "exported") == "true" }
+                .map { it.getAttributeNS(android, "name") }
+            val unexpectedExports = exported.filterNot { it in allowedExports }
+            if (unexpectedExports.isNotEmpty()) {
+                throw GradleException(
+                    buildString {
+                        appendLine("$suffix exports components other apps can reach that nobody signed off on:")
+                        unexpectedExports.forEach { appendLine("    $it") }
+                        appendLine()
+                        appendLine("A dependency added these. Either set android:exported=\"false\" on each")
+                        appendLine("with tools:replace=\"android:exported\" in AndroidManifest.xml, or add it")
+                        append("to exportedAllowlist in app/build.gradle.kts with a reason.")
+                    }
+                )
+            }
             stamp.get().asFile.apply {
                 parentFile.mkdirs()
-                writeText(requested.joinToString("\n"))
+                writeText((requested + exported).joinToString("\n"))
             }
         }
     }
 
     // Variant tasks are not registered yet while onVariants runs, so match lazily.
     //
-    // Both outputs, and that is the point. assemble builds the APK that goes to
-    // GitHub releases; bundle builds the AAB that goes to Play, and it does not
-    // depend on assemble. Guarding only the first left the store upload, the one
-    // build whose permission list is read by users as a promise, unchecked.
-    tasks.matching { it.name == "assemble$suffix" || it.name == "bundle$suffix" }
+    // Every output: assemble builds the APK that goes to GitHub releases, bundle the AAB that goes
+    // to Play, which doesn't depend on assemble, and package the APK that install puts on a phone,
+    // which doesn't either.
+    tasks.matching { it.name == "assemble$suffix" || it.name == "bundle$suffix" || it.name == "package$suffix" }
         .configureEach { dependsOn(checkPermissions) }
 }
 

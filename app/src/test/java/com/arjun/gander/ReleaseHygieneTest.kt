@@ -234,15 +234,18 @@ class ReleaseHygieneTest {
 
     /**
      * Zero permissions is the whole promise, and app/build.gradle.kts fails
-     * the build if the merged manifest requests one. That gate is the thing
-     * that must not quietly disappear, so its absence fails here too.
+     * the build if the merged manifest requests one, or exports a component nobody
+     * signed off on. That gate is the thing that must not quietly disappear, so
+     * its absence fails here too.
      */
     @Test
-    fun thePermissionGateIsStillWiredToBothOutputs() {
+    fun thePermissionGateIsStillWiredToEveryOutput() {
         val build = code(BUILD_FILE, "//")
         assertThat(build).contains("checkPermissions")
         assertThat(build).contains("assemble\$suffix")
         assertThat(build).contains("bundle\$suffix")
+        assertThat(build).contains("package\$suffix")
+        assertThat(build).contains("exportedAllowlist")
     }
 
     /**
