@@ -226,34 +226,38 @@ class FormatRegistryTest {
     }
 
     // ---------------------------------------------------------------
-    // The welcome grid against its spoken description
+    // The sentence that says what Gander opens
     // ---------------------------------------------------------------
 
     /**
-     * The grid is nine tiles and the string is prose, so nothing but this
-     * keeps them describing the same app. The KDoc on WELCOME_BADGES warns
-     * about it; this is the warning made to fail. ETC is not a kind, so the
-     * sentence has to name each of the kinds it stands for instead.
+     * The first screen reads this sentence out in place of its nine tiles, so it has to
+     * name every kind, the ones behind ETC included. The when has no else, so a new kind
+     * doesn't compile until it says which words name it.
      */
     @Test
-    fun theSpokenDescriptionNamesEveryKindTheGridShows() {
-        val spoken = context.getString(R.string.welcome_formats_spoken).lowercase()
-        val expected = mapOf(
-            "PDF" to listOf(listOf("pdf")),
-            "DOC" to listOf(listOf("word", "document")),
-            "XLS" to listOf(listOf("excel", "spreadsheet")),
-            "PPT" to listOf(listOf("powerpoint", "slide", "presentation")),
-            "IMG" to listOf(listOf("photo", "image", "picture")),
-            "VID" to listOf(listOf("video")),
-            "AUD" to listOf(listOf("audio", "music", "sound")),
-            "MD" to listOf(listOf("markdown")),
-            "ETC" to listOf(listOf("text", "code"), listOf("zip"), listOf("3d model")),
-        )
-        WELCOME_BADGES.forEach { (label, _) ->
-            expected.getValue(label).forEach { words ->
-                val mentioned = words.any { it in spoken }
-                assertThat("$label ${words.first()} mentioned in welcome_formats_spoken: $mentioned")
-                    .isEqualTo("$label ${words.first()} mentioned in welcome_formats_spoken: true")
+    fun theSentenceSayingWhatGanderOpensNamesEveryKind() {
+        val sentence = context.getString(R.string.what_it_opens).lowercase()
+        FileKind.values().forEach { kind ->
+            // One list for each thing the kind covers; any word in it names that thing.
+            val names: List<List<String>> = when (kind) {
+                FileKind.PDF, FileKind.PDF_SIMPLE -> listOf(listOf("pdf"))
+                FileKind.DOCX -> listOf(listOf("word"))
+                FileKind.PROSE -> listOf(listOf("opendocument"), listOf("rich text"))
+                FileKind.XLSX -> listOf(listOf("excel", "spreadsheet"))
+                FileKind.PPTX -> listOf(listOf("powerpoint", "slide", "presentation"))
+                FileKind.IMAGE, FileKind.IMAGE_WEB -> listOf(listOf("photo", "image", "picture"))
+                FileKind.PLAYER -> listOf(listOf("video"), listOf("audio", "music", "sound"))
+                FileKind.MD -> listOf(listOf("markdown"))
+                // Not plain "text", which "Rich Text" would answer for
+                FileKind.TEXT -> listOf(listOf("text file", "code"))
+                FileKind.MODEL -> listOf(listOf("3d model"))
+                FileKind.EPUB -> listOf(listOf("book", "epub"))
+                FileKind.ARCHIVE -> listOf(listOf("zip"))
+                FileKind.UNSUPPORTED -> emptyList()
+            }
+            names.forEach { words ->
+                assertWithMessage("what_it_opens names $kind with one of $words")
+                    .that(words.any { it in sentence }).isTrue()
             }
         }
     }

@@ -65,12 +65,14 @@ The list of what Gander opens lives in more than one place, and
 1. The extension, and the MIME type if there is one, in `FileKind.kt`.
 2. The MIME type in **both** intent filters in `AndroidManifest.xml`.
 3. A fixture in `tests/fixtures/make_fixtures.py`.
-4. A row in the table at the top of `FileKindTest`.
+4. A row in the table at the top of `FileKindTest`, and the extension on the
+   File types page About opens, `app/src/main/assets/file_types.md`, which
+   that test holds to the table.
 5. A new renderer page also needs a `tests/viewer/test_<page>.py`, a line in
    `test_theme.py`, and an entry in `ViewerFormatsTest`. A new *kind* needs no
    tile of its own, since the ninth says ETC and stands for the kinds without
-   one; it does need naming in the `welcome_formats_spoken` string, which is
-   what a screen reader hears in place of the tiles.
+   one; it does need naming in the `what_it_opens` string, which a screen
+   reader hears in place of the tiles.
 
 The viewer routes by extension first, MIME second, in `FileKind.kt`;
 WebView-based renderers live in `app/src/main/assets/viewer/`.

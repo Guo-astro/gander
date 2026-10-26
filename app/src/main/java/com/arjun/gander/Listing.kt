@@ -62,18 +62,17 @@ internal val ETC_BADGE = "ETC" to TXT_BADGE.second
  * Draws the nine tiles of the welcome grid, in reading order.
  *
  * Kinds rather than formats, which is what makes the grid hold still: FileKind maps
- * 78 extensions onto its kinds, so adding .odt or .rst or another codec changes nothing
- * here. There are more kinds than tiles, since text files and zips both open, and three
- * rows of three is what fits the narrowest phone, so the last tile says ETC rather than
- * naming one of them. A new kind needs no tile: ETC already covers it.
+ * about a hundred extensions onto its kinds, so adding .odt or .rst or another codec
+ * changes nothing here. There are more kinds than tiles, since text files and zips both
+ * open, and three rows of three is what fits the narrowest phone, so the last tile says
+ * ETC rather than naming one of them. A new kind needs no tile: ETC already covers it.
  *
  * FILE is deliberately absent. It is what an unsupported file falls back to, and
  * this grid is a list of what Gander opens.
  *
- * One thing here does not update itself: welcome_formats_spoken is the sentence a
- * screen reader hears in place of these tiles, and it is prose that names every kind,
- * including the ones behind ETC. Adding a kind means editing that string too, or the
- * grid and its description stop agreeing.
+ * One thing here does not update itself: what_it_opens is the sentence a screen reader
+ * hears in place of these tiles. It names every kind, the ones behind ETC included, and
+ * FormatRegistryTest fails until a new kind is named there.
  */
 internal val WELCOME_BADGES = listOf(
     PDF_BADGE, DOC_BADGE, XLS_BADGE,

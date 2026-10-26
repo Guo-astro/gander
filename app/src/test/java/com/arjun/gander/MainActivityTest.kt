@@ -18,6 +18,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
+import java.io.File
 import java.time.Duration
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
@@ -168,7 +169,7 @@ class MainActivityTest {
     fun theExplainerGridIsOneStopForAScreenReader() {
         val grid = home().get().findViewById<ViewGroup>(R.id.formatGrid)
         assertThat(grid.contentDescription.toString())
-            .isEqualTo(context.getString(R.string.welcome_formats_spoken))
+            .isEqualTo(context.getString(R.string.what_it_opens))
     }
 
     /**
@@ -707,6 +708,27 @@ class MainActivityTest {
         assertThat(dialog).isNotNull()
         val text = dialog.findViewById<TextView>(R.id.aboutPermissions).text.toString()
         assertThat(text).isEqualTo(context.getString(R.string.about_permissions_none))
+    }
+
+    /** About's File types row closes About and opens the page as it ships, in Gander's viewer. */
+    @Test
+    fun theFileTypesRowOpensThePageInTheViewer() {
+        val controller = home()
+        controller.get().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+            .menu.performIdentifierAction(R.id.action_about, 0)
+        shadowOf(context.mainLooper).idle()
+
+        val dialog = ShadowDialog.getLatestDialog()
+        dialog.findViewById<View>(R.id.aboutFileTypes).performClick()
+        shadowOf(context.mainLooper).idle()
+
+        val started = shadowOf(controller.get()).nextStartedActivity
+        assertThat(started.component!!.className).isEqualTo(ViewerActivity.INTERNAL_VIEWER)
+        val page = File(started.getStringExtra(ViewerActivity.EXTRA_PATH)!!)
+        assertThat(page.name).isEqualTo(context.getString(R.string.file_types_file_name))
+        val shipped = context.assets.open("file_types.md").use { it.readBytes().decodeToString() }
+        assertThat(page.readText()).isEqualTo(shipped)
+        assertThat(dialog.isShowing).isFalse()
     }
 
     // ---------------------------------------------------------------

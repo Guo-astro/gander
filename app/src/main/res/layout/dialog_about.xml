@@ -82,6 +82,19 @@
             android:layout_marginTop="16dp" />
 
         <LinearLayout
+            android:id="@+id/aboutFileTypes"
+            style="@style/Widget.Gander.About.Row">
+
+            <TextView
+                style="@style/Widget.Gander.About.Row.Title"
+                android:text="@string/about_file_types" />
+
+            <TextView
+                style="@style/Widget.Gander.About.Row.Subtitle"
+                android:text="@string/about_file_types_detail" />
+        </LinearLayout>
+
+        <LinearLayout
             android:id="@+id/aboutAuthor"
             style="@style/Widget.Gander.About.Row">
 

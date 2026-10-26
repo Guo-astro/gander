@@ -129,6 +129,18 @@ class FileKindTest {
     }
 
     /**
+     * About's File types page lists every extension in the table and no other, so it can't leave
+     * a format out or name one Gander turns away. Issue #61.
+     */
+    @Test
+    fun theFileTypesPageListsEveryExtensionInTheTableAndNoOther() {
+        val page = File("src/main/assets/file_types.md").readText()
+        // A dot that starts a word, as in ".docx", and not the full stop in "text."
+        val listed = Regex("""(?<![\w.])\.([a-z0-9]+)\b""").findAll(page).map { it.groupValues[1] }.toSet()
+        assertThat(listed).containsExactlyElementsIn(EXPECTED.keys)
+    }
+
+    /**
      * Every kind is some extension's but two: UNSUPPORTED, which is what nothing else is, and a
      * PDF's simple view, which the viewer picks by the phone and the file, never by a name. See
      * pdfRoute.

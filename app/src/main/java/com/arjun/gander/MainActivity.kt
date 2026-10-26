@@ -20,6 +20,7 @@ import com.google.android.material.checkbox.MaterialCheckBox
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
@@ -300,9 +301,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * The app's only About surface. Carries the version, who made it, and the
-     * permission list read back out of Android, plus the way in to the licence
-     * text the bundled libraries require to travel with the binary.
+     * The app's only About surface. Carries the version, who made it, and the permission list
+     * read back out of Android, plus the way in to the page of every file type Gander opens and
+     * to the licence text the bundled libraries require to travel with the binary.
      */
     private fun showAbout() {
         val view = layoutInflater.inflate(R.layout.dialog_about, null)
@@ -343,9 +344,13 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.about_close, null)
             .show()
 
+        view.findViewById<View>(R.id.aboutFileTypes).setOnClickListener {
+            dialog.dismiss()
+            openBundledPage(FILE_TYPES_ASSET, R.string.file_types_file_name, R.string.file_types_failed)
+        }
         view.findViewById<View>(R.id.aboutLicences).setOnClickListener {
             dialog.dismiss()
-            openLicences()
+            openBundledPage(LICENCES_ASSET, R.string.licences_file_name, R.string.licences_failed)
         }
     }
 
@@ -368,18 +373,18 @@ class MainActivity : AppCompatActivity() {
     }.getOrNull()
 
     /**
-     * Gander shows its own licences. The asset is copied into the cache and
-     * handed to the viewer as a plain path, so the bundled Markdown renderer
-     * draws it and there is no second document surface to keep alive.
+     * Shows a Markdown page that ships in the APK, the licences or the file types, in Gander's own
+     * viewer. The asset is copied into the cache and handed over as a plain path, so the bundled
+     * Markdown renderer draws it and there is no second document surface to keep alive.
      *
      * Copied on every open rather than once: the cache outlives an app update,
      * and an update is exactly when the text changes. The viewer only records
      * content:// URIs in Recents, so this cannot turn up there.
      */
-    private fun openLicences() {
-        val file = File(cacheDir, getString(R.string.licences_file_name))
+    private fun openBundledPage(asset: String, @StringRes name: Int, @StringRes failed: Int) {
+        val file = File(cacheDir, getString(name))
         val opened = runCatching {
-            assets.open(LICENCES_ASSET).use { input ->
+            assets.open(asset).use { input ->
                 file.outputStream().use { input.copyTo(it) }
             }
             startActivity(
@@ -388,7 +393,7 @@ class MainActivity : AppCompatActivity() {
                     .putExtra(ViewerActivity.EXTRA_PATH, file.absolutePath)
             )
         }.isSuccess
-        if (!opened) Toast.makeText(this, R.string.licences_failed, Toast.LENGTH_SHORT).show()
+        if (!opened) Toast.makeText(this, failed, Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -791,7 +796,7 @@ class MainActivity : AppCompatActivity() {
         }
         // One description for all nine, and screenReaderFocusable is what makes the grid a
         // single stop rather than a container TalkBack walks into.
-        grid.contentDescription = getString(R.string.welcome_formats_spoken)
+        grid.contentDescription = getString(R.string.what_it_opens)
         ViewCompat.setScreenReaderFocusable(grid, true)
     }
 
@@ -867,6 +872,9 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val LICENCES_ASSET = "licences.md"
+
+        /** Every extension Gander opens, by kind. FileKindTest holds it to the extension table. */
+        const val FILE_TYPES_ASSET = "file_types.md"
 
         /** Google Play's package: the installer Rate depends on, and the app it opens. */
         const val PLAY_STORE = "com.android.vending"

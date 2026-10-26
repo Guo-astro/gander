@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Gander</string>
-    <!-- The long form, kept for the About dialog, which is where someone who wants the
-         detail goes looking. The first run gets welcome_headline instead. -->
-    <string name="main_subtitle">Open and view documents, spreadsheets, slides and photos. Everything renders on your phone, nothing is uploaded.</string>
+    <!-- About's opening line. It names the main kinds only, since the File types row below it
+         lists every one. -->
+    <string name="main_subtitle">Opens documents, spreadsheets, slides, photos, video, audio and more. Everything renders on your phone, nothing is uploaded.</string>
     <!-- The site's own h1, docs/index.html -->
     <string name="welcome_headline">Take a gander at any file.</string>
     <!-- The strongest sentence in the product, which used to be a clause in the middle of
          main_subtitle. The second half is checkable: the About dialog reads the permission
          list back out of Android rather than asserting it. -->
     <string name="welcome_promise">Nothing is uploaded. Gander has no internet permission.</string>
-    <!-- Spoken form of the badge grid. The tiles themselves are not important for
-         accessibility, so this is the whole announcement and it is one stop rather than
-         nine, the same way a file row carries the description for its own four views. It
-         names what the ETC tile stands for as well, which a list read aloud has room for. -->
-    <string name="welcome_formats_spoken">Opens PDFs, Word documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown, text files, books, zips and 3D models.</string>
+    <!-- Every kind Gander opens, the ones behind the ETC tile included, since a screen reader
+         hears it in place of the first screen's tiles. FormatRegistryTest fails until a new
+         kind is named here. -->
+    <string name="what_it_opens">Opens PDFs, Word, OpenDocument and Rich Text documents, Excel spreadsheets, PowerPoint slides, images, video, audio, Markdown, text files, books, zips and 3D models.</string>
     <string name="open_a_file">Open a file</string>
     <string name="recent_files">Recent files</string>
     <string name="folders">Folders</string>
@@ -148,6 +147,8 @@
     <!-- Sits under the permission line, which Gander reads back from Android at
          runtime rather than asserting for itself -->
     <string name="about_permissions_detail">Asked of Android just now, not written here in advance. Gander has no internet permission either, so it cannot send your files anywhere.</string>
+    <string name="about_file_types">File types</string>
+    <string name="about_file_types_detail">Every format Gander opens, by kind</string>
     <string name="about_made_by">Made by Arjun Maniyani</string>
     <string name="about_made_by_url" translatable="false">arjun.maniyani.com</string>
     <string name="about_source">Source code</string>
@@ -157,9 +158,11 @@
     <string name="about_copyright" translatable="false">MIT licence. Copyright © 2026 Arjun Maniyani.</string>
     <string name="about_close">Close</string>
     <string name="no_browser">No app can open links</string>
-    <!-- Becomes the viewer's title, so it reads as the document it is -->
+    <!-- Each becomes the viewer's title, so it reads as the document it is -->
     <string name="licences_file_name" translatable="false">Open source licences.md</string>
+    <string name="file_types_file_name" translatable="false">File types.md</string>
     <string name="licences_failed">The licences file can\'t be opened</string>
+    <string name="file_types_failed">The file types page can\'t be opened</string>
     <!-- Shown where the document was, after Android takes the renderer process
          away. Two titles because the two causes are not the same thing: the
          common one is the system reclaiming memory, which is nobody's fault and
