@@ -78,7 +78,6 @@ import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executors
@@ -101,7 +100,6 @@ open class ViewerActivity : AppCompatActivity() {
         private const val STATE_PLAYER_POSITION = "player_position"
         private const val STATE_FULL_SCREEN = "full_screen"
         private const val STATE_SIMPLE_VIEW = "simple_view"
-        private const val ASSET_HOST = "appassets.androidplatform.net"
 
         /**
          * Opens a PDF in the simple view whatever the WebView, so that a phone pdf.js runs on can
@@ -798,10 +796,6 @@ open class ViewerActivity : AppCompatActivity() {
      */
     @androidx.annotation.VisibleForTesting
     internal var documentLoader: java.util.concurrent.Executor? = null
-
-    /** The document's length as its provider gave it, or -1; set before the page loads. */
-    @Volatile
-    private var documentTotal = -1L
 
     /**
      * True while the find box is up. The page readout stands down for it: two counters
@@ -1969,15 +1963,18 @@ open class ViewerActivity : AppCompatActivity() {
             setAcceptThirdPartyCookies(web, false)
         }
 
-        val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
-            .build()
-
         // Neither of these can change while the document is open, and a ranged load
         // asks for hundreds of pieces, so they are resolved once rather than per request:
         // the type here, and the length before the page loads, below, since that is a
         // round trip to the provider.
-        val mime = documentMime(ext)
+        val server = DocumentServer(
+            contentResolver,
+            WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+                .build(),
+            uri, kind, documentMime(ext),
+            simplePdf = { simplePdf },
+        )
 
         web.webViewClient = object : WebViewClientCompat() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -2013,38 +2010,7 @@ open class ViewerActivity : AppCompatActivity() {
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
-            ): WebResourceResponse? {
-                val url = request.url
-                // The document is served here rather than through WebViewAssetLoader
-                // because a PathHandler is only given the path, and answering range
-                // requests needs the Range header off the request itself. Never to the
-                // simple view's page: its WebView is one too old for pdf.js, and nothing on
-                // that page needs the file, which only the isolated renderer reads.
-                if (kind != FileKind.PDF_SIMPLE &&
-                    url.scheme == "https" && url.host == ASSET_HOST &&
-                    url.path?.startsWith("/doc/") == true
-                ) {
-                    return docResponse(uri, mime, documentTotal, request.requestHeaders["Range"])
-                }
-                // The simple view's pages, drawn by its isolated renderer. See SimplePdf.
-                if (kind == FileKind.PDF_SIMPLE &&
-                    url.scheme == "https" && url.host == ASSET_HOST &&
-                    url.path?.startsWith("/render/") == true
-                ) {
-                    return simplePdf?.respond(url) ?: notFound()
-                }
-                return assetLoader.shouldInterceptRequest(url)?.withViewerPolicy() ?: when (url.scheme) {
-                    // Anything else a page asks the network for is answered here, with
-                    // nothing, instead of being handed on to the network stack. The missing
-                    // INTERNET permission would stop it there, but that would make one
-                    // control the whole of the guarantee; this is a second one, and it
-                    // holds even for a request from script that should never have run.
-                    "http", "https" -> notFound()
-                    // data: is bytes the page already holds. file: and content: are
-                    // refused by allowFileAccess and allowContentAccess above.
-                    else -> null
-                }
-            }
+            ): WebResourceResponse? = server.respond(request)
 
             override fun shouldOverrideUrlLoading(
                 view: WebView,
@@ -2122,7 +2088,7 @@ open class ViewerActivity : AppCompatActivity() {
             val resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0
             main.post {
                 if (isDestroyed || webView !== web) return@post
-                documentTotal = total
+                server.total = total
                 positionKey = key
                 // The load strategy is decided here, not in the page, so the headers we serve
                 // and the loader the page picks cannot disagree
@@ -2237,84 +2203,6 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Serves the open document at /doc/<anything>, answering range requests.
-     *
-     * Told that ranges are available, pdf.js pulls a large file in pieces as it
-     * needs them instead of buffering all of it before drawing anything. On a
-     * 53 MB scan that read was about 400 ms of a one second open, and it kept the
-     * whole document in memory for as long as it was on screen.
-     *
-     * A fresh stream per request: the page asks for many, and out of order.
-     */
-    private fun docResponse(
-        uri: Uri,
-        mime: String,
-        total: Long,
-        range: String?
-    ): WebResourceResponse {
-        return try {
-            // Ranges are only offered for documents big enough to be worth the extra
-            // round trips. Measured on a Nothing Phone 2: a 53 MB scan opened 177 ms
-            // faster ranged, while a 251 KB document opened 67 ms slower. Below the
-            // threshold one bulk read wins; above it, reading the lot dominates.
-            val rangeable = useRanges(total)
-            val span = if (rangeable) range?.let { parseRange(it, total) } else null
-            // The document is on the pages' own host, which ViewerPolicy trusts for
-            // scripts and styles. nosniff means the browser will only run it as either
-            // if its type says it is one, so markup that a renderer let slip cannot load
-            // a crafted file as the script that script-src 'self' would otherwise allow.
-            val nosniff = "X-Content-Type-Options" to "nosniff"
-            if (span == null) {
-                val headers = mutableMapOf(nosniff)
-                if (rangeable) headers["Accept-Ranges"] = "bytes"
-                if (total >= 0) headers["Content-Length"] = total.toString()
-                WebResourceResponse(
-                    mime, null, 200, "OK", headers,
-                    contentResolver.openInputStream(uri)
-                )
-            } else {
-                val (start, end) = span
-                WebResourceResponse(
-                    mime, null, 206, "Partial Content",
-                    mapOf(
-                        nosniff,
-                        "Accept-Ranges" to "bytes",
-                        "Content-Range" to "bytes $start-$end/$total",
-                        "Content-Length" to (end - start + 1).toString()
-                    ),
-                    slice(uri, start, end)
-                )
-            }
-        } catch (e: Exception) {
-            notFound()
-        }
-    }
-
-    /** See [ViewerPolicy]: the header is what carries the policy into the pdf.js worker. */
-    private fun WebResourceResponse.withViewerPolicy(): WebResourceResponse = apply {
-        responseHeaders = responseHeaders.orEmpty() + ("Content-Security-Policy" to ViewerPolicy.CSP)
-    }
-
-    private fun notFound(): WebResourceResponse = WebResourceResponse(
-        "text/plain", "utf-8", 404, "Not Found",
-        null, ByteArrayInputStream(ByteArray(0))
-    )
-
-    /**
-     * Gander's own pages, which is everything a viewer may navigate to: unsupported.html
-     * hands a file on to text.html, and a link inside a document may jump to a heading in
-     * the page it is on. Nothing off this host is opened, in the viewer or anywhere else,
-     * so a link cannot hand the browser a URL either. Nor the document at /doc/, the one
-     * thing on the host that is not Gander's: opened as a page, a file would be rendered
-     * as whatever its type says rather than by the viewer that makes it safe to look at.
-     */
-    private fun isViewerPage(url: Uri): Boolean {
-        val path = url.path ?: return false
-        return url.scheme == "https" && url.host == ASSET_HOST &&
-            path.startsWith("/assets/viewer/") && path.endsWith(".html") && ".." !in path
-    }
-
-    /**
      * What the two sources say about the engine, handed to [chromiumMajor] to
      * be read. Only the package lookup is wrapped, because getCurrentWebViewPackage
      * talks to the package manager and a provider in a bad state can throw, and it
@@ -2337,30 +2225,6 @@ open class ViewerActivity : AppCompatActivity() {
     private fun webViewFloorParamsFor(kind: FileKind, userAgent: String?): String {
         if (minChromiumMajor(kind) == null) return ""
         return webViewFloorParams(kind, webViewChromiumMajor(userAgent), webViewProviderIsLocked())
-    }
-
-    /** Length in bytes, or -1 when the provider declines to say. */
-    private fun documentLength(context: Context, uri: Uri): Long = runCatching {
-        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
-    }.getOrNull()?.takeIf { it >= 0 } ?: -1L
-
-    /**
-     * Exactly [start, end], seeking to the offset rather than reading up to it.
-     *
-     * Asked for as an asset descriptor, which is allowed to be a window onto a larger file,
-     * rather than as a plain one, which is not: ContentResolver refuses openFileDescriptor
-     * outright for a window. That is how a file stored inside a zip arrives, so the range is
-     * counted from where the window starts, which is zero for every other file.
-     */
-    private fun slice(uri: Uri, start: Long, end: Long): InputStream {
-        val afd = contentResolver.openAssetFileDescriptor(uri, "r")
-            ?: throw java.io.IOException("cannot open $uri")
-        val stream = java.io.FileInputStream(afd.fileDescriptor)
-        val from = afd.startOffset + start
-        // Seekable for anything file backed; a pipe has to be read through instead
-        runCatching { stream.channel.position(from) }
-            .onFailure { runCatching { stream.skip(from) } }
-        return LimitedInputStream(stream, end - start + 1, afd)
     }
 
     private fun matchParent() = FrameLayout.LayoutParams(

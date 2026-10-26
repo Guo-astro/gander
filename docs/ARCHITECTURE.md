@@ -27,7 +27,7 @@ From another app it takes only a `content://` URI on that app's own provider, re
 
 ## The WebView, and how a document reaches it
 
-The viewer loads `https://appassets.androidplatform.net/assets/viewer/<page>?name=&ext=&ranged=&length=&night=&resume=&at=&type=&top=` plus floor parameters. Its `shouldInterceptRequest` answers everything:
+The viewer loads `https://appassets.androidplatform.net/assets/viewer/<page>?name=&ext=&ranged=&length=&night=&resume=&at=&type=&top=` plus floor parameters. Its `shouldInterceptRequest` hands every request to `DocumentServer`, which answers everything:
 
 - `/doc/...` is the open document, streamed from the ContentResolver with `nosniff`. Ranges are offered from 16 MB (`DocRange.kt`), but on phones the WebView sends `range` in lower case, which `docResponse` misses, so big PDFs are read whole.
 - `/render/...` serves the simple view's pages, only to `pdfsimple.html`.
