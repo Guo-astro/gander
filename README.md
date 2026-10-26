@@ -228,6 +228,10 @@ home screen (`MainActivity`) lists recents
 thumbnails generated off-thread and cached (`Thumbs.kt`), a PDF's by an isolated renderer of
 their own (`PdfThumbs.kt`).
 
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the rest: what the viewer accepts from other
+apps, how a document reaches the WebView, the channel between Kotlin and the pages, and what
+guards each constraint.
+
 Vendored viewer libraries and their licenses: pdf.js (Apache-2.0), JSZip (MIT),
 docx-preview (Apache-2.0), SheetJS CE (Apache-2.0), PPTXjs + divs2slides (MIT),
 jQuery 1.11 (MIT), D3 3.x + NVD3 (BSD/Apache), marked (MIT), DOMPurify
