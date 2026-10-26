@@ -95,7 +95,7 @@ internal class FixtureProvider : ContentProvider() {
         val columns = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         return MatrixCursor(columns).apply {
             addRow(
-                arrayOf(
+                arrayOf<Any?>(
                     uri.getQueryParameter("name") ?: name,
                     if (name == NO_LENGTH) null else fileFor(uri).length(),
                 )

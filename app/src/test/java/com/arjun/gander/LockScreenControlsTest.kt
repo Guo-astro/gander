@@ -64,7 +64,7 @@ class LockScreenControlsTest {
         }
 
     private fun screen(on: Boolean) =
-        shadowOf(context.getSystemService(PowerManager::class.java)).setIsInteractive(on)
+        shadowOf(context.getSystemService(PowerManager::class.java)).turnScreenOn(on)
 
     private fun locked(on: Boolean) =
         shadowOf(context.getSystemService(KeyguardManager::class.java)).setKeyguardLocked(on)

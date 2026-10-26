@@ -12,7 +12,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.core.view.children
@@ -467,10 +466,7 @@ class DocumentChromeTest {
         viewer.swipeTo(600)
 
         val web = viewer.web
-        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
-            override fun didCrash() = false
-            override fun rendererPriorityAtExit() = 0
-        })
+        web.webViewClient.onRenderProcessGone(web, rendererReclaimed())
         settle()
 
         assertThat(viewer.documentChrome).isNull()

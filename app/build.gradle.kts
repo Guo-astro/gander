@@ -77,6 +77,9 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // A new warning fails the commit that adds it. An incremental build prints only the files
+        // it recompiles, so a warning left alone would otherwise scroll past once and be gone.
+        allWarningsAsErrors = true
     }
 
     buildFeatures {

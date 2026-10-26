@@ -15,7 +15,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.CookieManager
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -44,8 +43,6 @@ import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.Implementation
-import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowSystemClock
 import org.robolectric.shadows.ShadowToast
@@ -868,10 +865,7 @@ class ViewerActivityTest {
         val controller = open("unknown.xyz")
         assertThat(controller.underTheName()).isNotNull()
         val web = controller.webView()!!
-        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
-            override fun didCrash() = false
-            override fun rendererPriorityAtExit() = 0
-        })
+        web.webViewClient.onRenderProcessGone(web, rendererReclaimed())
         shadowOf(Looper.getMainLooper()).idle()
         assertThat(controller.webView()).isNull()
         assertThat(controller.underTheName()).isNull()
@@ -2099,14 +2093,5 @@ class ViewerActivityTest {
         val controller = start(intent)
         assertThat(controller.get().isFinishing).isFalse()
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
-    }
-}
-
-/** A phone whose WebView is missing, turned off or part way through an update: making one throws. */
-@Implements(WebView::class)
-class ShadowMissingWebView : ShadowWebView() {
-    @Implementation
-    override fun ensureProviderCreated() {
-        throw android.util.AndroidRuntimeException("Failed to load WebView provider: No WebView installed")
     }
 }

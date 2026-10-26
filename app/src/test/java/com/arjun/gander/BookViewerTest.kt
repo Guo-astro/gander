@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Looper
 import android.view.View
-import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebMessage
 import android.webkit.WebView
 import android.widget.FrameLayout
@@ -163,10 +162,7 @@ class BookViewerTest {
         assertThat(viewer.menu.findItem(R.id.action_contents).isVisible).isTrue()
 
         val web = viewer.web
-        web.webViewClient.onRenderProcessGone(web, object : RenderProcessGoneDetail() {
-            override fun didCrash() = false
-            override fun rendererPriorityAtExit() = 0
-        })
+        web.webViewClient.onRenderProcessGone(web, rendererReclaimed())
         settle()
 
         assertThat(viewer.menu.findItem(R.id.action_contents).isVisible).isFalse()

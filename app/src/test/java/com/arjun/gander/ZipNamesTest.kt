@@ -25,8 +25,8 @@ class ZipNamesTest {
     private val taiwan = Locale.TRADITIONAL_CHINESE
     private val japanese = Locale.JAPAN
     private val korean = Locale.KOREA
-    private val russian = Locale("ru", "RU")
-    private val turkish = Locale("tr", "TR")
+    private val russian = Locale.forLanguageTag("ru-RU")
+    private val turkish = Locale.forLanguageTag("tr-TR")
     private val english = Locale.US
 
     private fun paths(fixture: String, locale: Locale): List<String> {

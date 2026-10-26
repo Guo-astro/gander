@@ -162,8 +162,9 @@ internal class VideoChrome(
                 hold(if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else null)
             }
         } else {
-            // The player view hands the controls a listener of its own whatever it is given, so
-            // only the controls can take the button away again
+            // Deprecated, but the player view hands the controls a listener of its own whatever it
+            // is given, so only the controls' own setter can take the button away again
+            @Suppress("DEPRECATION")
             controls?.setOnFullScreenModeChangedListener(null)
             if (held != null) hold(null)
         }
