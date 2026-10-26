@@ -2009,6 +2009,37 @@ class ViewerActivityTest {
         }
     }
 
+    /** The same for a photo, whose rotation is read from the file's first bytes. */
+    @Test
+    fun aProviderSlowToHandAPhotoOverDoesNotHoldTheViewerUp() {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        FixtureProvider.gate = gate
+        Thread { Thread.sleep(15_000); gate.countDown() }.apply { isDaemon = true }.start()
+        try {
+            val intent = Intent(context, ViewerActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setDataAndType(FixtureProvider.uriFor(FixtureProvider.SLOW_PHOTO), "image/jpeg")
+            val started = System.nanoTime()
+            val controller = Robolectric.buildActivity(ViewerActivity::class.java, intent).setup()
+            val tookMs = (System.nanoTime() - started) / 1_000_000
+            assertWithMessage("the viewer waited for the provider on the main thread")
+                .that(tookMs).isLessThan(10_000L)
+
+            // And the photo is turned the right way up once the provider answers
+            gate.countDown()
+            val deadline = System.currentTimeMillis() + 10_000
+            var photo: SubsamplingScaleImageView? = null
+            while (photo == null && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20)
+                shadowOf(Looper.getMainLooper()).idle()
+                photo = controller.container().children().filterIsInstance<SubsamplingScaleImageView>().firstOrNull()
+            }
+            assertThat(photo?.orientation).isEqualTo(90)
+        } finally {
+            gate.countDown()
+        }
+    }
+
     /**
      * A zip's list is drawn with the home screen's rows, and leaves for a viewer the same way, so
      * it clears a tap highlight on the way out as the home screen does: a back swipe shows the

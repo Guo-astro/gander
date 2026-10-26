@@ -1658,27 +1658,23 @@ open class ViewerActivity : AppCompatActivity() {
 
     /**
      * A photo, or a WebP or PNG that moves, which goes to the page that plays GIFs, since the
-     * photo view draws one frame. Issue #49. Whether it moves is read off the main thread, as a
-     * document's length is, since a provider can be slow to hand over even the first bytes.
+     * photo view draws one frame. Issue #49. Whether it moves and which way up it was taken are
+     * read off the main thread, as a document's length is, since a provider can be slow to hand
+     * over even the first bytes.
      */
     private fun showPicture(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        if (ext != "webp" && ext != "png") return showImage(container, uri, name, ext)
-        val app = applicationContext
-        val main = Handler(Looper.getMainLooper())
-        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
-        worker.execute {
-            val moves = runCatching { app.contentResolver.openInputStream(uri)?.use(::isAnimated) }
-                .getOrNull() == true
-            main.post {
-                if (isDestroyed) return@post
-                if (moves) showWeb(container, uri, FileKind.IMAGE_WEB, name, ext)
-                else showImage(container, uri, name, ext)
-            }
+        val mayMove = ext == "webp" || ext == "png"
+        offMain({ (moves, rotation): Pair<Boolean, Int> ->
+            if (moves) showWeb(container, uri, FileKind.IMAGE_WEB, name, ext)
+            else showImage(container, uri, name, ext, rotation)
+        }) { app ->
+            val moves = mayMove &&
+                runCatching { app.contentResolver.openInputStream(uri)?.use(::isAnimated) }.getOrNull() == true
+            moves to if (moves) 0 else Thumbs.exifRotation(app.contentResolver, uri)
         }
-        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
 
-    private fun showImage(container: FrameLayout, uri: Uri, name: String, ext: String) {
+    private fun showImage(container: FrameLayout, uri: Uri, name: String, ext: String, rotation: Int) {
         val imageView = SubsamplingScaleImageView(this)
         imageView.contentDescription = name
         imageView.setBackgroundColor(Color.BLACK)
@@ -1688,7 +1684,7 @@ open class ViewerActivity : AppCompatActivity() {
         // and a small picture not at all, so it goes to twice the fit as a page's does
         imageView.setDoubleTapZoomDuration(DOUBLE_TAP_MS)
         imageView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitDoubleTap(imageView) }
-        imageView.orientation = Thumbs.exifRotation(contentResolver, uri)
+        imageView.orientation = rotation
         imageView.setOnImageEventListener(object : SubsamplingScaleImageView.DefaultOnImageEventListener() {
             override fun onReady() = fitDoubleTap(imageView)
 
