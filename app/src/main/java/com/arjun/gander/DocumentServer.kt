@@ -14,9 +14,10 @@ internal const val ASSET_HOST = "appassets.androidplatform.net"
 
 /**
  * Answers every request a viewer page makes for the document [uri], a [kind] of [mime]: the
- * document at /doc/, a PDF's simple view pages at /render/, Gander's own pages and libraries
- * from [assets] with the viewer's policy, and an empty 404 for anything else on the web. It
- * holds no views, since the WebView asks on a thread of its own.
+ * document at /doc/, a PDF's simple view pages at /render/, a Markdown file's pictures at
+ * /beside, Gander's own pages and libraries from [assets] with the viewer's policy, and an empty
+ * 404 for anything else on the web. It holds no views, since the WebView asks on a thread of its
+ * own.
  */
 internal class DocumentServer(
     private val resolver: ContentResolver,
@@ -30,6 +31,8 @@ internal class DocumentServer(
     /** The document's length as its provider gave it, or -1; set before the page loads. */
     @Volatile
     var total = -1L
+
+    private val picturesBeside = if (kind == FileKind.MD) PicturesBeside(resolver, uri) else null
 
     fun respond(request: WebResourceRequest): WebResourceResponse? {
         val url = request.url
@@ -50,6 +53,13 @@ internal class DocumentServer(
             url.path?.startsWith("/render/") == true
         ) {
             return simplePdf()?.respond(url) ?: notFound()
+        }
+        // The pictures a Markdown file names beside it. See PicturesBeside.
+        if (picturesBeside != null &&
+            url.scheme == "https" && url.host == ASSET_HOST &&
+            url.path == PicturesBeside.PATH
+        ) {
+            return picturesBeside.respond(url.getQueryParameter("path")) ?: notFound()
         }
         return assets.shouldInterceptRequest(url)?.withViewerPolicy() ?: when (url.scheme) {
             // Anything else a page asks the network for is answered here, with

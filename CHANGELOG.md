@@ -7,6 +7,12 @@
   once you have files or folders.
 - About lists every kind of file Gander opens, with every extension, on a new File types page.
   It used to name only documents, spreadsheets, slides and photos (#61, thanks @sonichy).
+- A Markdown file opened from a folder you added in Gander shows the pictures it includes from
+  inside that folder, such as a README's screenshots, where it showed a broken picture (#62,
+  thanks @sonichy). Opened with Open a file, from Recents or from another app, it still shows
+  none, since Android then shares only that one file with Gander. Pictures from the web still
+  don't load, since Gander has no internet access. A logo a README marks for GitHub's light or
+  dark theme shows in that theme only.
 - A photo from a cloud app such as Google Drive opens at once, where the viewer froze until the
   app had downloaded it.
 - With Android System WebView turned off or part way through an update, a document shows a card

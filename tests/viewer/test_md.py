@@ -1,5 +1,7 @@
 """md.html: Markdown through marked, then DOMPurify, then into the DOM."""
 
+import base64
+
 import pytest
 
 from helpers import status_text
@@ -138,6 +140,87 @@ def test_code_reads_left_to_right_inside_an_authored_direction_unless_it_has_its
     assert page.locator("#content > code").evaluate("el => getComputedStyle(el).direction") == (
         "ltr" if direction == "ltr" else "rtl"
     )
+
+
+# ---------------------------------------------------------------------------
+# Pictures beside the file, which DocumentServer finds when the file was opened
+# from a folder added in Gander (#62). The server stands in with the file's own
+# folder.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.refusals_expected
+def test_pictures_beside_the_file_show_and_the_rest_are_left_as_they_were(
+    viewer, page, server, tmp_path, fixture_path
+):
+    (tmp_path / "shots").mkdir()
+    (tmp_path / "preview.png").write_bytes(fixture_path("tiny.png").read_bytes())
+    (tmp_path / "shots" / "home 1.jpg").write_bytes(fixture_path("exif-1.jpg").read_bytes())
+    embedded = "data:image/png;base64," + base64.b64encode(fixture_path("tiny.png").read_bytes()).decode()
+    md = tmp_path / "README.md"
+    md.write_text(
+        "![beside](preview.png)\n\n"
+        '<img alt="html" src="./shots/home%201.jpg">\n\n'
+        "![web](https://example.com/web.png)\n\n"
+        f"![embedded]({embedded})\n\n"
+        "![missing](gone.png)\n",
+        encoding="utf-8",
+    )
+    viewer("md.html", md)
+    wait_for_render(page)
+    page.wait_for_function("() => [...document.images].every(i => i.complete)")
+    shown = page.evaluate("() => Object.fromEntries([...document.images].map(i => [i.alt, i.naturalWidth > 0]))")
+    assert shown == {"beside": True, "html": True, "web": False, "embedded": True, "missing": False}
+    # A picture from the web is still the page's policy to refuse, and never asked of the folder
+    assert page.evaluate("window.__vwRefused") == ["img-src https://example.com/web.png"]
+    asked = sorted(r["query"].get("path") for r in server.state.requests if r["path"] == "/beside")
+    assert asked == ["./shots/home%201.jpg", "gone.png", "preview.png"]
+    # Nor was a picture asked for where its path points from the viewer's own page first
+    assert [r["path"] for r in server.state.requests if r["path"].endswith((".png", ".jpg"))] == []
+
+
+def test_a_picture_for_reading_at_night_is_found_beside_the_file_too(viewer, page, tmp_path, fixture_path):
+    """How a README on GitHub gives itself a dark logo: a source chosen by the theme."""
+    page.emulate_media(color_scheme="dark")
+    (tmp_path / "logo-light.png").write_bytes(fixture_path("tiny.png").read_bytes())
+    (tmp_path / "logo-dark.jpg").write_bytes(fixture_path("exif-1.jpg").read_bytes())
+    embedded = "data:image/png;base64," + base64.b64encode(fixture_path("tiny.png").read_bytes()).decode()
+    md = tmp_path / "README.md"
+    md.write_text(
+        "<picture>\n"
+        '  <source media="(prefers-color-scheme: dark)" srcset="logo-dark.jpg">\n'
+        '  <img alt="logo" src="logo-light.png">\n'
+        "</picture>\n\n"
+        f'<img alt="sizes" src="logo-light.png" srcset="logo-light.png 1x, {embedded} 2x">\n',
+        encoding="utf-8",
+    )
+    viewer("md.html", md)
+    wait_for_render(page)
+    page.wait_for_function("() => [...document.images].every(i => i.complete)")
+    logo = page.evaluate("() => [document.images[0].currentSrc, document.images[0].naturalWidth]")
+    assert logo[0].endswith("/beside?path=logo-dark.jpg")
+    assert logo[1] > 0
+    # Each address in a list is pointed beside the file, and one that is a URL, comma and all, is not
+    assert page.get_attribute("img[alt=sizes]", "srcset") == f"/beside?path=logo-light.png 1x, {embedded} 2x"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_logo_github_shows_in_one_theme_shows_in_that_theme_only(viewer, page, tmp_path, fixture_path, theme):
+    """A README's address ending #gh-dark-mode-only or #gh-light-mode-only, which GitHub reads."""
+    page.emulate_media(color_scheme=theme)
+    (tmp_path / "logo.png").write_bytes(fixture_path("tiny.png").read_bytes())
+    md = tmp_path / "README.md"
+    md.write_text(
+        "![light](logo.png#gh-light-mode-only)\n![dark](logo.png#gh-dark-mode-only)\n![always](logo.png)\n",
+        encoding="utf-8",
+    )
+    viewer("md.html", md)
+    wait_for_render(page)
+    page.wait_for_function("() => [...document.images].every(i => i.complete)")
+    shown = page.evaluate(
+        "() => Object.fromEntries([...document.images].map(i => [i.alt, getComputedStyle(i).display !== 'none']))"
+    )
+    assert shown == {"light": theme == "light", "dark": theme == "dark", "always": True}
+    assert page.evaluate("[...document.images].every(i => i.naturalWidth > 0)")
 
 
 def test_a_script_in_the_document_is_removed(viewer, page):

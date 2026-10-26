@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.webkit.CookieManager
 import android.webkit.WebMessage
 import android.webkit.WebResourceRequest
@@ -1052,6 +1053,82 @@ class ViewerActivityTest {
         val controller = view(FixtureProvider.uriFor(FixtureProvider.BROKEN), "application/pdf")
         val response = controller.serve("/doc/file.pdf")!!
         assertThat(response.statusCode).isEqualTo(404)
+    }
+
+    // ---------------------------------------------------------------
+    // Pictures beside a Markdown file (#62)
+    // ---------------------------------------------------------------
+
+    /**
+     * A folder, notes, holding drafts/README.md with a picture and a text file beside it, and a
+     * picture a folder up. Answers the folder the reader added, [added], as a tree.
+     */
+    private fun notesFolder(added: String = "notes"): Uri {
+        val png = Fixtures.bytes("tiny.png")
+        FakeDocumentsProvider.install()
+            .folder(
+                "notes", "notes",
+                ChildDoc("notes/drafts", "drafts", MIME_DIR, 0, 0),
+                ChildDoc("notes/cover.png", "cover.png", "image/png", 0, 0),
+            )
+            .folder(
+                "notes/drafts", "drafts",
+                ChildDoc("notes/drafts/README.md", "README.md", "text/markdown", 0, 0),
+                ChildDoc("notes/drafts/preview.png", "preview.png", "image/png", 0, 0),
+                ChildDoc("notes/drafts/todo.txt", "todo.txt", "text/plain", 0, 0),
+            )
+            .contents("notes/drafts/README.md", "![](preview.png)".toByteArray())
+            .contents("notes/drafts/preview.png", png)
+            .contents("notes/drafts/todo.txt", "milk".toByteArray())
+            .contents("notes/cover.png", png)
+        return FakeDocumentsProvider.treeUri(added)
+    }
+
+    /** [docId] opened from the folder list, which is how Gander opens a file in [tree]. */
+    private fun openedFrom(tree: Uri, docId: String): ActivityController<ViewerActivity> = start(
+        Intent()
+            .setComponent(ComponentName(context, ViewerActivity.INTERNAL_VIEWER))
+            .setData(DocumentsContract.buildDocumentUriUsingTree(tree, docId))
+    )
+
+    private fun ActivityController<ViewerActivity>.picture(path: String): WebResourceResponse =
+        serve(PicturesBeside.PATH + "?path=" + Uri.encode(path))!!
+
+    @Test
+    fun aMarkdownFileFromAnAddedFolderIsServedThePicturesItNamesBesideIt() {
+        val viewer = openedFrom(notesFolder(), "notes/drafts/README.md")
+        assertThat(viewer.pageName()).isEqualTo("md.html")
+
+        val beside = viewer.picture("preview.png")
+        assertThat(beside.statusCode).isEqualTo(200)
+        assertThat(beside.mimeType).isEqualTo("image/png")
+        assertThat(beside.responseHeaders["X-Content-Type-Options"]).isEqualTo("nosniff")
+        assertThat(beside.data.readBytes()).isEqualTo(Fixtures.bytes("tiny.png"))
+        assertThat(viewer.picture("../cover.png").statusCode).isEqualTo(200)
+        // Only a picture, and only one that is there
+        assertThat(viewer.picture("todo.txt").statusCode).isEqualTo(404)
+        assertThat(viewer.picture("gone.png").statusCode).isEqualTo(404)
+    }
+
+    @Test
+    fun nothingAboveTheAddedFolderIsServed() {
+        val viewer = openedFrom(notesFolder(added = "notes/drafts"), "notes/drafts/README.md")
+        assertThat(viewer.picture("preview.png").statusCode).isEqualTo(200)
+        assertThat(viewer.picture("../cover.png").statusCode).isEqualTo(404)
+    }
+
+    /** Open with from another app grants the one file, and pages other than Markdown never ask. */
+    @Test
+    fun noPictureIsServedToAFileFromAnotherAppOrToAnotherPage() {
+        val text = openedFrom(notesFolder(), "notes/drafts/todo.txt")
+        assertThat(text.pageName()).isEqualTo("text.html")
+        assertThat(text.picture("preview.png").statusCode).isEqualTo(404)
+
+        // tiny.png is beside it in the fixtures, but this provider grants the one file
+        val readme = FixtureProvider.install().add("README.md", Fixtures.file("notes.md"))
+        val fromAnotherApp = view(readme, "text/markdown")
+        assertThat(fromAnotherApp.pageName()).isEqualTo("md.html")
+        assertThat(fromAnotherApp.picture("tiny.png").statusCode).isEqualTo(404)
     }
 
     /** Everything that is not the document comes from the bundled assets. */

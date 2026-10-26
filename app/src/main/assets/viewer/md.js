@@ -8,6 +8,7 @@ if (!vwWebViewTooOld("Markdown files")) {
       var html = marked.parse(txt, { gfm: true, breaks: false });
       var content = document.getElementById("content");
       content.innerHTML = DOMPurify.sanitize(html);
+      pointPicturesBeside(content);
       // Code reads left to right in a document of any language, unless the code
       // itself says otherwise.
       content.querySelectorAll("pre, code").forEach(function (el) {
@@ -17,6 +18,35 @@ if (!vwWebViewTooOld("Markdown files")) {
       vwStatusDone();
     })
     .catch(function (e) { vwError("Could not render this Markdown file", String(e)); });
+}
+
+/* A picture named by a path from the file's own folder is asked of DocumentServer, which finds it
+   when the file was opened from a folder added in Gander. See PicturesBeside.kt. */
+function pointPicturesBeside(root) {
+  root.querySelectorAll("img[src]").forEach(function (img) {
+    var src = img.getAttribute("src");
+    // GitHub shows one of a light and a dark logo, by these endings; md.html hides the other
+    var only = /#gh-(dark|light)-mode-only$/.exec(src);
+    if (only) img.setAttribute("data-vw-only", only[1]);
+    if (besideTheFile(src)) img.setAttribute("src", besideUrl(src));
+  });
+  // Such as the dark version of a logo. A srcset lists "address size" pairs, split at a comma
+  // that ends an address.
+  root.querySelectorAll("img[srcset], source[srcset]").forEach(function (el) {
+    el.setAttribute("srcset", el.getAttribute("srcset").replace(/(^|,)(\s*)(\S*[^\s,])/g,
+      function (all, comma, space, src) {
+        return comma + space + (besideTheFile(src) ? besideUrl(src) : src);
+      }));
+  });
+}
+
+/* Not a URL, nor a path from the top of a website, nor a link within the page */
+function besideTheFile(src) {
+  return !/^\s*([a-z][a-z\d+.-]*:|[\/\\#]|$)/i.test(src);
+}
+
+function besideUrl(src) {
+  return "/beside?path=" + encodeURIComponent(src);
 }
 
 /* The text that decides the document's direction, up to VW_DIRECTION_SAMPLE characters of it.

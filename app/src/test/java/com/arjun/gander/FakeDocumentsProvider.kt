@@ -5,7 +5,11 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
+import java.io.File
+import java.io.FileNotFoundException
 import org.robolectric.Robolectric
 
 /**
@@ -13,8 +17,9 @@ import org.robolectric.Robolectric
  *
  * The home screen reads folders through DocumentsContract, which means a
  * provider on the other side. This is the smallest one that answers the two
- * queries MainActivity makes: the children of a folder, and the display name
- * of a tree.
+ * queries MainActivity makes, the children of a folder and the display name
+ * of a tree, and what the viewer asks of a file opened from one: its name,
+ * its bytes, and where it sits in the folder that was added.
  */
 internal class FakeDocumentsProvider : ContentProvider() {
 
@@ -33,11 +38,20 @@ internal class FakeDocumentsProvider : ContentProvider() {
     /** Folder document id to the entries inside it. */
     private val folders = mutableMapOf<String, MutableList<ChildDoc>>()
     private val labels = mutableMapOf<String, String>()
+    private val contents = mutableMapOf<String, ByteArray>()
 
     fun folder(docId: String, label: String, vararg children: ChildDoc) = apply {
         folders[docId] = children.toMutableList()
         labels[docId] = label
     }
+
+    /** What reading the entry [docId] gives. */
+    fun contents(docId: String, bytes: ByteArray) = apply { contents[docId] = bytes }
+
+    private fun entry(docId: String): ChildDoc? = folders.values.flatten().firstOrNull { it.docId == docId }
+
+    private fun parentOf(docId: String): String? =
+        folders.entries.firstOrNull { (_, children) -> children.any { it.docId == docId } }?.key
 
     override fun onCreate() = true
 
@@ -58,7 +72,8 @@ internal class FakeDocumentsProvider : ContentProvider() {
         val rows = if (isChildren) {
             folders[docId].orEmpty()
         } else {
-            listOf(ChildDoc(docId, labels[docId] ?: docId, MIME_DIR, 0, 0))
+            listOf(labels[docId]?.let { ChildDoc(docId, it, MIME_DIR, 0, 0) } ?: entry(docId)
+                ?: ChildDoc(docId, docId, MIME_DIR, 0, 0))
         }
 
         return MatrixCursor(columns).apply {
@@ -79,7 +94,29 @@ internal class FakeDocumentsProvider : ContentProvider() {
         }
     }
 
-    override fun getType(uri: Uri): String = MIME_DIR
+    override fun getType(uri: Uri): String =
+        runCatching { entry(DocumentsContract.getDocumentId(uri))?.mime }.getOrNull() ?: MIME_DIR
+
+    override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+        val bytes = contents[DocumentsContract.getDocumentId(uri)] ?: throw FileNotFoundException(uri.toString())
+        val file = File.createTempFile("fake-document", null).apply { deleteOnExit(); writeBytes(bytes) }
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+    }
+
+    /**
+     * DocumentsContract.findDocumentPath, which asks under these hidden names: the folders from
+     * the tree's top down to the document.
+     */
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        if (method != "android:findDocumentPath") return null
+        @Suppress("DEPRECATION")
+        val uri = extras?.getParcelable<Uri>("uri") ?: return null
+        val top = DocumentsContract.getTreeDocumentId(uri)
+        val path = generateSequence(DocumentsContract.getDocumentId(uri)) { if (it == top) null else parentOf(it) }
+            .toList().asReversed()
+        if (path.first() != top) throw FileNotFoundException("$uri is not inside $top")
+        return Bundle().apply { putParcelable("result", DocumentsContract.Path(null, path)) }
+    }
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, args: Array<out String>?) = 0
     override fun update(

@@ -21,7 +21,7 @@ import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, unquote
 
 REPO = Path(__file__).resolve().parents[2]
 VIEWER = REPO / "app/src/main/assets/viewer"
@@ -163,6 +163,8 @@ class ViewerServer:
                     return self._render(path, self.record["query"])
                 if path.startswith("/assets/viewer/"):
                     return self._asset(path[len("/assets/viewer/"):])
+                if path == "/beside":
+                    return self._beside(self.record["query"].get("path", ""))
                 self._send(404, b"not found", {"Content-Type": "text/plain"})
 
             def _asset(self, relative):
@@ -172,6 +174,20 @@ class ViewerServer:
                     return self._send(404, b"no such asset", {"Content-Type": "text/plain"})
                 ctype = CONTENT_TYPES.get(target.suffix, "application/octet-stream")
                 self._send(200, target.read_bytes(), {"Content-Type": ctype})
+
+            def _beside(self, src):
+                """
+                A picture a Markdown file names from its folder, as PicturesBeside finds it for a
+                file opened from a folder added in Gander, here the document's own folder. The
+                rules for the path itself are pinned in PicturesBesideTest.
+                """
+                folder = state.path.parent.resolve() if state.path else None
+                target = (folder / unquote(src.split("#")[0].split("?")[0])).resolve() if folder else None
+                ctype = CONTENT_TYPES.get(target.suffix, "") if target else ""
+                if not (target and target.is_relative_to(folder) and target.is_file()
+                        and ctype.startswith("image/")):
+                    return self._send(404, b"no such picture", {"Content-Type": "text/plain"})
+                self._send(200, target.read_bytes(), {"Content-Type": ctype, "X-Content-Type-Options": "nosniff"})
 
             def _json(self, said):
                 body = json.dumps(said).encode()
