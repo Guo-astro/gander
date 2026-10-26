@@ -1782,48 +1782,49 @@ open class ViewerActivity : AppCompatActivity() {
         // before handing it over, as a cloud one does, answers when it has it, and asked on
         // the main thread that held the whole viewer still for the length of a download. The
         // page waits for the answers, since it would be waiting on the same provider anyway.
-        val main = Handler(Looper.getMainLooper())
-        val app = applicationContext
-        val worker = documentLoader ?: Executors.newSingleThreadExecutor()
-        worker.execute {
+        offMain({ (total, key, placeAt, resumeAt): Opening ->
+            if (webView !== web) return@offMain
+            server.total = total
+            positionKey = key
+            // The load strategy is decided here, not in the page, so the headers we serve
+            // and the loader the page picks cannot disagree
+            val ranged = if (useRanges(total)) 1 else 0
+            // The length goes on the URL too, when the provider gave one, because the
+            // Content-Length a page sees is not ours. The WebView adds one of its own,
+            // made from what the stream has to hand when it starts, which for a file
+            // coming out of a zip through a pipe is nothing: a 1 KB model inside a zip
+            // arrived saying it was 0 bytes long. model.js reads it from here instead.
+            // Never 0, which is as likely to be a provider that could not tell as a file
+            // that is empty, and an empty one says so anyway when there is nothing to read.
+            web.loadUrl(
+                "https://$ASSET_HOST/assets/viewer/${kind.page}" +
+                    "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
+                    (if (total > 0) "&length=$total" else "") +
+                    "&night=$night" +
+                    (if (resumeAt > 1) "&resume=$resumeAt" else "") +
+                    (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
+                    // The zoom the phone itself asks for, which a book's page keeps its
+                    // own words at whatever size the reader gives the book's
+                    (if (kind == FileKind.EPUB) "&type=$phoneTextZoom" else "") +
+                    // The room to leave at the top for the title bar floating over it
+                    (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
+                    floor +
+                    (if (cardOffersSimple) "&simple=1" else "")
+            )
+        }) { app ->
             val total = documentLength(app, uri)
             val key = if (keepsPosition) Positions.keyFor(app.contentResolver, uri, total) else null
             // A book reopens at its place, which is finer than the page it also files
-            val placeAt = if (kind == FileKind.EPUB) key?.let { Positions.place(app, it) } else null
-            val resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0
-            main.post {
-                if (isDestroyed || webView !== web) return@post
-                server.total = total
-                positionKey = key
-                // The load strategy is decided here, not in the page, so the headers we serve
-                // and the loader the page picks cannot disagree
-                val ranged = if (useRanges(total)) 1 else 0
-                // The length goes on the URL too, when the provider gave one, because the
-                // Content-Length a page sees is not ours. The WebView adds one of its own,
-                // made from what the stream has to hand when it starts, which for a file
-                // coming out of a zip through a pipe is nothing: a 1 KB model inside a zip
-                // arrived saying it was 0 bytes long. model.js reads it from here instead.
-                // Never 0, which is as likely to be a provider that could not tell as a file
-                // that is empty, and an empty one says so anyway when there is nothing to read.
-                web.loadUrl(
-                    "https://$ASSET_HOST/assets/viewer/${kind.page}" +
-                        "?name=${Uri.encode(name)}&ext=${Uri.encode(ext)}&ranged=$ranged" +
-                        (if (total > 0) "&length=$total" else "") +
-                        "&night=$night" +
-                        (if (resumeAt > 1) "&resume=$resumeAt" else "") +
-                        (placeAt?.let { "&at=${it.chapter}.${it.past}" } ?: "") +
-                        // The zoom the phone itself asks for, which a book's page keeps its
-                        // own words at whatever size the reader gives the book's
-                        (if (kind == FileKind.EPUB) "&type=$phoneTextZoom" else "") +
-                        // The room to leave at the top for the title bar floating over it
-                        (documentChrome?.let { "&top=${it.heightDp()}" } ?: "") +
-                        floor +
-                        (if (cardOffersSimple) "&simple=1" else "")
-                )
-            }
+            Opening(
+                total, key,
+                placeAt = if (kind == FileKind.EPUB) key?.let { Positions.place(app, it) } else null,
+                resumeAt = if (kind == FileKind.EPUB) 0 else key?.let { Positions.page(app, it) } ?: 0,
+            )
         }
-        (worker as? java.util.concurrent.ExecutorService)?.shutdown()
     }
+
+    /** What a document's page is told before it loads that has to be asked of its provider: see [showWeb]. */
+    private data class Opening(val total: Long, val key: String?, val placeAt: Positions.Place?, val resumeAt: Int)
 
     /**
      * Takes the WebView away, which can no longer show its document, and puts the card saying so
