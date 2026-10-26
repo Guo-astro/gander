@@ -178,10 +178,10 @@ class VendoredLibsTest {
     @Test
     fun theTablesForEachCjkScriptArePresent() {
         listOf(
-            "UniGB-UCS2-H",    // Simplified Chinese
-            "UniCNS-UCS2-H",   // Traditional Chinese
-            "UniJIS-UCS2-H",   // Japanese
-            "UniKS-UCS2-H",    // Korean
+            "UniGB-UCS2-H", // Simplified Chinese
+            "UniCNS-UCS2-H", // Traditional Chinese
+            "UniJIS-UCS2-H", // Japanese
+            "UniKS-UCS2-H", // Korean
         ).forEach { name ->
             val f = File(CMAPS, "$name.bcmap")
             assertThat("$name.bcmap exists=${f.exists()}").isEqualTo("$name.bcmap exists=true")

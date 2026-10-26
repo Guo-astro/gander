@@ -15,17 +15,17 @@ class WebViewFloorTest {
         /** A current Android System WebView on a Pixel. */
         const val UA_MODERN =
             "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, " +
-            "like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36"
+                "like Gecko) Version/4.0 Chrome/138.0.7204.179 Mobile Safari/537.36"
 
         /** An engine below the pdf.js floor, but plainly a Chromium one. */
         const val UA_OLD =
             "Mozilla/5.0 (Linux; Android 9) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Version/4.0 Chrome/110.0.5481.65 Mobile Safari/537.36"
+                "Version/4.0 Chrome/110.0.5481.65 Mobile Safari/537.36"
 
         /** A vendor engine whose user agent carries no Chrome/ token at all. */
         const val UA_NO_TOKEN =
             "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) " +
-            "Version/4.0 Mobile Safari/537.36"
+                "Version/4.0 Mobile Safari/537.36"
     }
 
     // ---------------------------------------------------------------
@@ -311,4 +311,3 @@ class WebViewFloorTest {
         for (sdk in listOf(26, 27)) assertThat(pdfCardOffersSimple(110, locked = false, sdk)).isFalse()
     }
 }
-

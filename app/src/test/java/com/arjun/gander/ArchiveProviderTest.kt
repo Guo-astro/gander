@@ -11,8 +11,8 @@ import com.google.common.truth.Truth.assertThat
 import java.io.FileNotFoundException
 import java.io.RandomAccessFile
 import java.util.Locale
-import org.junit.Assert.assertThrows
 import org.junit.After
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

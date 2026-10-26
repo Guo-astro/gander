@@ -113,6 +113,7 @@ class RecentsTest {
         context.contentResolver.persistedUriPermissions.any { it.uri == uri }
 
     /** Nothing else opens a file by its grant, so an entry that goes gives it back. */
+
     /** A file picked on a build that could rename it was granted write access too. */
     @Test
     fun removingAnEntryGivesBackWriteAccessToo() {

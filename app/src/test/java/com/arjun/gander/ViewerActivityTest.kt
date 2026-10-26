@@ -10,21 +10,21 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
-import android.widget.TextView
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import android.webkit.CookieManager
 import android.webkit.WebMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
+import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
 import java.io.File
@@ -1659,6 +1659,7 @@ class ViewerActivityTest {
 
     // ---------------------------------------------------------------
     // The code page names are read in
+
     /**
      * Cancel means the file stays shut, even when the password typed before it was right and was
      * still being tried: the answer came back after the box had gone and opened the file anyway,

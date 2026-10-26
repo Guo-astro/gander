@@ -12,9 +12,9 @@ import org.junit.Test
 class FastScrollMathTest {
 
     private companion object {
-        const val EXTENT = 2000   // one screenful
-        const val TRACK = 1800    // the track beside it
-        const val FLOOR = 96      // R.dimen.fast_scroll_thumb_min, near enough
+        const val EXTENT = 2000 // one screenful
+        const val TRACK = 1800 // the track beside it
+        const val FLOOR = 96 // R.dimen.fast_scroll_thumb_min, near enough
     }
 
     // ---------------------------------------------------------------

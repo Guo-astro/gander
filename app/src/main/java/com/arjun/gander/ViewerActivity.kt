@@ -24,18 +24,18 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
@@ -129,7 +129,6 @@ open class ViewerActivity : AppCompatActivity() {
         private const val OVERLAY_IDLE_MS = 2000L
         private const val OVERLAY_FADE_IN_MS = 120L
         private const val OVERLAY_FADE_OUT_MS = 180L
-
     }
 
     private var webView: ScrollProbeWebView? = null
@@ -627,6 +626,7 @@ open class ViewerActivity : AppCompatActivity() {
      * Robolectric it never does, so tests set the count themselves.
      */
     private var pageAt = 0
+
     @androidx.annotation.VisibleForTesting
     internal var pageTotal = 0
 
@@ -999,6 +999,7 @@ open class ViewerActivity : AppCompatActivity() {
      * down has to be turned down here too, or its scrolls would put a thumb up anyway.
      */
     private var fastScrollEnabled = false
+
     /** The rect last handed to the window manager; see excludeThumbFromBackGesture. */
     private var excludedRect: Rect? = null
 
@@ -1427,8 +1428,7 @@ open class ViewerActivity : AppCompatActivity() {
         searchPort = mine
         // Addressed to Gander's own origin rather than to "*", so the port is only ever
         // handed to a page served from it, whatever the WebView is showing by then.
-        WebViewCompat.postWebMessage(
-            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), "https://$ASSET_HOST".toUri())
+        WebViewCompat.postWebMessage(web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), "https://$ASSET_HOST".toUri())
         // Anything typed while there was nowhere to send it.
         if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat(PortCommand.query(pendingQuery)))
         // And any night mode tapped in the same window. Compared against what the URL

@@ -78,6 +78,7 @@ class DocumentChromeTest {
     private val ViewerActivity.floats get() = toolbar.parent !== root
 
     private val ViewerActivity.barUp get() = top.visibility == View.VISIBLE && top.translationY == 0f
+
     // All of it out of the frame, however tall it has been since
     private val ViewerActivity.barAway
         get() = top.visibility == View.INVISIBLE && top.translationY <= -top.height.toFloat()

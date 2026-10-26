@@ -151,13 +151,19 @@ internal class NightChrome(private val activity: AppCompatActivity) {
     /** The colours the parts above are drawn in, all read from one theme. */
     private class Palette(context: Context) {
         @ColorInt val surface = color(context, com.google.android.material.R.attr.colorSurface)
+
         @ColorInt val onSurface = color(context, com.google.android.material.R.attr.colorOnSurface)
+
         @ColorInt val onSurfaceVariant =
             color(context, com.google.android.material.R.attr.colorOnSurfaceVariant)
+
         @ColorInt val secondaryContainer =
             color(context, com.google.android.material.R.attr.colorSecondaryContainer)
+
         @ColorInt val primary = color(context, androidx.appcompat.R.attr.colorPrimary)
+
         @ColorInt val controlNormal = color(context, androidx.appcompat.R.attr.colorControlNormal)
+
         @ColorInt val controlActivated = color(context, androidx.appcompat.R.attr.colorControlActivated)
         val text = colorList(context, android.R.attr.textColorPrimary, onSurface)
         val hint = colorList(context, android.R.attr.textColorHint, onSurfaceVariant)

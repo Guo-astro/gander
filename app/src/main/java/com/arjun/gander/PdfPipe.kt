@@ -146,6 +146,7 @@ internal class PagePng(
         val packed = ByteArray(CHUNK_BYTES)
         var have = 0
         val deflater = Deflater(Deflater.BEST_SPEED)
+
         // What the deflater has ready, an IDAT chunk each time the buffer fills
         fun pack() {
             have += deflater.deflate(packed, have, packed.size - have)

@@ -197,4 +197,3 @@ internal val SUPPORTED_FILTER_TYPES = listOf(
     SupportedFilterType(MODEL_BADGE.first, MODEL_BADGE.second, R.string.filter_model),
     SupportedFilterType(ZIP_BADGE.first, ZIP_BADGE.second, R.string.filter_archive),
 )
-

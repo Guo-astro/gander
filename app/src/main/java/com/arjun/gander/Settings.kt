@@ -35,7 +35,7 @@ object Settings {
         NEWEST(R.string.sort_newest),
         OLDEST(R.string.sort_oldest),
         LARGEST(R.string.sort_largest),
-        SMALLEST(R.string.sort_smallest);
+        SMALLEST(R.string.sort_smallest)
     }
 
     /** Whether PDF pages are drawn turned over. See issue #19 and `pdf.html`. */
