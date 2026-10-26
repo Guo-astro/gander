@@ -54,7 +54,7 @@ class VendoredLibsTest {
         val FLOORS_MEASURED_ON = mapOf(
             "docx-preview.min.js" to "c4a133c65a112799e35b143c572dfff9e923a3bf39b5fd3b07a06aa0f8f530c2",
             "jszip3.min.js" to "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e",
-            "marked.min.js" to "3e7e7d7feb3e5d58cb6c804f68ab5c24cc7e5eb6270fd6e5cbb9124739217d0c",
+            "marked.umd.js" to "b82b9334406d8bdd16b6236c08de1cb65b2a859873ca9503d9cc0b292ca3c12a",
             "purify.min.js" to "cd37898f9782adf54820c413191b5691803f0f137c799d6edcfd38523b4c2c31",
         )
     }
@@ -80,7 +80,7 @@ class VendoredLibsTest {
     fun theVendoredLibrariesAreAllPresent() {
         val expected = listOf(
             "pdf.min.mjs", "pdf.worker.min.mjs", "jszip3.min.js",
-            "docx-preview.min.js", "xlsx.full.min.js", "marked.min.js",
+            "docx-preview.min.js", "xlsx.full.min.js", "marked.umd.js",
             "purify.min.js",
             "pptx/pptxjs.js", "pptx/divs2slides.js", "pptx/filereader.js",
             "pptx/jquery.min.js", "pptx/jszip2.min.js", "pptx/d3.min.js",
@@ -137,7 +137,7 @@ class VendoredLibsTest {
     /**
      * docx.html loads docx-preview and JSZip, md.html marked and DOMPurify, and
      * the floors in WebViewFloor.kt were measured on exactly these four files.
-     * The fetch script takes the newest marked 15 and DOMPurify 3, so a refetch
+     * The fetch script takes the newest marked 18 and DOMPurify 3, so a refetch
      * can hand over a library that needs a newer engine than its floor says, and
      * a reader on that engine is back to an error naming a missing part instead
      * of the card that says why: issue #31.

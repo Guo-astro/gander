@@ -25,7 +25,7 @@ Released under the MIT Licence, the full text of which appears below.
 | SheetJS Community Edition | 0.20.3 | Apache-2.0 |
 | DOMPurify | 3.4.17 | Apache-2.0 (elected) |
 | NVD3 | 1.8.1 | Apache-2.0 |
-| marked | 15.0.12 | MIT |
+| marked | 18.1.1 | MIT |
 | JSZip | 3.10.1 | MIT (elected) |
 | JSZip | 2.x | MIT (elected) |
 | pako (inside JSZip) | bundled | MIT |
@@ -57,7 +57,7 @@ election:
 
 Applies to Gander itself and to the following bundled libraries:
 
-- marked, Copyright (c) 2011-2025 Christopher Jeffrey
+- marked 18.1.1, Copyright (c) 2018+ MarkedJS, and Copyright (c) 2011-2018 Christopher Jeffrey
 - JSZip 3.10.1, Copyright (c) 2009-2016 Stuart Knightley
 - JSZip 2.x, Copyright (c) 2009-2014 Stuart Knightley
 - pako, Copyright (c) 2014-2017 Vitaly Puzrin and Andrei Tuputcyn
@@ -128,6 +128,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Applies to the following bundled libraries:
 
 - D3 3.5.10, Copyright (c) 2010-2016 Michael Bostock. All rights reserved.
+- Markdown, which marked's licence carries the notice of, Copyright (c) 2004 John Gruber. All
+  rights reserved.
 - The Adobe CMap resources in `viewer/lib/cmaps/`, which pdf.js redistributes
   and Gander bundles for CJK text, Copyright 1990-2009 Adobe Systems
   Incorporated. All rights reserved.

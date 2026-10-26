@@ -39,12 +39,12 @@ internal const val DOCX_PREVIEW_MIN_CHROMIUM_MAJOR = 80
 
 /**
  * Chromium major version marked needs, which lays out .md files. Measured the same
- * way: it parses from Chromium 80, but its lexer calls Array.prototype.at on the
- * paths every document takes, and that arrived in 92. DOMPurify, loaded beside it,
- * needs nothing newer. The fetch script takes the newest marked 15, so a refetch is
- * the likeliest way for that test to fail.
+ * way: it parses from Chromium 84, but its check for a reference link, which runs on
+ * any text with a bracket in it, calls Object.hasOwn, and that arrived in 93. DOMPurify,
+ * loaded beside it, needs nothing newer. The fetch script takes the newest marked 18,
+ * so a refetch is the likeliest way for that test to fail.
  */
-internal const val MARKED_MIN_CHROMIUM_MAJOR = 92
+internal const val MARKED_MIN_CHROMIUM_MAJOR = 93
 
 /**
  * Chromium major version the find in page of find.js needs, which marks what it found with the

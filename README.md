@@ -118,7 +118,7 @@ works.
 Runs on **Android 8.0 (API 26) and up**.
 
 Some formats need a recent Android System WebView, the browser engine built into the
-phone: Word documents 80, Markdown files 92 and PDFs 125 (May 2024). Any phone still
+phone: Word documents 80, Markdown files 93 and PDFs 125 (May 2024). Any phone still
 receiving WebView updates is well past all three; if yours is not, Gander says so when
 you open the file rather than failing quietly.
 

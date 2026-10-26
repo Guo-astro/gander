@@ -5,7 +5,7 @@
 // they were measured on. When that test fails after a refetch, run this on the
 // new file before touching the fingerprint. docs/VENDORED.md has the rest.
 //
-//   node scripts/js-floor.mjs app/src/main/assets/viewer/lib/marked.min.js
+//   node scripts/js-floor.mjs app/src/main/assets/viewer/lib/marked.umd.js
 //
 // Two lists. Syntax is exact: every construct newer than ES2015 is found by
 // walking acorn's tree, and an engine that lacks one cannot parse the file at

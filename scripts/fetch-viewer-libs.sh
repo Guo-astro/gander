@@ -52,7 +52,7 @@ done
 # library silently.
 get docx-preview.min.js "https://cdn.jsdelivr.net/npm/docx-preview@0.4.1/dist/docx-preview.min.js"
 get xlsx.full.min.js    "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"
-get marked.min.js       "https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"
+get marked.umd.js       "https://cdn.jsdelivr.net/npm/marked@18/lib/marked.umd.js"
 get purify.min.js       "https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"
 
 P="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master"
