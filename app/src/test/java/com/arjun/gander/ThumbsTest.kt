@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.view.View
 import android.widget.ImageView
 import androidx.test.core.app.ApplicationProvider
@@ -222,6 +223,26 @@ class ThumbsTest {
 
     private fun cached(): List<String> =
         File(context.cacheDir, "thumbs").listFiles().orEmpty().map { it.name }
+
+    /**
+     * Removing a folder takes the thumbnails of the files reached through it, each a copy of a
+     * picture in it, only smaller. A file opened on its own keeps its own.
+     */
+    @Test
+    fun forgettingAFolderTakesItsThumbnailsWithIt() {
+        FixtureProvider.install()
+        val tree = DocumentsContract.buildTreeDocumentUri(FixtureProvider.AUTHORITY, "photos")
+        val inFolder = DocumentsContract.buildDocumentUriUsingTree(tree, "tiny.png")
+        val alone = FixtureProvider.uriFor("tiny.png")
+        loadAndWait(inFolder)
+        loadAndWait(alone)
+        val onDisk = { File(context.cacheDir, "thumbs").walk().filter { it.isFile }.toList() }
+        assertThat(onDisk()).hasSize(2)
+
+        Thumbs.forgetFolder(context, tree)
+
+        assertThat(onDisk()).containsExactly(cacheFileFor(alone.toString()))
+    }
 
     /**
      * A PDF's is drawn by the thumbnail renderer, never by PDFium in Gander's own process, and

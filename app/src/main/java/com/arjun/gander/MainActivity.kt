@@ -675,6 +675,7 @@ class MainActivity : AppCompatActivity() {
                                         Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                                 )
                             }
+                            Thumbs.forgetFolder(this, perm.uri)
                         }
                     }
                 }
