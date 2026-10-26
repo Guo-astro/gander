@@ -657,14 +657,9 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Best-effort document URI of the folder holding [uri], for the Files app.
-     * Null when the source provider does not expose a real filesystem location,
-     * which hides the menu item.
-     */
-    /**
-     * The folder this document is in. The MediaStore lookup is supplied here
-     * because it needs a resolver; the rest is provider id string work and
-     * lives in StorageUris.kt.
+     * The folder this document is in, for the Files app, or null where its provider has no place
+     * on the phone's storage, which hides the menu item. The MediaStore lookup is here because it
+     * needs a resolver; the rest is provider id string work in StorageUris.kt.
      */
     private fun containingFolder(uri: Uri): Uri? = parentDocUri(
         uri,
@@ -1705,22 +1700,6 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * Video, and audio, which used to be handed the same screen.
-     *
-     * A track got a black rectangle with a scrubber that took itself away after two and a
-     * half seconds, leaving nothing at all, and the screen was held awake for the length
-     * of it: an hour of podcast with the display lit and no reason for it. Three things
-     * differ now. The controls do not hide, because on a file with no picture they are
-     * the only thing on screen. The screen is allowed to sleep, because nothing is being
-     * looked at. And where a video would show its first frame, a track shows its cover
-     * art if it has any, or a plain note if it does not.
-     *
-     * What this deliberately does not do is play on in the background. That needs a
-     * foreground service, a foreground service needs a permission, and a permission fails
-     * the build. Audio stops when Gander does, which is the honest consequence of the
-     * promise on the front of the app.
-     */
-    /**
      * Album art at the size it will be drawn, not the size it was stored.
      *
      * A bounds pass reads the header only, then inSampleSize halves until one more halving
@@ -1738,6 +1717,11 @@ open class ViewerActivity : AppCompatActivity() {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 
+    /**
+     * Plays a video or a track. A track gets a screen of its own: controls that stay up, since
+     * nothing else is on it, a display allowed to sleep, and its cover art or a note where a
+     * picture would be. It plays on with the screen off, but not once the reader leaves: see [onStop].
+     */
     private fun showPlayer(container: FrameLayout, uri: Uri, name: String, ext: String) {
         val audio = FileKind.isAudioExt(ext)
         // Audio comes from a layout because its transport does: controller_layout_id is

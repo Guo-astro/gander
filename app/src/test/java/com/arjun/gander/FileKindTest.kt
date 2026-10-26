@@ -254,11 +254,6 @@ class FileKindTest {
     }
 
     /**
-     * An image arriving by MIME alone goes to the WebView rather than the
-     * tiling view, because the tiling view needs a region decoder and this
-     * could be any of the formats only Chromium reads.
-     */
-    /**
      * .ods has been in the extension set and both intent filters since 1.7,
      * but not in the MIME fallback, so a spreadsheet shared with no filename
      * on it was offered a viewer and then refused one.
@@ -310,6 +305,11 @@ class FileKindTest {
         assertThat(FileKind.detect("", "audio/x-wav")).isEqualTo(PLAYER)
     }
 
+    /**
+     * An image arriving by MIME alone goes to the WebView rather than the
+     * tiling view, because the tiling view needs a region decoder and this
+     * could be any of the formats only Chromium reads.
+     */
     @Test
     fun imagesByMimeGoToTheWebViewer() {
         assertThat(FileKind.detect("", "image/jpeg")).isEqualTo(IMAGE_WEB)
