@@ -191,6 +191,20 @@ class MainActivityTest {
         assertThat(controller.list().visibility).isEqualTo(View.VISIBLE)
     }
 
+    /** The tip goes with the explainer, so the list ends with it instead. */
+    @Test
+    fun theListEndsWithTheOpenWithTipOnceTheExplainerHasGone() {
+        granted("six-pages.pdf", "Alder Court.pdf")
+        val rv = home().list()
+        val adapter = rv.adapter!!
+        val last = adapter.itemCount - 1
+        val holder = adapter.createViewHolder(rv, adapter.getItemViewType(last))
+        adapter.bindViewHolder(holder, last)
+
+        assertThat(holder.itemView.findViewById<TextView>(R.id.hintText)?.text?.toString())
+            .isEqualTo(context.getString(R.string.open_with_hint))
+    }
+
     // ---------------------------------------------------------------
     // Recents
     // ---------------------------------------------------------------

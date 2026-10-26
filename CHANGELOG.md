@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- The first screen now says how to open a file from your file manager, with Open with > Gander,
-  which only About said before.
+- The home screen now says how to open a file from your file manager, with Open with > Gander,
+  which only About said before: under the first screen's two buttons, and at the end of the list
+  once you have files or folders.
 - About lists every kind of file Gander opens, with every extension, on a new File types page.
   It used to name only documents, spreadsheets, slides and photos (#61, thanks @sonichy).
 

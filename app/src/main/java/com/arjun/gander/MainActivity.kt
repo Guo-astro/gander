@@ -682,6 +682,9 @@ class MainActivity : AppCompatActivity() {
         }
         rows += Row.Item("+", ADD_COLOR, getString(R.string.add_folder), null,
             onClick = { openTree.launch(null) })
+        // The first run's tip, which goes with the welcome block: neither the button nor the
+        // Add row opens a file from another app.
+        rows += Row.Hint(getString(R.string.open_with_hint))
         return Screen(rows)
     }
 
