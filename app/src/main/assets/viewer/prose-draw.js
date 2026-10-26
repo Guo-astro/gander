@@ -245,6 +245,97 @@ function vwProseClass(prose, bag) {
 }
 
 /*
+ * A table whose rows each bring their own column edges, as Word 97 and Rich Text give them,
+ * where an HTML table has one set of columns for all its rows. So the edges of every row are
+ * pooled into one grid, and each cell spans the grid columns between its own two sides.
+ *
+ * A row is { edges, height, cells } and a cell { content, left, right, mergedAcross, mergesDown,
+ * mergedDown }, either of whose sides may be missing. Lengths are in the file's own unit: how.pt
+ * turns one into points, and edges within how.near of each other are one. how.align and
+ * how.indent(left of the grid) place the table, and how.style(cell, row, outside) gives a cell's
+ * bag, told which of its sides, top, right, bottom and left, are the table's outside.
+ */
+function vwProseTable(prose, rows, how) {
+  var edges = [];
+  var r, c, k;
+  function edge(x) {
+    for (var i = 0; i < edges.length; i++) if (Math.abs(edges[i] - x) <= how.near) return;
+    edges.push(x);
+  }
+  for (r = 0; r < rows.length; r++) for (c = 0; c < rows[r].edges.length; c++) edge(rows[r].edges[c]);
+  edges.sort(function (a, b) { return a - b; });
+  function column(x) {
+    var best = 0;
+    for (var i = 0; i < edges.length; i++) if (Math.abs(edges[i] - x) < Math.abs(edges[best] - x)) best = i;
+    return best;
+  }
+
+  var table = document.createElement("table");
+  var body = document.createElement("tbody");
+  if (edges.length > 1) {
+    var group = document.createElement("colgroup");
+    for (var e = 1; e < edges.length; e++) {
+      var col = document.createElement("col");
+      col.style.width = vwProsePt(how.pt(edges[e] - edges[e - 1]));
+      group.appendChild(col);
+    }
+    table.appendChild(group);
+    table.style.tableLayout = "fixed";
+    table.style.width = vwProsePt(how.pt(edges[edges.length - 1] - edges[0]));
+    var indent = how.indent(edges[0]);
+    if (how.align === "center") { table.style.marginLeft = "auto"; table.style.marginRight = "auto"; }
+    else if (how.align === "right") table.style.marginLeft = "auto";
+    else if (indent) table.style.marginLeft = vwProsePt(Math.max(-72, indent));
+  }
+  table.appendChild(body);
+
+  // Where each drawn cell starts and ends on the grid. A cell merged into the one before it
+  // gives that one its width and is not drawn.
+  var spans = rows.map(function (row) {
+    var out = row.cells.map(function (cell, i) {
+      var from = cell.left != null ? column(cell.left) : i;
+      var to = cell.right != null ? column(cell.right) : from + 1;
+      return { from: from, to: Math.max(to, from + 1), cell: cell };
+    });
+    for (var i = out.length - 1; i > 0; i--) {
+      if (out[i].cell.mergedAcross) {
+        out[i - 1].to = Math.max(out[i - 1].to, out[i].to);
+        out.splice(i, 1);
+      }
+    }
+    return out;
+  });
+
+  for (r = 0; r < rows.length; r++) {
+    var tr = document.createElement("tr");
+    if (rows[r].height) tr.style.height = vwProsePt(how.pt(Math.abs(rows[r].height)));
+    for (c = 0; c < spans[r].length; c++) {
+      var span = spans[r][c];
+      if (span.cell.mergedDown) continue;
+      var td = document.createElement("td");
+      if (span.to - span.from > 1) td.colSpan = span.to - span.from;
+      // A cell that starts a merge downward takes in each cell under it that continues one
+      if (span.cell.mergesDown) {
+        var down = 1;
+        for (var below = r + 1; below < rows.length; below++) {
+          var under = null;
+          for (k = 0; k < spans[below].length; k++) if (spans[below][k].from === span.from) under = spans[below][k];
+          if (!under || !under.cell.mergedDown) break;
+          down++;
+        }
+        if (down > 1) td.rowSpan = down;
+      }
+      var outside = [r === 0, c === spans[r].length - 1, r === rows.length - 1, c === 0];
+      td.className = vwProseClass(prose, how.style(span.cell, r, outside));
+      td.appendChild(span.cell.content);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  return table;
+}
+
+/*
  * A colour from a file, as CSS, or nothing if it is not one. Six hex digits with or
  * without the hash; the formats that count in red, green and blue build the string
  * themselves.

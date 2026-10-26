@@ -423,10 +423,8 @@ function rtfCloseTable(state, flow) {
 
 /*
  * The table for the rows gathered in t, which is a flow or one of its nested tables, or
- * null if there are none. It cannot be built row by row, because Rich Text gives every
- * row its own column edges and an HTML table has one set for all of them. So the edges
- * of every row are pooled into one grid, and each cell spans however many grid columns
- * lie between its own two edges.
+ * null if there are none, laid out by vwProseTable. A row's edges are its \trleft and the
+ * \cellx of each cell it defines, in twips.
  */
 function rtfBuildTable(state, t) {
   // Cells that never met their \row still hold text, which is kept as paragraphs
@@ -440,107 +438,51 @@ function rtfBuildTable(state, t) {
   var rows = t.rows;
   t.rows = [];
 
-  var edges = [];
-  function edge(x) {
-    for (var i = 0; i < edges.length; i++) if (Math.abs(edges[i] - x) <= 15) return;
-    edges.push(x);
-  }
-  var r, c;
-  for (r = 0; r < rows.length; r++) {
-    edge(rows[r].left);
-    for (c = 0; c < rows[r].defs.length; c++) edge(rows[r].defs[c].right);
-  }
-  edges.sort(function (a, b) { return a - b; });
-  function column(x) {
-    var best = 0;
-    for (var i = 0; i < edges.length; i++) if (Math.abs(edges[i] - x) < Math.abs(edges[best] - x)) best = i;
-    return best;
-  }
-
-  var table = document.createElement("table");
-  var body = document.createElement("tbody");
-  if (edges.length > 1) {
-    var group = document.createElement("colgroup");
-    for (var e = 1; e < edges.length; e++) {
-      var col = document.createElement("col");
-      col.style.width = vwProsePt(rtfPt(edges[e] - edges[e - 1]));
-      group.appendChild(col);
-    }
-    table.appendChild(group);
-    table.style.tableLayout = "fixed";
-    table.style.width = vwProsePt(rtfPt(edges[edges.length - 1] - edges[0]));
-    var first = rows[0];
-    if (first.align === "center") { table.style.marginLeft = "auto"; table.style.marginRight = "auto"; }
-    else if (first.align === "right") table.style.marginLeft = "auto";
-    else if (first.left) table.style.marginLeft = vwProsePt(Math.max(-72, rtfPt(first.left)));
-  }
-  table.appendChild(body);
-
-  // Which cells of each row are drawn, and where each starts and ends on the grid
-  for (r = 0; r < rows.length; r++) {
-    var row = rows[r];
+  var shaped = rows.map(function (row) {
     var at = row.left;
-    row.spans = [];
-    for (c = 0; c < row.cells.length; c++) {
-      var def = row.defs[c] || {};
-      var from = column(at);
-      var to = def.right != null ? column(def.right) : from + 1;
-      if (def.right != null) at = def.right;
-      row.spans.push({ from: from, to: Math.max(to, from + 1), def: def, cell: row.cells[c] });
-    }
-    // A cell merged into the one before it gives that one its width and is not drawn
-    for (c = row.spans.length - 1; c > 0; c--) {
-      if (row.spans[c].def.mergedAcross) {
-        row.spans[c - 1].to = Math.max(row.spans[c - 1].to, row.spans[c].to);
-        row.spans.splice(c, 1);
-      }
-    }
-  }
-
-  for (r = 0; r < rows.length; r++) {
-    var tr = document.createElement("tr");
-    if (rows[r].height) tr.style.height = vwProsePt(rtfPt(Math.abs(rows[r].height)));
-    for (c = 0; c < rows[r].spans.length; c++) {
-      var span = rows[r].spans[c];
-      if (span.def.mergedDown) continue;
-      var td = document.createElement("td");
-      if (span.to - span.from > 1) td.colSpan = span.to - span.from;
-
-      // A cell that starts a merge downward takes in each cell under it that continues one
-      if (span.def.mergesDown) {
-        var down = 1;
-        for (var below = r + 1; below < rows.length; below++) {
-          var under = null;
-          for (var k = 0; k < rows[below].spans.length; k++) {
-            if (rows[below].spans[k].from === span.from) under = rows[below].spans[k];
-          }
-          if (!under || !under.def.mergedDown) break;
-          down++;
-        }
-        if (down > 1) td.rowSpan = down;
-      }
-
-      // The space inside a cell: the row's, unless the cell says otherwise, and for
-      // the sides an old writer's \trgaph, which is half the gap between two cells
+    return {
+      edges: [row.left].concat(row.defs.map(function (def) { return def.right; })),
+      height: row.height,
+      cells: row.cells.map(function (content, c) {
+        var def = row.defs[c] || {};
+        var left = at;
+        if (def.right != null) at = def.right;
+        return {
+          content: content,
+          def: def,
+          left: left,
+          right: def.right,
+          mergedAcross: def.mergedAcross,
+          mergesDown: def.mergesDown,
+          mergedDown: def.mergedDown
+        };
+      })
+    };
+  });
+  return vwProseTable(state.prose, shaped, {
+    near: 15,
+    pt: rtfPt,
+    align: rows[0].align,
+    indent: function () { return rtfPt(rows[0].left); },
+    style: function (cell, r) {
+      var def = cell.def;
       var bag = {};
-      var sides = ["Top", "Right", "Bottom", "Left"];
       for (var s = 0; s < 4; s++) {
-        var pad = span.def["pad" + sides[s]];
+        var side = VW_PROSE_SIDES[s];
+        // The space inside a cell: the row's, unless the cell says otherwise, and for the
+        // sides an old writer's \trgaph, which is half the gap between two cells
+        var pad = def["pad" + side];
         if (pad == null) pad = rows[r].pad[s];
         if (pad == null && (s === 1 || s === 3)) pad = rows[r].gap;
-        if (pad != null) bag["pad" + sides[s]] = rtfPt(Math.max(0, Math.min(pad, 1440)));
-        var line = rtfBorder(state, span.def["border" + sides[s]]);
-        if (line) bag["border" + sides[s]] = line;
+        if (pad != null) bag["pad" + side] = rtfPt(Math.max(0, Math.min(pad, 1440)));
+        var line = rtfBorder(state, def["border" + side]);
+        if (line) bag["border" + side] = line;
       }
-      if (span.def.shade && state.colors[span.def.shade]) bag.background = state.colors[span.def.shade];
-      if (span.def.valign) bag.valign = span.def.valign;
-      td.className = vwProseClass(state.prose, bag);
-      td.appendChild(span.cell);
-      tr.appendChild(td);
+      if (def.shade && state.colors[def.shade]) bag.background = state.colors[def.shade];
+      if (def.valign) bag.valign = def.valign;
+      return bag;
     }
-    body.appendChild(tr);
-  }
-  return table;
+  });
 }
 
 /*
