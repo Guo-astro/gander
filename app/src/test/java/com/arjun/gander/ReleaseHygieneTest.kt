@@ -257,6 +257,13 @@ class ReleaseHygieneTest {
         assertThat(code(BUILD_FILE, "//")).contains("isMinifyEnabled = true")
     }
 
+    /** The APK carries no dependency list that only Google can read, which AGP adds unless told not to. */
+    @Test
+    fun theApkCarriesNoDependencyListOnlyGoogleCanRead() {
+        assertThat(code(BUILD_FILE, "//"))
+            .containsMatch("""dependenciesInfo\s*\{[^}]*includeInApk\s*=\s*false""")
+    }
+
     /**
      * [text] without its comment lines, the ones starting with [marker], so a
      * guard above is not satisfied by the line it guards having been commented

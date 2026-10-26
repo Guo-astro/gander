@@ -87,6 +87,12 @@ android {
         aidl = true
     }
 
+    // AGP signs an encrypted list of the dependencies into the APK, which only Google can read and
+    // F-Droid flags. The bundle keeps its copy, which Play Console reads to warn about an SDK.
+    dependenciesInfo {
+        includeInApk = false
+    }
+
     lint {
         // Warnings are frozen into the baseline below, so that a new one fails the
         // build while the existing ones stay visible in the report rather than
