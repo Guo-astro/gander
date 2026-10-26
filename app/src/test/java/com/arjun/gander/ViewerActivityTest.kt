@@ -1388,6 +1388,28 @@ class ViewerActivityTest {
         assertThat(state.getString("copy_source")).contains("six-pages.pdf")
     }
 
+    /** The copy is the whole file, and the bar goes once it has been written. */
+    @Test
+    fun aSavedCopyIsTheWholeFile() {
+        val activity = open("six-pages.pdf").get()
+        val dest = Uri.parse("content://test.saved/copy.pdf")
+        val written = java.io.ByteArrayOutputStream()
+        shadowOf(activity.contentResolver).registerOutputStream(dest, written)
+
+        activity.copier.copy(FixtureProvider.uriFor("six-pages.pdf"), dest)
+        val deadline = System.currentTimeMillis() + 10_000
+        while (activity.copier.saving && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+
+        assertThat(activity.copier.saving).isFalse()
+        assertThat(written.toByteArray()).isEqualTo(Fixtures.bytes("six-pages.pdf"))
+        assertThat(activity.findViewById<LinearProgressIndicator>(R.id.saveProgress).visibility)
+            .isEqualTo(android.view.View.GONE)
+        assertThat(ShadowToast.getTextOfLatestToast()).isEqualTo(context.getString(R.string.save_copy_done))
+    }
+
     @Test
     fun leavingTheViewerTakesTheWebViewWithIt() {
         val controller = open("six-pages.pdf")
@@ -1735,7 +1757,7 @@ class ViewerActivityTest {
         val activity = controller.get()
         val bar = activity.findViewById<LinearProgressIndicator>(R.id.saveProgress)
         // As Save a copy leaves it partway through
-        activity.saving = true
+        activity.copier.saving = true
         bar.isIndeterminate = false
         bar.visibility = android.view.View.VISIBLE
         activity.findViewById<MaterialToolbar>(R.id.toolbar).menu

@@ -49,7 +49,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -77,7 +76,6 @@ import com.arjun.gander.FileKind.Companion.detect
 import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executors
@@ -185,13 +183,6 @@ open class ViewerActivity : AppCompatActivity() {
     @androidx.annotation.VisibleForTesting
     internal var archiveLoader: java.util.concurrent.Executor? = null
 
-    /**
-     * Whether Save a copy is reporting on the bar under the toolbar. A zip's list waits on the
-     * same bar and leaves it alone meanwhile.
-     */
-    @androidx.annotation.VisibleForTesting
-    internal var saving = false
-
     /** The file the destination picker is currently open for. */
     private var copySource: Uri? = null
 
@@ -227,102 +218,16 @@ open class ViewerActivity : AppCompatActivity() {
     /** The double tap of a document's pages or a picture in the WebView. See [DoubleTapZoom]. */
     private var doubleTapZoom: DoubleTapZoom? = null
 
-    /**
-     * ACTION_CREATE_DOCUMENT with the type set per file. The stock contract fixes
-     * it at construction, and the viewer does not know what it is showing until an
-     * intent arrives, so the picker would otherwise have to be told that every file
-     * is of unknown type and would suggest names without extensions.
-     */
-    private inner class CreateTypedDocument : ActivityResultContracts.CreateDocument("*/*") {
-        var type: String = "*/*"
-        override fun createIntent(context: Context, input: String): Intent =
-            super.createIntent(context, input).setType(type)
-    }
-
     private val createDocument = CreateTypedDocument()
 
-    /**
-     * Writes the open file to wherever the reader pointed the picker.
-     *
-     * No permission is involved. The picker returns a write grant for the single
-     * document it just created and for nothing around it, which is the same shape
-     * of grant the home screen already takes for folders, and it is why this can
-     * exist in an app whose permission list has to stay empty.
-     */
+    /** Writes the open file wherever the reader points the picker. See [SaveCopy]. */
+    @androidx.annotation.VisibleForTesting
+    internal val copier by lazy { SaveCopy(this) }
+
     private val saveCopy = registerForActivityResult(createDocument) { dest ->
         val src = copySource
         copySource = null
-        if (dest == null || src == null) return@registerForActivityResult
-
-        // Off the main thread. A document is small enough that it would not matter,
-        // but Gander opens video too, and copying a few hundred megabytes inline is
-        // an ANR rather than a slow save.
-        val app = applicationContext
-        val main = Handler(Looper.getMainLooper())
-        val bar = findViewById<LinearProgressIndicator>(R.id.saveProgress)
-
-        // Asked once, up front: a provider that cannot say how long the file is
-        // gets a spinner rather than a bar that would have to invent a position.
-        val total = documentLength(this, src)
-        bar.isIndeterminate = total <= 0L
-        if (total > 0L) {
-            bar.max = 100
-            bar.progress = 0
-        }
-        bar.visibility = View.VISIBLE
-        saving = true
-
-        // Shut down immediately after submitting: the already-queued copy still
-        // runs to completion, and the worker thread ends with it instead of idling
-        // for the life of the process once per save
-        val worker = Executors.newSingleThreadExecutor()
-        worker.execute {
-            val saved = runCatching {
-                contentResolver.openInputStream(src).use { input ->
-                    contentResolver.openOutputStream(dest).use { output ->
-                        val from = checkNotNull(input)
-                        val to = checkNotNull(output)
-                        // copyTo would be one line, but it reports nothing on the way
-                        // through, and the whole point here is to be able to say how
-                        // far along a large file is
-                        val buffer = ByteArray(64 * 1024)
-                        var copied = 0L
-                        var shown = -1
-                        while (true) {
-                            val read = from.read(buffer)
-                            if (read < 0) break
-                            to.write(buffer, 0, read)
-                            copied += read
-                            if (total > 0L) {
-                                // Whole percent only: a 500 MB file would otherwise
-                                // post thousands of updates nobody can see
-                                val percent = ((copied * 100) / total).toInt()
-                                if (percent != shown) {
-                                    shown = percent
-                                    main.post {
-                                        if (!isDestroyed) bar.setProgressCompat(percent, true)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }.isSuccess
-            // A failed copy has already created the document and may have written
-            // part of it, and half a file under the right name is worse than none:
-            // it opens, it looks complete, and it is not.
-            if (!saved) runCatching { DocumentsContract.deleteDocument(contentResolver, dest) }
-            main.post {
-                saving = false
-                if (!isDestroyed) bar.visibility = View.GONE
-                Toast.makeText(
-                    app,
-                    if (saved) R.string.save_copy_done else R.string.save_copy_failed,
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-        worker.shutdown()
+        if (dest != null && src != null) copier.copy(src, dest)
     }
 
     /**
@@ -1867,7 +1772,7 @@ open class ViewerActivity : AppCompatActivity() {
             // The bar under the toolbar that a save reports on, doing the same job for the
             // list that the home screen's does for a folder
             progress = findViewById(R.id.saveProgress),
-            saving = { saving },
+            saving = { copier.saving },
             archive = uri,
             archiveName = name,
             restoredFolder = state?.getString(STATE_ARCHIVE_FOLDER),
