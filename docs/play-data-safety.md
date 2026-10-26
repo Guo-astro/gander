@@ -4,7 +4,7 @@ Internal reference for filling in the Play Console. Written to match
 [the privacy policy](privacy.html) exactly, because Google reviews the two against
 each other and a disagreement between them is a common reason for rejection.
 
-Last checked against the code: 13 August 2026, version **1.10 (versionCode 12)**.
+Last checked against the code: 26 October 2026, after version **2.7 (versionCode 35)**.
 
 Note for anyone comparing against an older build: the backup section below relies
 on `android:allowBackup="false"`, which arrived in 1.10 (`2c3076d`). The released
@@ -87,9 +87,9 @@ reasonably expect a file viewer to declare.
 Gander reads a file only when the user points it at one, through the Storage Access
 Framework picker, a folder the user granted with `ACTION_OPEN_DOCUMENT_TREE`, or an
 "Open with" intent. Rendering happens on the device: PDF, Word, Excel and PowerPoint
-go to a WebView whose every request is intercepted by `WebViewAssetLoader`, with the
-JavaScript libraries loaded from app assets and the document streamed straight from
-the content URI. That is on-device processing, which Play explicitly distinguishes
+go to a WebView whose every request Gander answers itself, with the JavaScript
+libraries loaded from app assets, the document streamed straight from the content
+URI, and an empty 404 for anything else. That is on-device processing, which Play explicitly distinguishes
 from collection. No copy of any document is transmitted anywhere.
 
 **Photos and videos: not declared.** Same reasoning. Decoded and displayed on device.
@@ -103,11 +103,11 @@ and performance, device or other IDs): **not declared.** None of it is touched.
 | What | Where | Notes |
 | --- | --- | --- |
 | Recents: file name, content URI, timestamp, max 25 | `SharedPreferences` (`Recents.kt`) | Filtered at read time against the URIs still holding a persisted read grant |
-| Reading positions: page number and timestamp per PDF, max 100 | `noBackupFilesDir/positions` (`Positions.kt`) | Keyed by a SHA-256 of the file's length and first 64 KiB, so no file name or URI is stored. First and last pages are not kept. `BackupAgent` always excludes `no_backup`, from cloud backup and device-to-device transfer alike |
+| Reading positions: a PDF's page, or a book's place (its chapter and how far into it), and a timestamp, max 100 | `noBackupFilesDir/positions` (`Positions.kt`) | Keyed by a SHA-256 of the file's length and first 64 KiB, so no file name or URI is stored. A PDF's first and last pages are not kept; a book's end is. `BackupAgent` always excludes `no_backup`, from cloud backup and device-to-device transfer alike |
+| Viewer settings: night mode, the folder sort order, a book's text size | `SharedPreferences` (`Settings.kt`) | Three values, no file names |
 | Folder grants | Held by the system, not by the app (`MainActivity.kt`) | Released when the folder is removed from Gander |
-| Thumbnails, about 192 px | `cacheDir/thumbs/*.png` (`Thumbs.kt`) | From photos, a video's first frame, or a PDF's first page |
-| Shared-text temp file | `cacheDir/shared-text.txt` (`ViewerActivity.kt`) | Overwritten on the next text share |
-| A WebView DOM-storage flag | WebView data dir | Set by the vendored PPTXjs (`isPPTXjsReLoaded`). No document content |
+| Thumbnails, about 192 px | `cacheDir/thumbs/` (`Thumbs.kt`), a folder's in a subfolder of their own | From photos, a video's first frame, or a PDF's first page. Dropped when their file is removed from Recents or their folder from Gander |
+| Shared-text temp file | `cacheDir/shared/shared-text.txt` (`ViewerActivity.kt`) | Deleted when its viewer closes |
 
 All of it is inside the app sandbox and none of it is transmitted. On-device-only
 storage is not collection under Play's definition, so declaring it would be wrong in

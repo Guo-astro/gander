@@ -24,10 +24,10 @@ Released under the MIT Licence, the full text of which appears below.
 | docx-preview | 0.4.1 | Apache-2.0 |
 | SheetJS Community Edition | 0.20.3 | Apache-2.0 |
 | DOMPurify | 3.4.17 | Apache-2.0 (elected) |
-| NVD3 | 1.8.1 | Apache-2.0 |
+| NVD3 | 1.8.1-dev | Apache-2.0 |
 | marked | 18.1.1 | MIT |
 | JSZip | 3.10.1 | MIT (elected) |
-| JSZip | 2.x | MIT (elected) |
+| JSZip | 2.4.0 | MIT (elected) |
 | pako (inside JSZip) | bundled | MIT |
 | PPTXjs | 1.21.1 | MIT |
 | divs2slides | 1.3.2 | MIT |
@@ -48,7 +48,7 @@ Three of the libraries above are offered under a choice of licences. Gander
 takes the permissive option in each case, and this is the record of that
 election:
 
-- **JSZip 3.10.1** and **JSZip 2.x** are offered under the MIT licence or
+- **JSZip 3.10.1** and **JSZip 2.4.0** are offered under the MIT licence or
   GPL-3.0. Gander elects **MIT**.
 - **DOMPurify 3.4.17** is offered under the Apache License 2.0 or the Mozilla
   Public License 2.0. Gander elects **Apache-2.0**.
@@ -59,7 +59,7 @@ Applies to Gander itself and to the following bundled libraries:
 
 - marked 18.1.1, Copyright (c) 2018+ MarkedJS, and Copyright (c) 2011-2018 Christopher Jeffrey
 - JSZip 3.10.1, Copyright (c) 2009-2016 Stuart Knightley
-- JSZip 2.x, Copyright (c) 2009-2014 Stuart Knightley
+- JSZip 2.4.0, Copyright (c) 2009-2014 Stuart Knightley
 - pako, Copyright (c) 2014-2017 Vitaly Puzrin and Andrei Tuputcyn
 - PPTXjs, Copyright (c) Meshesha
 - divs2slides, Copyright (c) Meshesha
@@ -172,7 +172,7 @@ Applies to the following bundled libraries:
 - docx-preview, Copyright Volodymyr Baydalka
 - SheetJS Community Edition 0.20.3, Copyright (C) 2012-present SheetJS LLC
 - DOMPurify 3.4.17, Copyright (c) Cure53 and other contributors
-- NVD3 1.8.1, Copyright (c) 2011-2015 Novus Partners, Inc.
+- NVD3 1.8.1-dev, Copyright (c) 2011-2015 Novus Partners, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use
 these files except in compliance with the License. You may obtain a copy of the
