@@ -39,7 +39,6 @@
  * Bytes
  * ---------------------------------------------------------------------------------- */
 
-function docU8(b, at) { return b[at]; }
 function docU16(b, at) { return b[at] | (b[at + 1] << 8); }
 function docI16(b, at) { var v = docU16(b, at); return v & 0x8000 ? v - 0x10000 : v; }
 function docU32(b, at) { return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16)) + b[at + 3] * 0x1000000; }
@@ -671,11 +670,6 @@ function docPieceAt(doc, cp) {
     if (cp < pieces[mid].end) hi = mid; else lo = mid + 1;
   }
   return pieces[lo];
-}
-
-function docFcOf(doc, cp) {
-  var piece = docPieceAt(doc, cp);
-  return piece.fc + (cp - piece.cp) * (piece.wide ? 2 : 1);
 }
 
 /* ------------------------------------------------------------------------------------
