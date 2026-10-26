@@ -70,6 +70,10 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
 
+      # The Kotlin style .editorconfig sets, so a change in another style is caught here
+      - name: Kotlin style
+        run: ./gradlew ktlintCheck
+
       # Against app/lint-baseline.xml, so the issues already there stay visible
       # in the report without blocking anything, and a new one fails the build.
       - name: Lint

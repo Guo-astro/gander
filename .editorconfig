@@ -1,0 +1,26 @@
+# The Kotlin style ktlint checks, in CI and with ./gradlew ktlintCheck or ktlintFormat: Android
+# Studio's, without its rules on where a line wraps and how long it runs, since the code here
+# wraps by sense rather than by count.
+root = true
+
+[*.{kt,kts}]
+end_of_line = lf
+ktlint_code_style = android_studio
+max_line_length = off
+ktlint_standard_argument-list-wrapping = disabled
+ktlint_standard_binary-expression-wrapping = disabled
+ktlint_standard_blank-line-between-when-conditions = disabled
+ktlint_standard_class-signature = disabled
+ktlint_standard_enum-wrapping = disabled
+ktlint_standard_function-expression-body = disabled
+ktlint_standard_function-literal = disabled
+ktlint_standard_function-signature = disabled
+ktlint_standard_kdoc = disabled
+ktlint_standard_multiline-if-else = disabled
+ktlint_standard_multiline-loop = disabled
+ktlint_standard_parameter-list-wrapping = disabled
+ktlint_standard_property-wrapping = disabled
+ktlint_standard_statement-wrapping = disabled
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+ktlint_standard_wrapping = disabled

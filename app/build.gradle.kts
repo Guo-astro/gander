@@ -3,6 +3,7 @@ import com.android.build.api.artifact.SingleArtifact
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jlleitschuh.gradle.ktlint")
 }
 
 android {
@@ -192,6 +193,11 @@ val exportedAllowlist = setOf(
     // Debug builds only, from src/debug: the PDF renderer's spike, which adb hands a document to
     "com.arjun.gander.PdfSpikeActivity",
 )
+
+// The Kotlin style, as .editorconfig at the root sets it: ./gradlew ktlintCheck, or ktlintFormat
+ktlint {
+    version.set("1.8.0")
+}
 
 androidComponents.onVariants { variant ->
     val suffix = variant.name.replaceFirstChar { it.uppercase() }
