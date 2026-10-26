@@ -25,7 +25,7 @@ commit.
 | `docx-preview.min.js` | docx-preview | 0.4.1 | Apache-2.0 | https://github.com/VolodymyrBaydalka/docxjs |
 | `xlsx.full.min.js` | SheetJS Community Edition | 0.20.3 | Apache-2.0 | https://git.sheetjs.com/sheetjs/sheetjs |
 | `marked.min.js` | marked | 15.0.12 | MIT | https://github.com/markedjs/marked |
-| `purify.min.js` | DOMPurify | 3.4.12 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
+| `purify.min.js` | DOMPurify | 3.4.17 | Apache-2.0 or MPL-2.0 dual | https://github.com/cure53/DOMPurify |
 | `pptx/pptxjs.js` | PPTXjs | 1.21.1, with one change (below) | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/divs2slides.js` | divs2slides (PPTXjs) | 1.3.2 | MIT | https://github.com/meshesha/PPTXjs |
 | `pptx/filereader.js` | FileReader.js (PPTXjs bundle) | 0.99 | MIT | https://github.com/meshesha/PPTXjs |

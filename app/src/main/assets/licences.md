@@ -23,7 +23,7 @@ Released under the MIT Licence, the full text of which appears below.
 | pdf.js (legacy build, with worker) | 6.3.289 | Apache-2.0 |
 | docx-preview | 0.4.1 | Apache-2.0 |
 | SheetJS Community Edition | 0.20.3 | Apache-2.0 |
-| DOMPurify | 3.4.12 | Apache-2.0 (elected) |
+| DOMPurify | 3.4.17 | Apache-2.0 (elected) |
 | NVD3 | 1.8.1 | Apache-2.0 |
 | marked | 15.0.12 | MIT |
 | JSZip | 3.10.1 | MIT (elected) |
@@ -50,7 +50,7 @@ election:
 
 - **JSZip 3.10.1** and **JSZip 2.x** are offered under the MIT licence or
   GPL-3.0. Gander elects **MIT**.
-- **DOMPurify 3.4.12** is offered under the Apache License 2.0 or the Mozilla
+- **DOMPurify 3.4.17** is offered under the Apache License 2.0 or the Mozilla
   Public License 2.0. Gander elects **Apache-2.0**.
 
 ## The MIT Licence
@@ -169,7 +169,7 @@ Applies to the following bundled libraries:
   pdf.js, Copyright 2024-2026 Mozilla Foundation
 - docx-preview, Copyright Volodymyr Baydalka
 - SheetJS Community Edition 0.20.3, Copyright (C) 2012-present SheetJS LLC
-- DOMPurify 3.4.12, Copyright (c) Cure53 and other contributors
+- DOMPurify 3.4.17, Copyright (c) Cure53 and other contributors
 - NVD3 1.8.1, Copyright (c) 2011-2015 Novus Partners, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use
