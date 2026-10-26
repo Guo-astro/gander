@@ -382,7 +382,7 @@ class MainActivity : AppCompatActivity() {
      * content:// URIs in Recents, so this cannot turn up there.
      */
     private fun openBundledPage(asset: String, @StringRes name: Int, @StringRes failed: Int) {
-        val file = File(cacheDir, getString(name))
+        val file = File(ViewerActivity.shareableDir(this), getString(name))
         val opened = runCatching {
             assets.open(asset).use { input ->
                 file.outputStream().use { input.copyTo(it) }

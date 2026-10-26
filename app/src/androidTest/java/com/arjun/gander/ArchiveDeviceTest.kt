@@ -32,7 +32,6 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.common.truth.Truth.assertThat
-import java.io.File
 import java.io.RandomAccessFile
 import java.util.Locale
 import org.hamcrest.Matchers.allOf
@@ -74,7 +73,7 @@ class ArchiveDeviceTest {
     /** The URI Gander's own list would open [path] under. */
     private fun entryUri(archive: String, path: String): Uri {
         val archiveUri = DeviceFixtures.uriFor(archive)
-        val file = File(File(target.cacheDir, "fixtures"), archive)
+        val file = DeviceFixtures.made(archive)
         val raf = RandomAccessFile(file, "r")
         val entry = ZipSource(raf.channel, 0, raf.length(), raf).use {
             ZipReader.entries(it, Locale.US).single { e -> e.path == path }

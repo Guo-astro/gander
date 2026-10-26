@@ -20,6 +20,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.widget.FrameLayout
+import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
@@ -1214,8 +1216,58 @@ class ViewerActivityTest {
         val controller = start(intent)
 
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
-        assertThat(File(context.cacheDir, "shared-text.txt").readText())
+        assertThat(File(ViewerActivity.shareableDir(context), "shared-text.txt").readText())
             .isEqualTo("Something copied out of another app")
+    }
+
+    /**
+     * FileProvider keeps the folders it covers in a static map, read from the first test's cache,
+     * and Robolectric gives every test a cache of its own: forgotten, so this test's are read.
+     */
+    private fun forgetFileProviderRoots() {
+        val roots = FileProvider::class.java.getDeclaredField("sCache").apply { isAccessible = true }
+        (roots.get(null) as MutableMap<*, *>).clear()
+    }
+
+    /** It can be shared on, through the FileProvider, and goes once the viewer has closed. */
+    @Test
+    fun sharedTextCanBeSharedOnAndGoesWithTheViewer() {
+        forgetFileProviderRoots()
+        val intent = Intent(context, ViewerActivity::class.java)
+            .setAction(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, "Something copied out of another app")
+        val controller = start(intent)
+        val file = File(ViewerActivity.shareableDir(context), "shared-text.txt")
+
+        controller.get().findViewById<MaterialToolbar>(R.id.toolbar).menu
+            .performIdentifierAction(R.id.action_share, 0)
+        val chooser = shadowOf(controller.get()).nextStartedActivity
+        val send = IntentCompat.getParcelableExtra(chooser, Intent.EXTRA_INTENT, Intent::class.java)!!
+        val shared = IntentCompat.getParcelableExtra(send, Intent.EXTRA_STREAM, Uri::class.java)
+        assertThat(shared.toString())
+            .isEqualTo("content://${context.packageName}.fileprovider/shared/shared-text.txt")
+
+        assertThat(file.exists()).isTrue()
+        controller.get().finish()
+        controller.pause().stop().destroy()
+        assertThat(file.exists()).isFalse()
+    }
+
+    /**
+     * Nothing else in the cache can be handed to another app through the FileProvider, a
+     * thumbnail least of all, since it is a copy of someone's photo.
+     */
+    @Test
+    fun theFileProviderReachesOnlyTheFilesTheViewerShares() {
+        forgetFileProviderRoots()
+        val authority = "${context.packageName}.fileprovider"
+        val page = File(ViewerActivity.shareableDir(context), "Open source licences.md").apply { writeText("x") }
+        assertThat(FileProvider.getUriForFile(context, authority, page)).isNotNull()
+        val thumb = File(context.cacheDir, "thumbs/x.png").apply { parentFile!!.mkdirs(); writeText("x") }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            FileProvider.getUriForFile(context, authority, thumb)
+        }
     }
 
     @Test

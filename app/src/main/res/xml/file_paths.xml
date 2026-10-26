@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only the cache dir: the sole file:// content Gander creates itself is the
-     shared-text temp file. Everything else is a content:// URI shared as-is. -->
+<!-- Only the cache's shared folder, which holds the files of Gander's own the viewer can share:
+     text another app shared, and About's pages. The rest of the cache, its thumbnails among it, is
+     out of reach. Every other file is shared as the content:// URI it came as. -->
 <paths>
     <cache-path
-        name="cache"
-        path="/" />
+        name="shared"
+        path="shared/" />
 </paths>

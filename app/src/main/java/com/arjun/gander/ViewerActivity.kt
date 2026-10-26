@@ -89,6 +89,12 @@ open class ViewerActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PATH = "path"
+
+        /**
+         * The one part of the cache Gander's FileProvider covers: the files of its own the viewer
+         * can share, which are text another app shared and About's pages.
+         */
+        fun shareableDir(context: Context): File = File(context.cacheDir, "shared").apply { mkdirs() }
         private const val STATE_COPY_SOURCE = "copy_source"
         private const val STATE_ARCHIVE_FOLDER = "archive_folder"
         private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
@@ -1611,12 +1617,16 @@ open class ViewerActivity : AppCompatActivity() {
         }
     }
 
+    /** The file shared text was written to, which goes when the viewer closes. */
+    private var sharedText: File? = null
+
     /** Shared plain text becomes a temp file shown in the text viewer. */
     private fun sharedTextUri(): Uri? {
         val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
         return runCatching {
-            val f = File(cacheDir, "shared-text.txt")
+            val f = File(shareableDir(this), "shared-text.txt")
             f.writeText(text)
+            sharedText = f
             Uri.fromFile(f)
         }.getOrNull()
     }
@@ -2462,6 +2472,9 @@ open class ViewerActivity : AppCompatActivity() {
         webView = null
         simplePdf?.close()
         simplePdf = null
+        // Written again from the intent whenever the viewer is made again, so only a closing one
+        // takes it away
+        if (isFinishing) sharedText?.delete()
         super.onDestroy()
     }
 }
