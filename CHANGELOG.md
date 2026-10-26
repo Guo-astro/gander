@@ -7,6 +7,16 @@
   once you have files or folders.
 - About lists every kind of file Gander opens, with every extension, on a new File types page.
   It used to name only documents, spreadsheets, slides and photos (#61, thanks @sonichy).
+- A photo from a cloud app such as Google Drive opens at once, where the viewer froze until the
+  app had downloaded it.
+- With Android System WebView turned off or part way through an update, a document shows a card
+  saying so, with Reload, where Gander stopped.
+- A crafted Markdown file can no longer stall the viewer. Markdown is drawn by marked 18.1.1, up
+  from 15.0.12, and needs Android System WebView 93, up from 92.
+- Text shared into Gander is deleted when you close the viewer, and removing a folder removes its
+  thumbnails.
+- The APK no longer carries a list of its libraries encrypted so that only Google can read it,
+  which F-Droid flags.
 
 ## 2.7 (2026-10-25)
 
