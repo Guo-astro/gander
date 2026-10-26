@@ -707,7 +707,7 @@ open class ViewerActivity : AppCompatActivity() {
         override fun clear() = web.clearMatches()
     }
 
-    /** The page end of the PDF search channel, held so it can be closed. */
+    /** Gander's own end of the channel to the page, for every page that is given one. */
     private var searchPort: WebMessagePortCompat? = null
 
     /**

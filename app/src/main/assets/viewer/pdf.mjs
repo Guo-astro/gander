@@ -2089,7 +2089,10 @@ window.addEventListener("message", function (e) {
      by ViewerActivity once the document is up. Anything else is not ours. */
   if (!e.ports || !e.ports.length || searchPort) return;
   searchPort = e.ports[0];
-  searchPort.onmessage = function (m) { onCommand(String(m.data || "")); };
+  searchPort.onmessage = function (m) {
+    /* An error would reach window.onerror, which puts the error card over a document that is fine */
+    try { onCommand(String(m.data || "")); } catch (err) { report(); }
+  };
   searchPort.start();
   /* The document may well have opened before the port arrived, in which case the first
      report went nowhere and no other would follow until the reader scrolled. The same
@@ -2129,19 +2132,10 @@ function onCommand(msg) {
     report();
   } else if (verb === "g") {
     /*
-     * Go to a page. The same three moves stepTo makes for a search hit, with the page
-     * put where bringIntoView() puts it: at the top wherever it is tall enough, because
-     * a jump means "start here", rather than centred like a hit.
-     *
-     * Instant, and that is not an oversight. scrollIntoView's smooth behaviour would
-     * walk the look-ahead band over every page between here and there, and a jump from
-     * page 1 to page 300 would ask for three hundred renders on the way past: exactly
-     * the fling that took the renderer to 836 MB and the whole reason MAX_IN_FLIGHT
-     * and DRAW_PAGES exist. Do not add it.
-     *
-     * The bounds are checked even though Kotlin checks them before sending. An
-     * exception thrown in here is thrown inside the port's onmessage, and the channel
-     * does not come back from that for the life of the document.
+     * Go to a page, put at the top wherever it is tall enough, since a jump means "start
+     * here" where a search hit is centred. Instant, because a smooth scroll would ask for
+     * every page on the way past to be drawn, which MAX_IN_FLIGHT and DRAW_PAGES are there
+     * to stop. The bounds are checked again, since a number off the port is only text.
      */
     var n = Math.floor(Number(msg.slice(1)));
     if (!doc || !slots.length || !(n >= 1 && n <= slots.length)) return;

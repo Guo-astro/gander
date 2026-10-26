@@ -47,12 +47,10 @@ android {
 
     buildTypes {
         release {
-            // The app is 1,700 lines of Kotlin; the dex was 14.8 MB, nearly all of it
-            // library code that nothing here calls. R8 keeps the reachable part and
-            // drops the rest, and shrinkResources does the same for the resource table.
-            // Kept in the open, so obfuscation buys no secrecy: what it buys is the
-            // shrinking and optimisation that come with it. See proguard-rules.pro for
-            // why line numbers survive it.
+            // Most of the dex is library code nothing here calls, which R8 drops, as
+            // shrinkResources drops unused resources. Obfuscation buys no secrecy in an
+            // open repo; the shrinking is the point. proguard-rules.pro says why line
+            // numbers survive it.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -207,7 +205,7 @@ androidComponents.onVariants { variant ->
                         appendLine()
                         appendLine("A dependency added these. Either strip each one with")
                         appendLine("tools:node=\"remove\" in AndroidManifest.xml, or add it to")
-                        append("permissionAllowlist in app/build.gradle.kts with a reason.")
+                        append("permissionAllowlistSuffixes in app/build.gradle.kts with a reason.")
                     }
                 )
             }
@@ -244,8 +242,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.google.truth:truth:1.4.5")
-    // 4.16.1 is the newest stable; it is also the first to support SDK 36, which is
-    // why the toolchain has to be JDK 21. 4.17 is still in beta.
+    // 4.16.1 is the first to support SDK 36, which is why the toolchain has to be JDK 21.
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:core-ktx:1.7.0")
     testImplementation("androidx.test.ext:junit-ktx:1.3.0")

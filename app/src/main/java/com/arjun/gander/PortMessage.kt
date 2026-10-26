@@ -1,7 +1,7 @@
 package com.arjun.gander
 
 /**
- * The wire between ViewerActivity and pdf.html.
+ * The wire between ViewerActivity and the viewer pages.
  *
  * One HTML5 message channel carries every word spoken in either direction, and
  * it is deliberately not addJavascriptInterface: that call reflects a Java
@@ -59,7 +59,7 @@ internal object PortCommand {
     fun closeOver() = "x"
 }
 
-/** What pdf.html sends back, once it has been read and found sound. */
+/** What a page sends back, once it has been read and found sound. */
 internal sealed interface PortMessage {
 
     /**
