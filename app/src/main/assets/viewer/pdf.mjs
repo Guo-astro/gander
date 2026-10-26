@@ -1195,47 +1195,13 @@ function textLayerFor(slot, page, viewport) {
  */
 
 /*
- * Covering the page with hit boxes, so that a finger dragging a selection always has
- * a word under it. Issue #22.
- *
- * pdf.js sizes a span to its glyphs. A line box is therefore the height of the type and
- * no wider than the words on it, so the leading between lines, the space to the right
- * of a short line, the left margin and the page margins all belong to no span at all.
- * Measured here: 64% of a page was inside a span box.
- *
- * Why that is fatal rather than untidy. Every span in this layer is absolutely
- * positioned, so the layer itself has no in-flow content. When a touch lands outside
- * every span, Blink falls back to asking the container for a position, and a container
- * with nothing in flow answers the same thing wherever it is asked. Traced on a phone:
- * the selection climbed smoothly to 1002 characters, then froze for 3.7 seconds across
- * 190 consecutive events with the focus on the layer rather than a span, and then
- * jumped straight past a heading and a paragraph to 2482. It is not slow tracking, it
- * is one constant position being returned while the reader keeps moving.
- *
- * So the requirement is not "mostly covered", it is covered. The page is sampled at
- * 9,604 points in the test that settled this, and every one of them has to be inside
- * some span's box. Anything less leaves a band the drag dies in.
- *
- * A mouse never showed this because it lands where it is pointed and there is always
- * a word within a pixel or two. Upstream measures the same 64% and would freeze the
- * same way; this is a deliberate divergence, for touch.
- *
- * Padding, never geometry, so that pdf.js's own placement is untouched: padding grows a
- * box away from an edge that has already been positioned, and the negative margins put
- * the box's own edge back where the span's scaleX() lands the glyphs unmoved. Verified
- * by measuring the client rect of every span's text node before and after, which is
- * identical to the pixel.
- *
- * Gaps between lines are split half to the line above and half to the line below, so a
- * point in a gap joins whichever line it is nearer, and no single line grows a hit box
- * the height of the space before a section heading. There is no cap: a cap leaves the
- * middle of a large gap uncovered, which is the freeze again, and this was measured
- * failing at exactly that spot with a cap of two line-heights.
- *
- * The visible cost is that a selection highlight now fills the space it covers, so the
- * last line of a paragraph and a short heading are drawn full width. That is the same
- * box that has to be hittable, and it cannot be one size for the finger and another for
- * the paint without a second layer of elements.
+ * Pads the text layer's spans until they cover the whole page, so a finger dragging a
+ * selection always has a word under it (#22). pdf.js sizes each span to its glyphs, which
+ * left 36% of a page in no span, and a touch there resolves to one fixed position, so the
+ * selection froze for seconds and then jumped. Padding with matching negative margins leaves
+ * the glyphs where pdf.js put them, and the gap between two lines goes half to each, with no
+ * cap, since a capped gap leaves its middle uncovered. The cost is that a selection highlight
+ * fills the padded box, so a short line highlights full width.
  */
 /* Rows are sorted twice, so the comparators are shared rather than a fresh closure
    per row per page. */
@@ -1377,54 +1343,13 @@ function padRows(container, divs) {
 }
 
 /*
- * Keeping the page under a selection that has been dragged to the edge of it.
- *
- * A handle held against the bottom of the screen does not scroll the document, so a
- * reader can select as far as the fold and no further without letting go, scrolling,
- * and starting again. That is not a WebView shortcoming and not something this file
- * caused. Measured on a phone, Chrome for Android does the same on an ordinary page of
- * paragraphs, and so does this app's own text viewer, which lays out at device width
- * and has no text layer within reach of it.
- *
- * What does happen, and what makes dragging upward look as though it works, is Blink
- * revealing an extent that has landed outside the viewport. Drag the start handle up
- * and the line under the finger begins above the top edge, so the reveal scrolls by
- * that overshoot: one line, traced at 32 px. Drag the end handle down and there is
- * nothing to reveal, because the deepest thing the finger can be over is the last line
- * already fully on screen. Traced holding at the bottom edge: the extent sat at 1829 of
- * an 1886 px viewport and the scroll offset did not move for four seconds.
- *
- * So the scroll has to come from here, and selectionchange is the only thing to hang it
- * on. A handle drag produces no pointerdown, no pointermove and no pointerup at all -
- * the handle is a native widget and the page is never told the finger exists - and the
- * only other event of the whole gesture is a contextmenu when it comes off.
- *
- * Event driven rather than a timer, and that is the design rather than a shortcut. From
- * in here a finger held still and a finger lifted are the same thing, so a timer armed
- * at the edge would have nothing trustworthy to stop it, and it would scroll the
- * document out from under a selection that cannot follow it: scrolling alone does not
- * re-resolve the extent, which stays where it was until the finger next moves. One step
- * per change cannot run away, and cannot outrun the selection either.
- *
- * The step is how far past the band the extent landed, which is how hard the reader is
- * pushing at the edge, and it settles by itself: after each scroll the extent
- * re-resolves under the finger at the same depth, so a constant finger position gives a
- * constant speed. Measured on rustbook.pdf, 64 px a step and 1184 px across the 23
- * events of one drag held there.
- *
- * The known limit is a finger that does not move at all. Nothing re-resolves, no event
- * arrives, and the page stops - which is where this started, so the worst case is the
- * behaviour without it, and the noise a finger makes resting on glass is enough to keep
- * it going.
- *
- * The band is in dp and not in CSS px because it is a distance on a screen that a thumb
- * has to be able to land in, and this page's CSS px is whatever zoom-to-fit made it;
- * see the note in the head. Dividing by the visual viewport's scale is that conversion,
- * and it also holds the band still on the screen across a pinch.
- *
- * It reads one rect and never touches the DOM, so the note above about a drag no longer
- * mutating anything still holds. Measured across a drag on this 354 page document: 0.2
- * ms median and 0.4 ms worst.
+ * Scrolls the page when a selection handle is dragged to the edge of the screen. Chromium on
+ * Android, Chrome included, doesn't scroll for a handle held at the bottom edge, so a reader
+ * could select only as far as the fold. A handle drag sends no touch events, only
+ * selectionchange, so each change steps the scroll by how far past the edge band the
+ * selection's end has landed. No timer, because from here a finger held still and a lifted one
+ * look the same, and a timer would scroll the page out from under the selection. The band is in
+ * dp, divided by the visual viewport's scale, so it stays the same size under a pinch.
  */
 var SELECT_EDGE_DP = 50;
 var SELECT_EDGE_MIN = 10;
@@ -1484,54 +1409,14 @@ function selectionEdgeScroll() {
 document.addEventListener("selectionchange", selectionEdgeScroll);
 
 /*
- * Point the text layer at the fonts the picture was drawn with.
- *
- * This is the whole of the fix for a search highlight that stopped short of the word
- * it found. pdf.js places a run by measuring it in whatever font it is about to use
- * and dividing the width the PDF asked for by the width it got, which is the
- * --scale-x in the stylesheet contract above. That makes a run's total width exact
- * whatever font does the measuring, and it makes nothing inside the run exact: one
- * ratio for the whole run spreads the disagreement across the characters rather than
- * removing it. A Range over part of a run then lands short or long by however much
- * the two fonts differ, and searching "markerpage" highlighted "markerpag".
- *
- * How far apart the two fonts are is precisely what --scale-x records, so it also
- * measures the fix. Over the 2326 runs of a tube map that carries its own fonts, the
- * median run needed a 6.1% correction before this and 0.64% after, and the ninetieth
- * percentile fell from 21.1% to 2.4%. The correction that remains is close to a
- * constant, which one ratio removes cleanly; the one that was there before varied run
- * by run, which is the part no single ratio can fix.
- *
- * The right fonts are already here. pdf.js hands each embedded font's bytes to the
- * browser as a FontFace named after the face it loaded, waits for it inside
- * page.render(), and paints the picture with it. The text layer then ignores all of
- * that and asks for "serif". textContent.styles is keyed by exactly those loaded
- * names and every item's fontName is one of those keys, so rewriting an entry's
- * fontFamily to its own key is the whole change. The vertical offset comes along with
- * it, since the ascent pdf.js derives each span's top from is measured off that same
- * family string.
- *
- * It has to happen before the spans exist, never after. Setting font-family on a span
- * that is already built would leave the --scale-x beside it computed against a font
- * that is no longer there, which is this bug again with the sign flipped. Hence
- * editing the chunks on their way past: pdf.js merges a chunk's styles and then
- * builds that chunk's spans, so a chunk edited in flight is edited in time.
- *
- * Chunks rather than page.getTextContent(), which would also work and reads more
- * simply. streamTextContent runs at a hundred items to a chunk and getTextContent
- * collects the lot before resolving, so a page's spans would be built in one
- * synchronous pass where they are currently built a hundred at a time between worker
- * messages. On a dense page that is one long block of main thread instead of ten
- * short ones, in a file that caps MAX_IN_FLIGHT at three precisely because pdf.js
- * rasterises on the main thread.
- *
- * A key with no face keeps whatever pdf.js gave it, and that is the common case
- * rather than an edge one. A scanned page has no text and no fonts. A Type3 font has
- * no bytes to hand over. A document leaning on Helvetica without embedding it gets a
- * substitute registered under a name of pdf.js's own devising, deliberately not this
- * key, so the lookup misses and the generic stays. On a document with nothing
- * embedded this writes nothing at all, and so behaves exactly as it did before this
- * function existed.
+ * Points the text layer at the fonts the page was painted with, so a search highlight covers
+ * the whole word. pdf.js lays text out in "serif" and stretches each run to the width the PDF
+ * asks for, which is right for the run and wrong for the letters inside it: "markerpage"
+ * highlighted as "markerpag". This edits each chunk's styles as it streams in, before its spans
+ * are built, since changing a built span's font would leave its --scale-x measured against the
+ * wrong one, and streams rather than reads the page whole so its spans are still built a hundred
+ * at a time. A run with no embedded face, as in a scan, a Type3 font or a substituted Helvetica,
+ * keeps pdf.js's default.
  */
 function embedFonts(stream) {
   /* Degrading is structural rather than argued: with no TransformStream nothing is
@@ -2278,48 +2163,12 @@ function vwUnlockable(task) {
 }
 
 /*
- * The two sets of data pdf.js does not carry in its bundle and reads from the
- * assets on demand. Both fail the same silent way when they are not there, which
- * is why they are set in one place.
- *
- * Adobe's predefined CMap tables. A PDF that uses a CJK font without embedding
- * it does not carry a glyph mapping of its own; it names one of Adobe's
- * encodings instead, UniGB-UCS2-H and the like. pdf.js cannot turn character
- * codes into glyphs without the matching table, and the way it fails is the
- * problem: the text is dropped from the canvas and from the text layer both, so
- * the page renders looking complete while whole paragraphs are simply absent.
- * Nothing throws, and there are no fallback boxes to notice.
- *
- * The image decoders that live in WebAssembly rather than in JavaScript. Since
- * pdf.js 4 the JPEG 2000 decoder (openjpeg) and the JBIG2 one have been wasm
- * modules the worker fetches at the moment it meets an image needing one, and
- * `wasmUrl` is the only way to say where they are. Without it the worker warns
- * to the console and returns nothing, and the image is left out of the page:
- * no error, no placeholder, no gap that looks deliberate. Issue #24 was a book
- * whose 190 images were 186 JPEG 2000, so most of it arrived blank.
- *
- * Applied through a helper because both loaders below need it, and a document
- * that opened down the wrong branch would fail this way without saying so.
- *
- * Absolute, and that is load-bearing rather than tidy. pdf.js decides whether the
- * worker fetches these itself or asks the main thread to, and it is not a switch
- * anybody sets: `useWorkerFetch` is computed as cMapUrl && cMapPacked &&
- * standardFontDataUrl && wasmUrl, all present and all valid fetch URLs. Three of
- * those four are set here, so adding the fourth flips it, the worker starts
- * fetching directly, and a relative path stops resolving against this page and
- * starts resolving against lib/pdf.worker.min.mjs. Every URL here then gains a
- * second lib/ and 404s.
- *
- * Which would be loud if it were the wasm and is not: it is the CMaps, and their
- * failure is the silent one described above. Measured with the relative paths and
- * standardFontDataUrl added: cmaps 404 at assets/viewer/lib/lib/cmaps/, and
- * cjk.pdf rendered zero of its four characters. That is issue #21 back, with
- * nothing anywhere to say so.
- *
- * document.baseURI rather than a constant because WebViewAssetLoader serves this
- * page from https://appassets.androidplatform.net/assets/viewer/ in the app and
- * the test server serves it from somewhere else, and neither should be written
- * down here.
+ * Absolute URLs for the CMap tables and the wasm image decoders, which both fail silently when
+ * missing: CJK text vanishes (#21), and JPEG 2000 and JBIG2 images are left out (#24). Absolute
+ * because pdf.js has its worker fetch them itself once standardFontDataUrl is set as well, since
+ * Gander passes no useWorkerFetch, and the worker resolves a relative path against lib/:
+ * measured that way, cjk.pdf drew none of its characters. document.baseURI suits both the app
+ * and the test server.
  */
 function vwAssetUrl(path) {
   return new URL(path, document.baseURI).href;
