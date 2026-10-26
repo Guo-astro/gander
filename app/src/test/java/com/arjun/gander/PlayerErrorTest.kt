@@ -33,7 +33,7 @@ import org.robolectric.android.controller.ActivityController
  * The errors are raised on the player's own thread, as a decoder's are, so the viewer hears of
  * them as it would of a real one. Under Robolectric the tone has played to its end by the time
  * the viewer is up, so it is wound back and paused while the clock moves past
- * [ViewerActivity.PLAYER_RETRY_AFTER_MS].
+ * [PlayerScreen.RETRY_AFTER_MS].
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -82,7 +82,7 @@ class PlayerErrorTest {
         seekTo(0)
         until { playbackState == Player.STATE_READY }
         shadowOf(Looper.getMainLooper())
-            .idleFor(Duration.ofMillis(ViewerActivity.PLAYER_RETRY_AFTER_MS))
+            .idleFor(Duration.ofMillis(PlayerScreen.RETRY_AFTER_MS))
     }
 
     private fun ExoPlayer.errors(): List<PlaybackException> {

@@ -1,14 +1,11 @@
 package com.arjun.gander
 
 import android.annotation.SuppressLint
-import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
 import android.net.Uri
@@ -17,8 +14,6 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
-import android.os.SystemClock
 import android.print.PrintManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -44,7 +39,6 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -52,20 +46,11 @@ import androidx.activity.OnBackPressedCallback
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebViewAssetLoader
@@ -81,7 +66,6 @@ import java.io.InputStream
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 open class ViewerActivity : AppCompatActivity() {
 
     companion object {
@@ -95,8 +79,6 @@ open class ViewerActivity : AppCompatActivity() {
         private const val STATE_COPY_SOURCE = "copy_source"
         private const val STATE_ARCHIVE_FOLDER = "archive_folder"
         private const val STATE_ARCHIVE_CODE_PAGE = "archive_code_page"
-        private const val STATE_PLAYER_POSITION = "player_position"
-        private const val STATE_FULL_SCREEN = "full_screen"
         private const val STATE_SIMPLE_VIEW = "simple_view"
 
         /**
@@ -147,19 +129,6 @@ open class ViewerActivity : AppCompatActivity() {
         private const val OVERLAY_FADE_IN_MS = 120L
         private const val OVERLAY_FADE_OUT_MS = 180L
 
-        /** Cover art target while the view has not been measured yet. */
-        private const val ART_FALLBACK_PX = 512
-
-        /**
-         * How long a video or a track has to have been ready to play before an error is put
-         * down to something giving out underneath it rather than to the file. See onPlayerError
-         * in [showPlayer].
-         *
-         * Long enough that a file damaged partway, which fails again as soon as it is tried
-         * again from just before the damage, is not tried for ever.
-         */
-        @androidx.annotation.VisibleForTesting
-        internal const val PLAYER_RETRY_AFTER_MS = 5000L
     }
 
     private var webView: ScrollProbeWebView? = null
@@ -169,11 +138,9 @@ open class ViewerActivity : AppCompatActivity() {
      * rather than being searched by Chromium's own find. Decided once the WebView exists.
      */
     private var pageSearches = false
-    private var player: ExoPlayer? = null
 
-    /** Play and pause on the lock screen, for a track. A video has none: see [onStop]. */
-    @androidx.annotation.VisibleForTesting
-    internal var lockScreen: LockScreenControls? = null
+    /** A video or a track, while one is on show. See [PlayerScreen]. Read by tests. */
+    internal var playerScreen: PlayerScreen? = null
         private set
 
     /** The list of what is in a zip, when this is one. */
@@ -200,16 +167,6 @@ open class ViewerActivity : AppCompatActivity() {
     /** The simple view's renderer and the pages it serves, while a PDF is shown there. */
     @Volatile
     private var simplePdf: SimplePdf? = null
-
-    /** Where a video or a track picks up when the viewer is rebuilt around it, as a change of theme does. */
-    private var playerStartAt = 0L
-
-    /** The title bar and the phone's bars over a video. See [VideoChrome]. Read by tests. */
-    internal var videoChrome: VideoChrome? = null
-        private set
-
-    /** How the screen was held for a video in full screen, before the viewer was made again. */
-    private var playerHeld: Int? = null
 
     /** The title bar over a document, which goes up out of sight as it is read. See [DocumentChrome]. Read by tests. */
     internal var documentChrome: DocumentChrome? = null
@@ -240,8 +197,7 @@ open class ViewerActivity : AppCompatActivity() {
         outState.putString(STATE_COPY_SOURCE, copySource?.toString())
         outState.putString(STATE_ARCHIVE_FOLDER, archiveBrowser?.folder)
         outState.putString(STATE_ARCHIVE_CODE_PAGE, archiveBrowser?.codePage)
-        player?.let { outState.putLong(STATE_PLAYER_POSITION, it.currentPosition) }
-        videoChrome?.held?.let { outState.putInt(STATE_FULL_SCREEN, it) }
+        playerScreen?.save(outState)
         outState.putBoolean(STATE_SIMPLE_VIEW, simpleAsked)
     }
 
@@ -255,9 +211,6 @@ open class ViewerActivity : AppCompatActivity() {
         pageIndicator.setOnClickListener { askForPage() }
 
         copySource = savedInstanceState?.getString(STATE_COPY_SOURCE)?.let(Uri::parse)
-        playerStartAt = savedInstanceState?.getLong(STATE_PLAYER_POSITION) ?: 0L
-        playerHeld = savedInstanceState?.takeIf { it.containsKey(STATE_FULL_SCREEN) }
-            ?.getInt(STATE_FULL_SCREEN)
         simpleAsked = savedInstanceState?.getBoolean(STATE_SIMPLE_VIEW) == true
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
@@ -306,7 +259,10 @@ open class ViewerActivity : AppCompatActivity() {
         fun show(kind: FileKind) {
             when (kind) {
                 FileKind.IMAGE -> showPicture(container, uri, name, ext)
-                FileKind.PLAYER -> showPlayer(container, uri, name, ext)
+                FileKind.PLAYER -> playerScreen = PlayerScreen(
+                    this, nightChrome, ::touchExplorationOn, ::applySystemBarInsets, savedInstanceState,
+                    failed = { showWeb(container, uri, FileKind.UNSUPPORTED, name, ext) },
+                ).apply { show(container, uri, name, ext) }
                 FileKind.ARCHIVE -> showArchive(container, uri, name, savedInstanceState)
                 else -> showWeb(container, uri, kind, name, ext)
             }
@@ -1608,162 +1564,6 @@ open class ViewerActivity : AppCompatActivity() {
         if (view.isReady) view.setDoubleTapZoomScale(DOUBLE_TAP_ZOOM * view.minScale)
     }
 
-    /**
-     * Album art at the size it will be drawn, not the size it was stored.
-     *
-     * A bounds pass reads the header only, then inSampleSize halves until one more halving
-     * would go under the view. The target is the view's own width, with a fallback for the
-     * first frame, where it has not been measured yet.
-     */
-    private fun sampledArt(bytes: ByteArray, target: Int): Bitmap? {
-        val want = if (target > 0) target else ART_FALLBACK_PX
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-        var sample = 1
-        while (minOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= want) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-    }
-
-    /**
-     * Plays a video or a track. A track gets a screen of its own: controls that stay up, since
-     * nothing else is on it, a display allowed to sleep, and its cover art or a note where a
-     * picture would be. It plays on with the screen off, but not once the reader leaves: see [onStop].
-     */
-    private fun showPlayer(container: FrameLayout, uri: Uri, name: String, ext: String) {
-        val audio = FileKind.isAudioExt(ext)
-        // Audio comes from a layout because its transport does: controller_layout_id is
-        // an XML attribute with no setter behind it.
-        val playerView =
-            if (audio) layoutInflater.inflate(R.layout.view_audio_player, container, false) as PlayerView
-            else PlayerView(this)
-        // The cover, and the note that stands in for one. It sits in the transport layout
-        // rather than PlayerView's own artwork slot, because that slot centres what it is
-        // given and centred is where the play button is: the picture came out underneath
-        // the control covering it.
-        val cover: ImageView?
-        if (audio) {
-            // Nothing is being looked at, so the screen may sleep, and the transport is
-            // the only thing on the display, so it stays put. The track plays on when the
-            // screen sleeps: see onStop.
-            playerView.keepScreenOn = false
-            playerView.controllerShowTimeoutMs = 0
-            // Warm near-black rather than pure black. A track is a screen somebody sits
-            // and looks at, so it may as well be the dark the rest of the app uses.
-            container.setBackgroundColor(ContextCompat.getColor(this, R.color.audio_backdrop))
-            cover = playerView.findViewById<ImageView>(R.id.audioCover)?.apply {
-                contentDescription = name
-            }
-
-            playerView.setBackgroundColor(Color.TRANSPARENT)
-            playerView.setShutterBackgroundColor(Color.TRANSPARENT)
-            playerView.artworkDisplayMode = PlayerView.ARTWORK_DISPLAY_MODE_OFF
-            playerView.controllerHideOnTouch = false
-            // One file, so there is nothing to be previous or next to.
-            playerView.setShowPreviousButton(false)
-            playerView.setShowNextButton(false)
-        } else {
-            cover = null
-            playerView.keepScreenOn = true
-            playerView.controllerShowTimeoutMs = 2500
-            playerView.setBackgroundColor(Color.BLACK)
-        }
-        container.addView(playerView, matchParent())
-        if (!audio) {
-            videoChrome = VideoChrome(
-                this, playerView, nightChrome, ::touchExplorationOn, ::applySystemBarInsets
-            ).apply {
-                float()
-                playerHeld?.let { hold(it) }
-            }
-        }
-
-        val exo = ExoPlayer.Builder(this)
-            // Asks for the speaker as a player is expected to, so a call or another app's
-            // sound pauses this one, and pauses when headphones come out rather than carrying
-            // on out loud. Both matter most with the screen off, with nobody watching.
-            .setAudioAttributes(AudioAttributes.DEFAULT, true)
-            .setHandleAudioBecomingNoisy(true)
-            .build()
-        player = exo
-        playerView.player = exo
-        if (audio) lockScreen = LockScreenControls(this, exo, name)
-        exo.addListener(object : Player.Listener {
-            /**
-             * Cover art, once the extractor has read the tags. Taken from the player
-             * rather than opened a second time with a MediaMetadataRetriever, because
-             * ExoPlayer has already parsed the ID3 or Vorbis picture by the time this
-             * fires and holds the bytes.
-             *
-             * Sampled down first, the same way Thumbs decodes a photo. Embedded art is
-             * commonly 1500 square and not rarely 3000, and this callback arrives on the
-             * main thread as playback starts: decoded whole, a 3000 square picture is
-             * some 36 MB of ARGB for a view a couple of hundred dp wide, which is the
-             * one moment on this screen that cannot afford it. The tags are also
-             * re-delivered as they arrive, so the same bytes are decoded once.
-             */
-            private var artDecoded: ByteArray? = null
-
-            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-                val view = cover ?: return
-                val bytes = mediaMetadata.artworkData ?: return
-                if (bytes === artDecoded) return
-                val bmp = runCatching { sampledArt(bytes, view.width) }.getOrNull() ?: return
-                artDecoded = bytes
-                view.setImageBitmap(bmp)
-                lockScreen?.art = bmp
-            }
-
-            /** Which way round the picture is, which decides whether full screen is offered. */
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                videoChrome?.sized(videoSize)
-            }
-
-            /**
-             * Since when the player has been ready to play, by elapsedRealtime, counted afresh
-             * each time it is prepared. Null while it has not been. See onPlayerError.
-             */
-            private var readySince: Long? = null
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_READY && readySince == null) {
-                    readySince = SystemClock.elapsedRealtime()
-                }
-            }
-
-            /**
-             * A file that fails as it opens is one Gander cannot play, and gets the page that
-             * says so. One that fails after it has been ready to play for a while is one it
-             * can, and something gave out underneath it instead: on an emulator, Android's
-             * decoder did as a call ended over a track (issue #38). That gets another go: a
-             * player prepared again after an error carries on from where it stopped, playing
-             * if it was playing.
-             *
-             * Failing again soon after means the file is damaged there, and gets the page.
-             */
-            override fun onPlayerError(error: PlaybackException) {
-                val since = readySince
-                readySince = null
-                if (since != null && SystemClock.elapsedRealtime() - since >= PLAYER_RETRY_AFTER_MS) {
-                    exo.prepare()
-                    return
-                }
-                lockScreen?.release()
-                lockScreen = null
-                exo.release()
-                player = null
-                videoChrome?.land()
-                videoChrome = null
-                container.removeAllViews()
-                showWeb(container, uri, FileKind.UNSUPPORTED, name, ext)
-            }
-        })
-        exo.setMediaItem(MediaItem.fromUri(uri), playerStartAt)
-        exo.prepare()
-        exo.playWhenReady = true
-    }
-
     /** A zip, listed rather than drawn. See [ArchiveBrowser]. */
     private fun showArchive(container: FrameLayout, uri: Uri, name: String, state: Bundle?) {
         val browser = ArchiveBrowser(
@@ -2160,7 +1960,7 @@ open class ViewerActivity : AppCompatActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        videoChrome?.focusChanged(hasFocus)
+        playerScreen?.videoChrome?.focusChanged(hasFocus)
         documentChrome?.focusChanged(hasFocus)
     }
 
@@ -2179,32 +1979,12 @@ open class ViewerActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        lockScreen?.inFront()
+        playerScreen?.started()
     }
 
-    /**
-     * Pauses whatever is playing, unless this is a track and the screen has gone off with it
-     * playing, or the lock screen has come back over it, neither of which is leaving it. Issue #38.
-     *
-     * Playing on after leaving would need a foreground service, and so a permission. Playing on
-     * with the screen off needs none: the viewer is still the thing in front, only asleep, and
-     * Android's audio service keeps the phone awake while a track plays. A video stops all the
-     * same, since there is nothing left of it to watch.
-     *
-     * The lock screen counts because of calls. A call wakes the screen over the lock screen, and
-     * when it ends the lock screen comes back with the screen still on, which stops the viewer.
-     * Taken as leaving, that paused the track for good and took its controls away.
-     */
+    /** A track may play on with the screen off: see [PlayerScreen.stopped]. */
     override fun onStop() {
-        val screenOn = getSystemService(PowerManager::class.java)?.isInteractive ?: true
-        val locked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked ?: false
-        val controls = lockScreen
-        if (controls != null && player?.playWhenReady == true && (!screenOn || locked)) {
-            controls.playingOn()
-        } else {
-            player?.pause()
-            controls?.leftPaused()
-        }
+        playerScreen?.stopped()
         savePosition()
         super.onStop()
     }
@@ -2232,10 +2012,7 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        lockScreen?.release()
-        lockScreen = null
-        player?.release()
-        player = null
+        playerScreen?.release()
         doubleTapZoom?.cancel()
         webView?.destroy()
         webView = null

@@ -347,7 +347,7 @@ class VideoChromeTest {
         val viewer = video().get()
         // Nothing until the size is known
         assertThat(viewer.offersFullScreen).isFalse()
-        viewer.videoChrome!!.sized(wide)
+        viewer.playerScreen!!.videoChrome!!.sized(wide)
         assertThat(viewer.offersFullScreen).isTrue()
 
         viewer.fullScreenButton.performClick()
@@ -362,13 +362,13 @@ class VideoChromeTest {
     @Test
     fun anUprightVideoIsNotOfferedFullScreen() {
         val viewer = video().get()
-        viewer.videoChrome!!.sized(upright)
+        viewer.playerScreen!!.videoChrome!!.sized(upright)
         assertThat(viewer.offersFullScreen).isFalse()
 
         // And one that turns upright while held gives the screen back
-        viewer.videoChrome!!.sized(wide)
+        viewer.playerScreen!!.videoChrome!!.sized(wide)
         viewer.fullScreenButton.performClick()
-        viewer.videoChrome!!.sized(upright)
+        viewer.playerScreen!!.videoChrome!!.sized(upright)
         assertThat(viewer.offersFullScreen).isFalse()
         assertThat(viewer.requestedOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
     }
@@ -376,7 +376,7 @@ class VideoChromeTest {
     @Test
     fun aVideoInFullScreenStaysSoWhenTheViewerIsMadeAgain() {
         val controller = video()
-        controller.get().videoChrome!!.sized(wide)
+        controller.get().playerScreen!!.videoChrome!!.sized(wide)
         controller.get().fullScreenButton.performClick()
 
         controller.recreate()
@@ -384,7 +384,7 @@ class VideoChromeTest {
         assertThat(controller.get().requestedOrientation)
             .isEqualTo(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
         // And the button knows it once it is back, so the next press gives the screen back
-        controller.get().videoChrome!!.sized(wide)
+        controller.get().playerScreen!!.videoChrome!!.sized(wide)
         controller.get().fullScreenButton.performClick()
         assertThat(controller.get().requestedOrientation)
             .isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
