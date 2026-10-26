@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Reading the repo is all either job does, so a compromised step can't write to it
+permissions:
+  contents: read
+
 # A second push to a branch supersedes the first; there is no reason to keep
 # building the commit nobody is looking at any more.
 concurrency:
