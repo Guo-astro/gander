@@ -251,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         // at the root is the same place a failure here would land anyway.
         if (uris.size != docIds.size || uris.size != labels.size) return
         uris.indices.forEach { i ->
-            stack.addLast(Crumb(Uri.parse(uris[i]), docIds[i], labels[i]))
+            stack.addLast(Crumb(uris[i].toUri(), docIds[i], labels[i]))
         }
     }
 
@@ -401,7 +401,7 @@ class MainActivity : AppCompatActivity() {
      * anything itself, and without the INTERNET permission it could not.
      */
     private fun openUrl(url: String) {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
             .onFailure { Toast.makeText(this, R.string.no_browser, Toast.LENGTH_SHORT).show() }
     }
 
@@ -624,7 +624,7 @@ class MainActivity : AppCompatActivity() {
             shownRecents.forEach { r ->
                 val (badge, color) = badgeFor(r.name, null)
                 val ext = r.name.substringAfterLast('.', "").lowercase()
-                val uri = Uri.parse(r.uri)
+                val uri = r.uri.toUri()
                 rows += Row.Item(
                     badge, color, r.name,
                     DateUtils.getRelativeTimeSpanString(r.time).toString(),

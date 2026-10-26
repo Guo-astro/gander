@@ -1,82 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<issues format="6" by="lint 8.11.2" type="baseline" client="gradle" dependencies="false" name="AGP (8.11.2)" variant="all" version="8.11.2">
-
-    <issue
-        id="RequiresFeature"
-        message="`postMessage` should only be called if the feature `WEB_MESSAGE_PORT_POST_MESSAGE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="            searchPort?.postMessage(WebMessageCompat(PortCommand.nightMode(on)))"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="328"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="RequiresFeature"
-        message="`postMessage` should only be called if the feature `WEB_MESSAGE_PORT_POST_MESSAGE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="                searchPort?.postMessage(WebMessageCompat(PortCommand.goToPage(n)))"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="643"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="RequiresFeature"
-        message="`postMessage` should only be called if the feature `WEB_MESSAGE_PORT_POST_MESSAGE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="            searchPort?.postMessage(WebMessageCompat(s))"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="1030"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="RequiresFeature"
-        message="`postWebMessage` should only be called if the feature `POST_WEB_MESSAGE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="        WebViewCompat.postWebMessage("
-        errorLine2="        ^">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="1089"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="RequiresFeature"
-        message="`postMessage` should only be called if the feature `WEB_MESSAGE_PORT_POST_MESSAGE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="        if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat(PortCommand.query(pendingQuery)))"
-        errorLine2="                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="1092"
-            column="40"/>
-    </issue>
-
-    <issue
-        id="RequiresFeature"
-        message="`postMessage` should only be called if the feature `WEB_MESSAGE_PORT_POST_MESSAGE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="            mine.postMessage(WebMessageCompat(PortCommand.nightMode(loadedNight)))"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="1097"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="RequiresFeature"
-        message="`close` should only be called if the feature `WEB_MESSAGE_PORT_CLOSE` is present; to check call `androidx.webkit.WebViewFeature#isFeatureSupported`"
-        errorLine1="        runCatching { searchPort?.close() }"
-        errorLine2="                      ~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="1102"
-            column="23"/>
-    </issue>
+<issues format="6" by="lint 8.13.2" type="baseline" client="gradle" dependencies="false" name="AGP (8.13.2)" variant="all" version="8.13.2">
 
     <issue
         id="VectorRaster"
@@ -118,10 +41,9 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/strings.xml"
-            line="61"
+            line="116"
             column="5"/>
     </issue>
-
 
     <issue
         id="NotifyDataSetChanged"
@@ -130,22 +52,8 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/com/arjun/gander/Rows.kt"
-            line="40"
+            line="45"
             column="9"/>
-    </issue>
-
-    <issue
-        id="ObsoleteSdkInt"
-        message="This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 26. Merge all the resources in this folder into `mipmap-anydpi`.">
-        <location
-            file="src/debug/res/mipmap-anydpi-v26"/>
-    </issue>
-
-    <issue
-        id="ObsoleteSdkInt"
-        message="This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 26. Merge all the resources in this folder into `mipmap-anydpi`.">
-        <location
-            file="src/main/res/mipmap-anydpi-v26"/>
     </issue>
 
     <issue
@@ -171,24 +79,13 @@
     </issue>
 
     <issue
-        id="DisableBaselineAlignment"
-        message="Set `android:baselineAligned=&quot;false&quot;` on this element for better performance"
-        errorLine1="&lt;LinearLayout xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
-        errorLine2=" ~~~~~~~~~~~~">
-        <location
-            file="src/main/res/layout/row_item.xml"
-            line="2"
-            column="2"/>
-    </issue>
-
-    <issue
         id="Overdraw"
         message="Possible overdraw: Root element paints background `?attr/colorSurface` with a theme that also paints a background (inferred theme is `@style/Theme.Gander`)"
         errorLine1="    android:background=&quot;?attr/colorSurface&quot;"
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/view_render_gone.xml"
-            line="8"
+            line="7"
             column="5"/>
     </issue>
 
@@ -201,83 +98,6 @@
             file="src/main/res/layout/view_audio_controls.xml"
             line="26"
             column="6"/>
-    </issue>
-
-    <issue
-        id="MonochromeLauncherIcon"
-        message="The application adaptive icon is missing a monochrome tag"
-        errorLine1="&lt;adaptive-icon xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;>"
-        errorLine2="^">
-        <location
-            file="src/debug/res/mipmap-anydpi-v26/ic_launcher.xml"
-            line="6"
-            column="1"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="            stack.addLast(Crumb(Uri.parse(uris[i]), docIds[i], labels[i]))"
-        errorLine2="                                ~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/MainActivity.kt"
-            line="247"
-            column="33"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }"
-        errorLine2="                                                               ~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/MainActivity.kt"
-            line="360"
-            column="64"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="                val uri = Uri.parse(r.uri)"
-        errorLine2="                          ~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/MainActivity.kt"
-            line="489"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `SharedPreferences.edit` instead?"
-        errorLine1="        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)"
-        errorLine2="        ^">
-        <location
-            file="src/main/java/com/arjun/gander/Recents.kt"
-            line="59"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `Bitmap.scale` instead?"
-        errorLine1="            else Bitmap.createScaledBitmap("
-        errorLine2="                 ^">
-        <location
-            file="src/main/java/com/arjun/gander/Thumbs.kt"
-            line="137"
-            column="18"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `String.toUri` instead?"
-        errorLine1="            web, WebMessageCompat(&quot;vw-search-port&quot;, arrayOf(ends[1])), Uri.parse(&quot;*&quot;))"
-        errorLine2="                                                                       ~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="1090"
-            column="72"/>
     </issue>
 
     <issue
@@ -300,17 +120,6 @@
             file="src/main/res/layout/view_audio_controls.xml"
             line="78"
             column="14"/>
-    </issue>
-
-    <issue
-        id="SetTextI18n"
-        message="Number formatting does not take into account locale settings. Consider using `String.format` instead."
-        errorLine1="            setText(pageAt.toString())"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/com/arjun/gander/ViewerActivity.kt"
-            line="603"
-            column="21"/>
     </issue>
 
 </issues>

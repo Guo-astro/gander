@@ -48,6 +48,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
@@ -455,7 +456,7 @@ open class ViewerActivity : AppCompatActivity() {
             Settings.setNight(this, on)
             nightChrome.show(on)
             if (searchPort != null) loadedNight = on
-            searchPort?.postMessage(WebMessageCompat(PortCommand.nightMode(on)))
+            tellPage(PortCommand.nightMode(on))
             true
         }
     }
@@ -811,6 +812,8 @@ open class ViewerActivity : AppCompatActivity() {
      * floating label would pull more of Material into the APK. setError is also what Android 16
      * names as the way to report a bad value, so the small answer is the accessible one too.
      */
+    // The field starts with the page in the digits the number keyboard types, whatever the locale
+    @SuppressLint("SetTextI18n")
     private fun askForPage() {
         val total = pageTotal
         if (total < 2 || book) return
@@ -868,7 +871,7 @@ open class ViewerActivity : AppCompatActivity() {
                 entry.error = getString(R.string.page_out_of_range, total)
             } else {
                 // Straight down the channel search uses. See PortFinder for the shape.
-                searchPort?.postMessage(WebMessageCompat(PortCommand.goToPage(n)))
+                tellPage(PortCommand.goToPage(n))
                 dialog.dismiss()
             }
         }
@@ -1341,6 +1344,7 @@ open class ViewerActivity : AppCompatActivity() {
     }
 
     /** Down the channel, once the page has one: a search, and the title bar over a document. */
+    @SuppressLint("RequiresFeature") // A channel exists only where canPortSearch() found the feature
     private fun tellPage(command: String) {
         searchPort?.postMessage(WebMessageCompat(command))
     }
@@ -1348,8 +1352,9 @@ open class ViewerActivity : AppCompatActivity() {
     private fun canPortSearch(): Boolean =
         WebViewFeature.isFeatureSupported(WebViewFeature.CREATE_WEB_MESSAGE_CHANNEL) &&
             WebViewFeature.isFeatureSupported(WebViewFeature.POST_WEB_MESSAGE) &&
-            WebViewFeature.isFeatureSupported(
-                WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK)
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_PORT_SET_MESSAGE_CALLBACK) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_PORT_POST_MESSAGE) &&
+            WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_PORT_CLOSE)
 
     /**
      * Whether the page is handed the channel: a page that searches itself, and a paged document
@@ -1371,6 +1376,7 @@ open class ViewerActivity : AppCompatActivity() {
      * Posted on page finished rather than at load, because the listener that takes it
      * lives in the page and is not there until the page has run.
      */
+    @SuppressLint("RequiresFeature") // Checked by canPortSearch() on the first line, which lint can't follow
     private fun openSearchChannel(web: WebView, kind: FileKind) {
         if (!canPortSearch() || searchPort != null) return
         val ends = WebViewCompat.createWebMessageChannel(web)
@@ -1422,7 +1428,7 @@ open class ViewerActivity : AppCompatActivity() {
         // Addressed to Gander's own origin rather than to "*", so the port is only ever
         // handed to a page served from it, whatever the WebView is showing by then.
         WebViewCompat.postWebMessage(
-            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), Uri.parse("https://$ASSET_HOST"))
+            web, WebMessageCompat("vw-search-port", arrayOf(ends[1])), "https://$ASSET_HOST".toUri())
         // Anything typed while there was nowhere to send it.
         if (pendingQuery.isNotEmpty()) mine.postMessage(WebMessageCompat(PortCommand.query(pendingQuery)))
         // And any night mode tapped in the same window. Compared against what the URL
@@ -1435,6 +1441,7 @@ open class ViewerActivity : AppCompatActivity() {
         documentChrome?.replay()
     }
 
+    @SuppressLint("RequiresFeature") // A channel exists only where canPortSearch() found the feature
     private fun closeSearchChannel() {
         runCatching { searchPort?.close() }
         searchPort = null

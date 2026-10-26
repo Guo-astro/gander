@@ -15,6 +15,7 @@ import android.provider.DocumentsContract
 import android.util.LruCache
 import android.view.View
 import android.widget.ImageView
+import androidx.core.graphics.scale
 import androidx.core.net.toUri
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
@@ -187,9 +188,7 @@ object Thumbs {
             val frame = retriever.frameAtTime ?: return null
             val scale = SIZE.toFloat() / maxOf(frame.width, frame.height)
             if (scale >= 1f) frame
-            else Bitmap.createScaledBitmap(
-                frame, (frame.width * scale).toInt(), (frame.height * scale).toInt(), true
-            )
+            else frame.scale((frame.width * scale).toInt(), (frame.height * scale).toInt())
         } finally {
             runCatching { retriever.release() }
         }

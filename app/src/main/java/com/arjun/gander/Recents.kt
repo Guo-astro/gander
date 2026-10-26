@@ -3,6 +3,7 @@ package com.arjun.gander
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import org.json.JSONArray
 import org.json.JSONObject
@@ -79,6 +80,6 @@ object Recents {
             )
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY, arr.toString()).apply()
+            .edit { putString(KEY, arr.toString()) }
     }
 }
