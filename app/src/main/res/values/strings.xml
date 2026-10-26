@@ -172,6 +172,9 @@
     <string name="render_gone_crashed">The document viewer stopped unexpectedly</string>
     <string name="render_gone_detail">The file itself is untouched. Reloading it usually works.</string>
     <string name="render_gone_reload">Reload</string>
+    <!-- Shown where the document was when Android has no working WebView to show it in -->
+    <string name="no_webview">This file needs Android System WebView</string>
+    <string name="no_webview_detail">It is turned off or part way through an update. Once it is back, Reload opens the file.</string>
     <string name="save_copy">Save a copy</string>
     <string name="save_copy_done">Copy saved</string>
     <string name="save_copy_failed">The copy could not be saved</string>

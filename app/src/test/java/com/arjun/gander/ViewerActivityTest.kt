@@ -44,6 +44,8 @@ import org.robolectric.Robolectric
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.Implementation
+import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowSystemClock
 import org.robolectric.shadows.ShadowToast
@@ -873,6 +875,25 @@ class ViewerActivityTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertThat(controller.webView()).isNull()
         assertThat(controller.underTheName()).isNull()
+    }
+
+    /**
+     * With no working WebView, as while Android System WebView updates, a document gets a card
+     * saying so, where it was a crash, and nothing on the toolbar speaks to a page that isn't there.
+     */
+    @Test
+    @Config(shadows = [ShadowMissingWebView::class])
+    fun withNoWorkingWebViewADocumentGetsACardRatherThanACrash() {
+        // So Print would be offered, as on a phone
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_PRINTING, true)
+        val controller = open("six-pages.pdf")
+        assertThat(controller.webView()).isNull()
+        assertThat(controller.get().findViewById<TextView>(R.id.renderGoneTitle).text.toString())
+            .isEqualTo(context.getString(R.string.no_webview))
+        for (item in listOf(R.id.action_search, R.id.action_night_mode, R.id.action_print)) {
+            assertWithMessage(context.resources.getResourceEntryName(item))
+                .that(controller.toolbarItem(item).isVisible).isFalse()
+        }
     }
 
     /**
@@ -2078,5 +2099,14 @@ class ViewerActivityTest {
         val controller = start(intent)
         assertThat(controller.get().isFinishing).isFalse()
         assertThat(controller.loadedUrl()).contains("viewer/text.html")
+    }
+}
+
+/** A phone whose WebView is missing, turned off or part way through an update: making one throws. */
+@Implements(WebView::class)
+class ShadowMissingWebView : ShadowWebView() {
+    @Implementation
+    override fun ensureProviderCreated() {
+        throw android.util.AndroidRuntimeException("Failed to load WebView provider: No WebView installed")
     }
 }

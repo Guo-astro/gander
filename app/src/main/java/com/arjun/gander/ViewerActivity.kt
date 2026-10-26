@@ -50,6 +50,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -573,11 +574,10 @@ open class ViewerActivity : AppCompatActivity() {
      */
     private fun setUpNightMode(toolbar: MaterialToolbar, kind: FileKind) {
         val item = toolbar.menu.findItem(R.id.action_night_mode)
-        // The last test is the card pdf.html shows instead of a document when the
-        // WebView is too old for the renderer: webViewFloorParams is non-empty exactly
-        // then, and turning a card that says "update your WebView" dark is not a
-        // feature. Same standard as the two above, and as action_search.
-        val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
+        // Not for a card in place of the document, saying the WebView is too old or isn't there:
+        // turning a card dark is not a feature. webViewFloorParams is non-empty exactly for the first.
+        val blocked = webView == null ||
+            webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
         if (!kind.turnsOver || !pageGetsChannel(kind) || blocked) {
             item.isVisible = false
             return
@@ -599,8 +599,9 @@ open class ViewerActivity : AppCompatActivity() {
     private fun setUpPrint(toolbar: MaterialToolbar, kind: FileKind, uri: Uri, name: String) {
         val item = toolbar.menu.findItem(R.id.action_print)
         val route = printRoute(kind)
-        // The card saying the WebView is too old has no document on it to print
-        val blocked = webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
+        // A card saying the WebView is too old or isn't there has no document on it to print
+        val blocked = webView == null ||
+            webViewFloorParamsFor(kind, webView?.settings?.userAgentString).isNotEmpty()
         if (route == null || blocked || !packageManager.hasSystemFeature(PackageManager.FEATURE_PRINTING)) {
             item.isVisible = false
             return
@@ -1891,7 +1892,12 @@ open class ViewerActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun showWeb(container: FrameLayout, uri: Uri, kind: FileKind, name: String, ext: String) {
-        val web = ScrollProbeWebView(this)
+        // Android throws here when it has no working WebView: while Android System WebView is
+        // being updated, or where someone has turned it off
+        val web = runCatching { ScrollProbeWebView(this) }.getOrElse {
+            showCard(container, R.string.no_webview, R.string.no_webview_detail)
+            return
+        }
         webView = web
         pageSearches = canPortSearch() &&
             searchesInPage(kind, webViewChromiumMajor(web.settings.userAgentString))
@@ -2220,10 +2226,18 @@ open class ViewerActivity : AppCompatActivity() {
         // the phone's colours along with the page that was dark
         nightChrome.show(false)
         container.removeAllViews()
-        val card = layoutInflater.inflate(R.layout.view_render_gone, container, false)
-        card.findViewById<TextView>(R.id.renderGoneTitle).setText(
-            if (didCrash) R.string.render_gone_crashed else R.string.render_gone_reclaimed
+        showCard(
+            container,
+            if (didCrash) R.string.render_gone_crashed else R.string.render_gone_reclaimed,
+            R.string.render_gone_detail,
         )
+    }
+
+    /** A card where the document would be, saying why it isn't, with Reload, which starts the viewer again. */
+    private fun showCard(container: FrameLayout, @StringRes title: Int, @StringRes detail: Int) {
+        val card = layoutInflater.inflate(R.layout.view_render_gone, container, false)
+        card.findViewById<TextView>(R.id.renderGoneTitle).setText(title)
+        card.findViewById<TextView>(R.id.renderGoneDetail).setText(detail)
         card.findViewById<View>(R.id.renderGoneReload).setOnClickListener { recreate() }
         container.addView(card)
     }
