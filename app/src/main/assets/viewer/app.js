@@ -108,6 +108,26 @@ function vwNeedsNewerWebView(what, have, needs, locked) {
 }
 
 /*
+ * How wide the WebView is in real device pixels, or 0 if that can't be established, which
+ * pdf.mjs and pdfsimple.js divide by the visible layout width to draw their pages sharp. Asked
+ * afresh each time, since the fit to the screen is applied after layout, and a pinch never moves
+ * it. Checked against the screen's own width, because a wrong answer shows only as blurry pages:
+ * 0 when it comes out wider than the screen, or under a quarter of it, which leaves split screen.
+ */
+function vwPhysicalWidth() {
+  var vv = window.visualViewport;
+  if (!vv || !(vv.width > 0)) return 0;
+  var dpr = window.devicePixelRatio || 1;
+  var seen = vv.width * dpr * (vv.scale > 0 ? vv.scale : 1);
+  var screenWidth = window.screen && window.screen.width > 0
+    ? window.screen.width * dpr
+    : 0;
+  if (!(seen > 0) || !(screenWidth > 0)) return 0;
+  if (seen > screenWidth * 1.05 || seen < screenWidth * 0.25) return 0;
+  return seen;
+}
+
+/*
  * Publish the height the reader can actually see as --vw-fit, for the viewers that
  * centre a document short enough to fit on the screen.
  *

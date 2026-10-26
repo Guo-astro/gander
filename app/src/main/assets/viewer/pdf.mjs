@@ -54,41 +54,6 @@ var MAX_SIDE = 8192;
 var BASE_MAX_PIXELS = 8e6;
 
 /*
- * How wide the WebView is in real device pixels, or 0 if that cannot be established.
- *
- * Everything about sharpness in this file reduces to one ratio, device pixels per CSS
- * pixel, and that ratio is this number divided by however much of the layout is
- * currently visible. visualViewport.width is that visible width and shrinks as the
- * reader pinches in. This number does not move.
- *
- * Blink treats pinch as page scale, a step applied after rendering, so it never moves
- * devicePixelRatio and it is exactly what visualViewport.scale reports. The product
- * below is therefore the same at every zoom, which is why it is asked for afresh each
- * time rather than captured once: loadWithOverviewMode applies the fit scale after
- * layout, and a value read at startup can be the one from before it.
- *
- * Checked against a second opinion from a different part of the platform, because
- * getting this wrong would not fail loudly, it would be blurry pages everywhere. The
- * invariant worth testing is that a WebView cannot be wider than the screen it sits in.
- * The lower bound is loose deliberately: in split screen the WebView really is much
- * narrower than the screen and is still being measured correctly, so only nonsense is
- * being caught. Fail either bound and this returns 0, and every caller falls back on
- * what this file did before it could ask.
- */
-function physicalWidth() {
-  var vv = window.visualViewport;
-  if (!vv || !(vv.width > 0)) return 0;
-  var dpr = window.devicePixelRatio || 1;
-  var seen = vv.width * dpr * (vv.scale > 0 ? vv.scale : 1);
-  var screenWidth = window.screen && window.screen.width > 0
-    ? window.screen.width * dpr
-    : 0;
-  if (!(seen > 0) || !(screenWidth > 0)) return 0;
-  if (seen > screenWidth * 1.05 || seen < screenWidth * 0.25) return 0;
-  return seen;
-}
-
-/*
  * Canvas pixels per CSS pixel for a page bitmap: the resolution the screen has with the
  * page fitted to its width, and no more than that.
  *
@@ -97,7 +62,7 @@ function physicalWidth() {
  * so a document costs the same whatever anybody is doing to it.
  */
 function baseScale() {
-  var w = physicalWidth();
+  var w = vwPhysicalWidth();
   return w ? Math.min((w / PAGE_WIDTH) * BASE_HEADROOM, DPR_FALLBACK) : DPR_FALLBACK;
 }
 
@@ -111,7 +76,7 @@ function baseScale() {
 function liveScale() {
   var vv = window.visualViewport;
   if (!vv || !(vv.width > 0)) return DPR_FALLBACK;
-  var w = physicalWidth();
+  var w = vwPhysicalWidth();
   return w ? w / vv.width : DPR_FALLBACK * (PAGE_WIDTH / vv.width);
 }
 

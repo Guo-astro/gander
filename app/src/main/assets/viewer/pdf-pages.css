@@ -1,0 +1,35 @@
+/*
+ * The column of paper a PDF's pages are drawn on, for pdf.html and the simple view's
+ * pdfsimple.html, which frame their pages the same way in the day and at night.
+ */
+
+/* A page: white paper until its picture comes. Each page says how tall a page is. */
+.pg {
+  position: relative;
+  display: block;
+  margin: 0 auto var(--pg-gap);
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  width: 100%;
+}
+
+/*
+ * Night mode, issue #19: the paper and the ground black, and a line along the top of every
+ * page, since black pages on a black ground run together. Each page also draws the line along
+ * the foot of its last page, so a document shorter than the screen still shows where it ends.
+ *
+ * Black paper because a page not drawn yet is this box and nothing else, and a white one is what
+ * somebody reading in the dark turned this on to avoid. The line is the night theme's divider,
+ * gander_outline_variant (L* 30.0), with the hue taken out, since a warm line on black would
+ * bring back what #41 took away. About a dp thick, by --vw-zoom, and a box-shadow rather than a
+ * border, which would change the box --pg-gap and PAGE_PITCH are counted against.
+ */
+html.vw-night {
+  --pg-edge: calc(1px * var(--vw-zoom));
+  --pg-edge-colour: #474747;
+}
+html.vw-night body { background: #000; }
+html.vw-night .pg {
+  background: #000;
+  box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour);
+}

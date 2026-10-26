@@ -10,6 +10,7 @@
      isolated process: see FileKind.PDF_SIMPLE. No viewport meta, as in pdf.html, so a pinch
      has the same range here as there and a page is laid out at the same 980 CSS px. -->
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="pdf-pages.css">
 <style>
   /* The surround pdf.html reads a page against, so the two views look alike around it. */
   body { background: #48443D; }
@@ -38,16 +39,8 @@
   }
   #pages > * { flex: none; }
 
-  /* A page: white paper until its picture comes, as tall as pdfsimple.js says it is. */
-  .pg {
-    position: relative;
-    display: block;
-    margin: 0 auto var(--pg-gap);
-    background: #fff;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
-    width: 100%;
-    overflow: hidden;
-  }
+  /* A page, framed as in pdf-pages.css, as tall as pdfsimple.js says it is. */
+  .pg { overflow: hidden; }
   /* No touch reaches a picture, so a long press can't pick one up or offer to save it. */
   .pg > img {
     display: block;
@@ -78,20 +71,7 @@
     color: #E7E2D9;
   }
 
-  /*
-   * Night mode. The pictures come turned over from Gander, so all this does is pdf.html's part
-   * around them: the paper of a page not drawn yet, the black surround, a line along each page's
-   * edge, and the cards. pdf.html says why each is what it is.
-   */
-  html.vw-night {
-    --pg-edge: calc(1px * var(--vw-zoom));
-    --pg-edge-colour: #474747;
-  }
-  html.vw-night body { background: #000; }
-  html.vw-night .pg {
-    background: #000;
-    box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour);
-  }
+  /* Night mode, the rest of it in pdf-pages.css. The pictures come turned over from Gander. */
   html.vw-night .pg.vw-last {
     box-shadow: 0 calc(-1 * var(--pg-edge)) 0 var(--pg-edge-colour),
                 0 var(--pg-edge) 0 var(--pg-edge-colour);

@@ -36,7 +36,7 @@ The viewer loads `https://appassets.androidplatform.net/assets/viewer/<page>?nam
 
 JavaScript is on. File and content access, DOM storage and cookies are off. Navigation is allowed only to Gander's own `.html` pages. If the renderer process dies, or the phone has no working WebView to make one with, the viewer shows a card with Reload, which recreates the activity.
 
-Shared page code: `app.js` (status and error cards, the WebView floor card, fetching the document, link disarming, fit height), `app.css` (colour tokens, light and dark), `find.js` (search inside non-PDF pages, across parts for books and workbooks). `pdf.mjs` is the only ES module.
+Shared page code: `app.js` (status and error cards, the WebView floor card, fetching the document, link disarming, fit height, the screen's width in device pixels), `app.css` (colour tokens, light and dark), `pdf-pages.css` (the page frame and night mode both PDF views draw), `find.js` (search inside non-PDF pages, across parts for books and workbooks). `pdf.mjs` is the only ES module.
 
 ## The isolated renderer
 
