@@ -12,7 +12,8 @@ updates:
       gradle:
         update-types: [minor, patch]
     # Held for one planned upgrade, since each needs the build changed with the others: Kotlin 2.4
-    # rejects the kotlinOptions block, AGP 9 needs Gradle 9, and AGP 8 fails on Gradle 9.8
+    # rejects the kotlinOptions block, AGP 9 needs Gradle 9, AGP 8 fails on Gradle 9.8, and
+    # AndroidX Core 1.19 needs AGP 9.1 and compileSdk 37
     ignore:
       - dependency-name: org.jetbrains.kotlin.android
         update-types: [version-update:semver-minor, version-update:semver-major]
@@ -20,6 +21,8 @@ updates:
         update-types: [version-update:semver-major]
       - dependency-name: gradle-wrapper
         update-types: [version-update:semver-major]
+      - dependency-name: androidx.core:core-ktx
+        versions: ['[1.19,)']
   - package-ecosystem: github-actions
     directory: /
     schedule:
