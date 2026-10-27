@@ -1,20 +1,31 @@
-# Newer Gradle dependencies, plugins and GitHub Actions, checked once a month. Minor and patch
-# releases come as one pull request per ecosystem, and a major release on its own, since it can
-# need code to change. The vendored viewer libraries are outside its reach; docs/VENDORED.md
-# says how they are upgraded.
+# Newer Gradle dependencies, plugins and GitHub Actions, checked on the first of each month. The
+# vendored viewer libraries are outside its reach; docs/VENDORED.md says how they are upgraded.
 version: 2
 updates:
   - package-ecosystem: gradle
     directory: /
     schedule:
       interval: monthly
+    # Minor and patch releases in one pull request, and a major on its own, since it can need code
+    # to change
     groups:
       gradle:
         update-types: [minor, patch]
+    # Held for one planned upgrade, since each needs the build changed with the others: Kotlin 2.4
+    # rejects the kotlinOptions block, AGP 9 needs Gradle 9, and AGP 8 fails on Gradle 9.8
+    ignore:
+      - dependency-name: org.jetbrains.kotlin.android
+        update-types: [version-update:semver-minor, version-update:semver-major]
+      - dependency-name: com.android.application
+        update-types: [version-update:semver-major]
+      - dependency-name: gradle-wrapper
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    # Every update in one pull request, majors too: an action's major rarely needs the workflow
+    # changed, and one CI run checks them together
     groups:
       actions:
-        update-types: [minor, patch]
+        patterns: ['*']
