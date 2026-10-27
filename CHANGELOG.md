@@ -25,6 +25,11 @@
   which F-Droid flags.
 - A double tap zooms smoothly far down a long document, where the page jumped up and down as it
   zoomed.
+- Spreadsheets show their colours: filled cells, rows and columns, and coloured, bold, italic,
+  underlined or struck-through text, where every cell was drawn plain. In dark mode light fills go
+  dark and dark ones light, each keeping its colour, and text on them stays readable. Colours
+  Excel works out as a sheet opens, such as conditional formatting and a formatted table's
+  stripes, still don't show, and an .xlsb or .ods file is still drawn plain.
 
 ## 2.7 (2026-10-25)
 

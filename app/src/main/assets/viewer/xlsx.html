@@ -51,8 +51,10 @@
     white-space: pre;
     min-width: 40px;
   }
-  /* The sheet's first row, which only the first of a large sheet's pieces has: see xlsx.js */
-  #sheet table.vw-top tr:first-child td { background: #F2EDE4; font-weight: 600; }
+  /* The sheet's first row, which only the first of a large sheet's pieces has: see xlsx.js. A cell
+     the workbook fills keeps its own fill (vw-f): see xlsx-styles.js. */
+  #sheet table.vw-top tr:first-child td { font-weight: 600; }
+  #sheet table.vw-top tr:first-child td:not(.vw-f) { background: #F2EDE4; }
   /* Each piece of a large sheet is a table with borders of its own. A later one sits a border's
      width higher, so its top line lies on the bottom line of the piece above, as the rows of one
      table share theirs: one line between pieces rather than two, and every row its own height. */
@@ -68,7 +70,7 @@
     #tabs { background: #221F19; border-bottom-color: #4D4636; }
     #tabs button { background: var(--vw-card); border-color: #4D4636; color: var(--vw-ink); }
     #sheet td, #sheet th { border-color: #6B6250; color: var(--vw-ink); }
-    #sheet table.vw-top tr:first-child td { background: var(--vw-card); }
+    #sheet table.vw-top tr:first-child td:not(.vw-f) { background: var(--vw-card); }
   }
 </style>
 <script src="lib/xlsx.full.min.js"></script>
@@ -79,6 +81,7 @@
 <div id="sheet" data-vw-find></div>
 <script src="app.js"></script>
 <script src="find.js"></script>
+<script src="xlsx-styles.js"></script>
 <script src="xlsx.js"></script>
 </body>
 </html>

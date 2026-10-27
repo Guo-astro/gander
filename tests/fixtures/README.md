@@ -60,6 +60,8 @@ should stay obviously so.
 | `cell-directions.docx` | One table row whose cells set each text direction docx-preview reads: `lrTb`, which in Word is plain left-to-right text and which docx-preview drew vertical (`drawLrTbAcross` in `docx.js`), `tbRl` and `btLr`, which are vertical, and none. |
 | `budget.xlsx` | Three sheets, so the sheet tabs have something to switch between. |
 | `budget.csv` | The same rows as the first sheet. Routes to the spreadsheet viewer, not the text one. |
+| `colours.xlsx` | Cell colours as openpyxl writes them, which `xlsx-styles.js` reads: a first row filled dark blue under white bold text, fills given by value, by theme colour 0 with a tint and by palette number, a gradient listed before every other fill, red under black text that must go dark at night, red text, bold, a lightGray pattern, and a row filled green and a column orange, with a cell written plain where they cross. A second sheet of 1,200 rows has a fill on row 1,101, in a piece drawn long after the first. |
+| `colours.xls` | The styles of `colours.xlsx` that an .xls can give, in BIFF8 built by hand: yellow on a cell and on a run of two blank cells beside it, navy under text given no colour, red bold text, and a row filled green and a column orange, with a cell written plain where they cross. LibreOffice draws that cell in the row's green, where Gander keeps a written cell's own style, as it does in an .xlsx. |
 | `utf8.csv` | Issue #37. UTF-8 with no byte order mark, which SheetJS reads as Latin-1 when handed bytes. Letters of two, three and four bytes. |
 | `latin1.csv` | The other side of #37: a CSV that is not UTF-8, which must still read as Latin-1. |
 | `deck.pptx` | Three slides, for the PPTXjs completion poll. |

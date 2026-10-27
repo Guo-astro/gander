@@ -1321,6 +1321,74 @@ SHEET_ROWS = [
 ]
 
 
+def sheet_colours() -> None:
+    """
+    colours.xlsx: every way an .xlsx colours its cells that xlsx-styles.js reads, as openpyxl
+    writes them. A second sheet is long enough to be drawn a piece at a time.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Color, Font, GradientFill, PatternFill
+
+    def solid(**colour):
+        return PatternFill(fill_type="solid", fgColor=Color(**colour))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Colours"
+    for col, text in enumerate(("Item", "Amount", "Status", "Note"), start=1):
+        cell = ws.cell(row=1, column=col, value=text)
+        cell.fill = solid(rgb="FF1F4E79")
+        cell.font = Font(bold=True, color="FFFFFFFF")
+    # Red to blue, set first so that every fill after it in the list comes after a gradient, which
+    # SheetJS counts as three
+    ws.cell(row=4, column=3, value="Gradient").fill = GradientFill(stop=("FFFF0000", "FF0000FF"))
+    rows = [
+        ("Plain", None, None),
+        ("Yellow", solid(rgb="FFFFFF00"), None),
+        # White, Background 1, Darker 15%: theme colour 0, which is white, shaded to D9D9D9
+        ("Grey", solid(theme=0, tint=-0.1499984740745262), None),
+        # Number 43 of Excel's palette, FFFF99
+        ("Numbered", solid(indexed=43), None),
+        ("Red text", None, Font(color="FFFF0000")),
+        ("Bold", None, Font(bold=True)),
+        # A quarter red over white
+        ("Hatched", PatternFill(fill_type="lightGray", fgColor="FFFF0000", bgColor="FFFFFFFF"), None),
+    ]
+    for r, (text, fill, font) in enumerate(rows, start=2):
+        cell = ws.cell(row=r, column=1, value=text)
+        if fill:
+            cell.fill = fill
+        if font:
+            cell.font = font
+        ws.cell(row=r, column=2, value=r * 100)
+    # Black text on red reads by day; turned over, red goes pale and the text light, so at night
+    # the text must be made dark again
+    ws.cell(row=3, column=3, value="Alert").fill = solid(rgb="FFFF0000")
+    # Row 9 filled whole, as Excel fills one: the row's own style, and the cell written in it
+    # given the same. B9 and C9 are not written, so only the row colours them.
+    green = solid(rgb="FF92D050")
+    ws.row_dimensions[9].fill = green
+    ws.cell(row=9, column=1, value="Whole row").fill = green
+    # Column D filled whole, under its heading: D2 to D8 and D10 are not written
+    ws.column_dimensions["D"].fill = solid(rgb="FFFFC000")
+    # Where the row and the column cross, a cell written with no style of its own
+    ws.cell(row=9, column=4, value="Crossing")
+    ws.cell(row=10, column=1, value="After")
+
+    long = wb.create_sheet("Long")
+    long.append(("Row", "Name"))
+    for n in range(1, 1201):
+        long.append((n, f"Name {n}"))
+    long.cell(row=1101, column=2).fill = solid(rgb="FFFFFF00")
+
+    wb.properties.created = EPOCH
+    wb.properties.modified = EPOCH
+    wb.properties.creator = "Gander tests"
+    wb.save(str(OUT / "colours.xlsx"))
+    normalize_zip(OUT / "colours.xlsx")
+    written(OUT / "colours.xlsx")
+
+
 def xlsx() -> None:
     import csv
 
@@ -3269,11 +3337,18 @@ WORKBOOK = [
 ]
 
 
-def shared_strings():
-    """Every string in WORKBOOK once, in the order first met, and how many cells hold one."""
+def cell_value(value):
+    """A cell as given in a workbook's rows: a value alone, or (value, fill) for a filled cell"""
+    return value[0] if isinstance(value, tuple) else value
+
+
+def shared_strings(workbook=WORKBOOK):
+    """Every string in [workbook] once, in the order first met, and how many cells hold one."""
     strings, total = [], 0
-    for _, rows in WORKBOOK:
-        for value in (v for row in rows for v in row if isinstance(v, str)):
+    for _, rows in workbook:
+        for value in (cell_value(v) for row in rows for v in row):
+            if not isinstance(value, str):
+                continue
             total += 1
             if value not in strings:
                 strings.append(value)
@@ -3339,48 +3414,96 @@ def one_stream_compound_file(name: str, data: bytes) -> bytes:
     return bytes(header) + b"".join(u32(v) for v in fat) + directory + data
 
 
-def xls() -> None:
-    """budget.xls: a BIFF8 workbook, as Excel 97 to 2003 saves one."""
-    strings, total = shared_strings()
+def biff8(workbook, styles=(), rows_styled=None, columns_styled=None) -> bytes:
+    """
+    A BIFF8 workbook stream of [workbook]'s sheets, as Excel 97 to 2003 saves one. A cell given
+    as (value, k) has the style styles[k]: a fill's pattern and its colour's number in Excel's
+    palette, and the colour's number for red bold text or None. One whose value is None is written
+    blank, as Excel keeps a blank cell that has a style, and a run of them as one MULBLANK, as
+    Excel writes them; one given as ... is not written at all. Each sheet's rows and columns in
+    [rows_styled] and [columns_styled] have a style for the cells not written in them, k as above.
+    """
+    strings, total = shared_strings(workbook)
+    rows_styled, columns_styled = rows_styled or {}, columns_styled or {}
 
     def bof(kind: int) -> bytes:
         return biff(0x0809, struct.pack("<HHHHII", 0x0600, kind, 0x0DBB, 0x07CC, 0, 6))
 
-    font = biff(0x0031, struct.pack("<HHHHHBBBB", 200, 0, 0x7FFF, 400, 0, 0, 0, 0, 0)
-                + biff_text("Arial", 1))
-    # Fifteen style XFs, then the cell XF, number fifteen, that every cell here names
+    def font_record(colour: int = 0x7FFF, weight: int = 400) -> bytes:
+        return biff(0x0031, struct.pack("<HHHHHBBBB", 200, 0, colour, weight, 0, 0, 0, 0, 0)
+                    + biff_text("Arial", 1))
+
+    def cell_xf(pattern: int = 0, colour: int = 64, red: bool = False) -> bytes:
+        # The pattern is the top six bits of the second border word and its colour the low seven
+        # of the last, over 65, the window's colour; with a pattern the XF says it sets one. The
+        # red bold font is the fifth written, which an XF numbers 5, since no font is number 4.
+        used = (0x40 if pattern else 0) | (0x08 if red else 0)
+        return biff(0x00E0, struct.pack("<HHHBBBBIIH", 5 if red else 0, 0, 0x0001, 0x20, 0, 0, used,
+                                        0, pattern << 26, (65 << 7) | colour))
+
+    fonts = font_record() * 4 + (font_record(10, 700) if any(red for *_, red in styles) else b"")
+    # Fifteen style XFs, then the cell XF, number fifteen, that every cell here names but a
+    # styled one, which names the XF of its style after it
     style_xf = biff(0x00E0, struct.pack("<HHHBBBBIIH", 0, 0, 0xFFF5, 0x20, 0, 0, 0, 0, 0, 0x20C0))
-    cell_xf = biff(0x00E0, struct.pack("<HHHBBBBIIH", 0, 0, 0x0001, 0x20, 0, 0, 0, 0, 0, 0x20C0))
     head = (bof(0x0005)
             + biff(0x0042, struct.pack("<H", 1200))                        # CODEPAGE: UTF-16
             + biff(0x003D, struct.pack("<HHHHHHHHH", 0, 0, 0x3000, 0x2000, 0x38, 0, 0, 1, 0x258))
-            + font * 4 + style_xf * 15 + cell_xf
+            + fonts + style_xf * 15 + cell_xf()
+            + b"".join(cell_xf(pattern, colour, bool(red)) for pattern, colour, red in styles)
             + biff(0x0293, struct.pack("<HBB", 0x8000, 0, 0xFF)))          # STYLE: Normal
 
-    def sheet(rows, active: bool) -> bytes:
+    def sheet(name, rows, active: bool) -> bytes:
         cells = b""
         for r, row in enumerate(rows):
-            for c, value in enumerate(row):
-                if isinstance(value, str):
-                    cells += biff(0x00FD, struct.pack("<HHHI", r, c, 15, strings.index(value)))
+            blanks = []
+
+            def write_blanks():
+                if len(blanks) == 1:
+                    return biff(0x0201, struct.pack("<HHH", r, blanks[0][0], blanks[0][1]))      # BLANK
+                if blanks:
+                    return biff(0x00BE, struct.pack("<HH", r, blanks[0][0])                       # MULBLANK
+                                + b"".join(struct.pack("<H", xf) for _, xf in blanks)
+                                + struct.pack("<H", blanks[-1][0]))
+                return b""
+
+            for c, given in enumerate(row):
+                value = cell_value(given)
+                xf = 16 + given[1] if isinstance(given, tuple) else 15
+                if value is None:
+                    blanks.append((c, xf))
+                    continue
+                cells += write_blanks()
+                blanks = []
+                if value is ...:
+                    continue
+                elif isinstance(value, str):
+                    cells += biff(0x00FD, struct.pack("<HHHI", r, c, xf, strings.index(value)))
                 else:
                     # An RK, which is how Excel stores a whole number that small
-                    cells += biff(0x027E, struct.pack("<HHHI", r, c, 15, (value << 2) | 2))
+                    cells += biff(0x027E, struct.pack("<HHHI", r, c, xf, (value << 2) | 2))
+            cells += write_blanks()
         width = max(len(row) for row in rows)
         window = 0x06B6 if active else 0x00B6
+        # COLINFO: the columns, their width and their XF; ROW: fGhostDirty says the row has an XF
+        columns = b"".join(biff(0x007D, struct.pack("<HHHHHH", c, c, 2560, 16 + k, 0, 0))
+                           for c, k in columns_styled.get(name, {}).items())
+        row_records = b"".join(biff(0x0208, struct.pack("<HHHHHHHH", r, 0, width, 255, 0, 0, 0x0180, 16 + k))
+                               for r, k in rows_styled.get(name, {}).items())
         return (bof(0x0010)
+                + columns
                 + biff(0x0200, struct.pack("<IIHHH", 0, len(rows), 0, width, 0))
+                + row_records
                 + cells
                 + biff(0x023E, struct.pack("<HHHHHHHI", window, 0, 0, 64, 0, 0, 0, 0))
                 + biff(0x000A))
 
-    sheets = [sheet(rows, n == 0) for n, (_, rows) in enumerate(WORKBOOK)]
+    sheets = [sheet(name, rows, n == 0) for n, (name, rows) in enumerate(workbook)]
     sst = biff(0x00FC, struct.pack("<II", total, len(strings))
                + b"".join(biff_text(s, 2) for s in strings))
 
     def bound(offsets) -> bytes:
         return b"".join(biff(0x0085, struct.pack("<IBB", at, 0, 0) + biff_text(name, 1))
-                        for at, (name, _) in zip(offsets, WORKBOOK))
+                        for at, (name, _) in zip(offsets, workbook))
 
     # Each BOUNDSHEET says where its sheet's BOF is, so the globals are measured first
     at = len(head) + len(bound([0] * len(sheets))) + len(sst) + len(biff(0x000A))
@@ -3388,9 +3511,24 @@ def xls() -> None:
     for body in sheets:
         offsets.append(at)
         at += len(body)
-    stream = head + bound(offsets) + sst + biff(0x000A) + b"".join(sheets)
-    (OUT / "budget.xls").write_bytes(one_stream_compound_file("Workbook", stream))
+    return head + bound(offsets) + sst + biff(0x000A) + b"".join(sheets)
+
+
+def xls() -> None:
+    """budget.xls, and colours.xls: the styles of colours.xlsx that an .xls can give."""
+    (OUT / "budget.xls").write_bytes(one_stream_compound_file("Workbook", biff8(WORKBOOK)))
     written(OUT / "budget.xls")
+    # Solid yellow, navy, green and orange, numbers 13, 18, 50 and 52 of Excel's palette, and
+    # red bold text. B2 and C2 are blank, a run that Excel writes as one record. Row 5 is green and
+    # column D orange where no cell is written; D5, where they cross, is written plain.
+    styles = [(1, 13, None), (1, 18, None), (0, 64, "red"), (1, 50, None), (1, 52, None)]
+    colours = [("Colours", [
+        ("Plain",), (("Yellow", 0), (None, 0), (None, 0)), (("Navy", 1),), (("Red bold", 2),),
+        (("Whole row", 3), ..., ..., "Crossing"),
+    ])]
+    stream = biff8(colours, styles, rows_styled={"Colours": {4: 3}}, columns_styled={"Colours": {3: 4}})
+    (OUT / "colours.xls").write_bytes(one_stream_compound_file("Workbook", stream))
+    written(OUT / "colours.xls")
 
 
 def brt(kind: int, body: bytes = b"") -> bytes:
@@ -4079,7 +4217,7 @@ def main() -> int:
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_measured,
                  word_odd_even, word_measured_fit, word_measured_notes, word_measured_sections, word_measured_tails,
                  word_measured_tables, word_colours, word_lines,
-                 cell_directions, xlsx, pptx,
+                 cell_directions, xlsx, sheet_colours, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,
                  photo_formats, zips, prose, workbooks, models, epubs):

@@ -12,6 +12,8 @@
  * by address, and sheet_to_html writes the same table from either. Read in a fresh page in
  * Chromium 151 on a Mac, a workbook of 100,000 rows by ten columns took 1.6 to 1.9 s this way
  * and 2.1 to 2.8 s the other; at 10,000 rows the two were level.
+ *
+ * SheetJS keeps the file's parts (bookFiles), for xlsx-styles.js to read the cells' colours from.
  */
 function readWorkbook(bytes) {
   var text = null;
@@ -21,7 +23,7 @@ function readWorkbook(bytes) {
     // Not UTF-8
   }
   return text === null
-    ? XLSX.read(bytes, { type: "array", cellDates: true, dense: true })
+    ? XLSX.read(bytes, { type: "array", cellDates: true, dense: true, bookFiles: true })
     : XLSX.read(text, { type: "string", cellDates: true, dense: true });
 }
 
@@ -71,8 +73,10 @@ function cutSheet(ws, range) {
   return pieces;
 }
 
-function Sheet(ws) {
+/* [paint] gives the cells of a table drawn from [ws] their colours, or is null: see xlsx-styles.js */
+function Sheet(ws, paint) {
   this.ws = ws;
+  this.paint = paint;
   this.range = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : null;
   this.cols = this.range ? this.range.e.c - this.range.s.c + 1 : 0;
   this.pieces = cutSheet(ws, this.range);
@@ -116,6 +120,7 @@ Sheet.prototype.table = function (k) {
   }
   t.innerHTML = cols + this.rowsHtml(piece.s, piece.e);
   vwDisarmLinks(t);
+  if (this.paint) this.paint(t);
   piece.table = t;
   return t;
 };
@@ -158,7 +163,8 @@ vwFetchDoc("buffer")
     if (!wb.SheetNames.length) throw new Error("The workbook has no sheets");
     var tabs = document.getElementById("tabs");
     var sheetDiv = document.getElementById("sheet");
-    var sheets = wb.SheetNames.map(function (sn) { return new Sheet(wb.Sheets[sn]); });
+    var paints = vwCellLooks(wb);
+    var sheets = wb.SheetNames.map(function (sn, i) { return new Sheet(wb.Sheets[sn], paints[i]); });
     var current = 0;
 
     /* Every column of the sheet on the page at the widths its pieces share */

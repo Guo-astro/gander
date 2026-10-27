@@ -243,3 +243,184 @@ def test_an_engine_too_old_to_search_the_page_itself_gets_every_row_on_it(viewer
     assert page.evaluate("() => !(window.CSS && CSS.highlights)")
     page.wait_for_function(ROW_DRAWN, arg=BIG, timeout=30000)
     assert page.evaluate("() => window.scrollY") == 0
+
+
+# ---------------------------------------------------------------------------
+# Cell colours, read by xlsx-styles.js
+# ---------------------------------------------------------------------------
+
+# The drawn look of the cell at an address, such as A1
+LOOK = """(address) => {
+  const td = document.getElementById('sjs-' + address);
+  if (!td) return null;
+  const cs = getComputedStyle(td);
+  return {fill: cs.backgroundColor, ink: cs.color, weight: cs.fontWeight};
+}"""
+
+NONE = "rgba(0, 0, 0, 0)"
+
+
+def rgb(css):
+    return tuple(int(v) for v in css[css.index("(") + 1:css.index(")")].split(",")[:3])
+
+
+def contrast(a, b):
+    def luminance(c):
+        c = [v / 255 for v in c]
+        c = [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] + 0.05
+    x, y = luminance(a), luminance(b)
+    return max(x, y) / min(x, y)
+
+
+def open_colours(viewer, page, name="colours.xlsx"):
+    viewer("xlsx.html", name)
+    wait_for_sheet(page)
+    wait_until_done(page)
+    return lambda address: page.evaluate(LOOK, address)
+
+
+def test_a_filled_cell_shows_its_fill(viewer, page):
+    """Drawn from SheetJS's reading alone, every cell of every sheet came out plain."""
+    look = open_colours(viewer, page)
+    assert look("A3")["fill"] == "rgb(255, 255, 0)"
+    assert look("A2")["fill"] == NONE
+    assert look("B3")["fill"] == NONE
+
+
+def test_fills_named_by_a_theme_colour_or_a_palette_number_show(viewer, page):
+    """Theme colour 0, the white Excel's greys are shades of, and number 43, FFFF99"""
+    look = open_colours(viewer, page)
+    assert look("A4")["fill"] == "rgb(217, 217, 217)"
+    assert look("A5")["fill"] == "rgb(255, 255, 153)"
+
+
+def test_a_pattern_shows_as_its_two_colours_mixed(viewer, page):
+    """A quarter red over white"""
+    look = open_colours(viewer, page)
+    assert look("A8")["fill"] == "rgb(255, 191, 191)"
+
+
+def test_a_gradient_shows_as_the_mean_of_its_colours(viewer, page):
+    look = open_colours(viewer, page)
+    assert look("C4")["fill"] == "rgb(128, 0, 128)"
+
+
+def test_a_filled_row_fills_the_cells_not_written_in_it(viewer, page):
+    look = open_colours(viewer, page)
+    for address in ("A9", "B9", "C9"):
+        assert look(address)["fill"] == "rgb(146, 208, 80)", address
+
+
+def test_a_filled_column_fills_the_cells_not_written_in_it(viewer, page):
+    look = open_colours(viewer, page)
+    for address in ("D2", "D5", "D8", "D10"):
+        assert look(address)["fill"] == "rgb(255, 192, 0)", address
+
+
+def test_a_cell_written_where_a_filled_row_and_column_cross_keeps_its_own_style(viewer, page):
+    """D9 is written with no style, so it is plain, under neither the row's green nor the column's orange"""
+    look = open_colours(viewer, page)
+    assert look("D9")["fill"] == NONE
+
+
+def test_text_keeps_its_colour_and_weight(viewer, page):
+    look = open_colours(viewer, page)
+    assert look("A6")["ink"] == "rgb(255, 0, 0)"
+    assert look("A7")["weight"] == "700"
+    assert look("A2")["ink"] == "rgb(0, 0, 0)"
+
+
+def test_a_first_row_the_workbook_fills_keeps_its_fill_and_not_the_pages(viewer, page):
+    """The page shades a sheet's first row as a heading, but not over the workbook's own fill"""
+    look = open_colours(viewer, page)
+    assert look("A1") == {"fill": "rgb(31, 78, 121)", "ink": "rgb(255, 255, 255)", "weight": "600"}
+    viewer("xlsx.html", "budget.xlsx")
+    wait_for_sheet(page)
+    assert page.evaluate(LOOK, "A1")["fill"] == "rgb(242, 237, 228)"
+
+
+def test_at_night_fills_turn_over_keeping_their_colour_and_text_stays_readable(viewer, page):
+    """
+    Yellow goes dark but stays yellow and clear of the ground, the dark blue heading goes light
+    with dark text on it, and an unfilled cell is the night's own ground and ink.
+    """
+    page.emulate_media(color_scheme="dark")
+    look = open_colours(viewer, page)
+    ground = rgb(page.evaluate("() => getComputedStyle(document.body).backgroundColor"))
+
+    yellow = look("A3")
+    r, g, b = rgb(yellow["fill"])
+    assert r > b + 40 and g > b + 40 and abs(r - g) < 20
+    assert max(rgb(yellow["fill"])) > max(ground) + 30
+    assert contrast(rgb(yellow["ink"]), rgb(yellow["fill"])) >= 4.5
+
+    heading = look("A1")
+    assert contrast(rgb(heading["fill"]), ground) > 3
+    assert contrast(rgb(heading["ink"]), rgb(heading["fill"])) >= 4.5
+
+    # Turned over, red is pale, and the black text on it the light night ink
+    alert = look("C3")
+    assert contrast(rgb(alert["fill"]), ground) > 3
+    assert contrast(rgb(alert["ink"]), rgb(alert["fill"])) >= 4.5
+
+    assert look("A2")["fill"] == NONE
+    assert rgb(look("A2")["ink"]) == (0xE7, 0xE2, 0xD9)
+
+
+def test_the_night_ground_and_ink_are_app_css_s(viewer, page):
+    """xlsx-styles.js turns colours over between them, so its copies must follow app.css"""
+    page.emulate_media(color_scheme="dark")
+    open_colours(viewer, page)
+    said = page.evaluate("""() => {
+      const root = getComputedStyle(document.documentElement);
+      return [root.getPropertyValue('--vw-ground').trim(), root.getPropertyValue('--vw-ink').trim(),
+              VW_SHEET_NIGHT_GROUND, VW_SHEET_NIGHT_INK];
+    }""")
+    assert said[0].upper() == "#" + said[2]
+    assert said[1].upper() == "#" + said[3]
+
+
+def test_a_fill_far_down_a_long_sheet_shows_in_the_piece_drawn_for_it(viewer, page):
+    open_colours(viewer, page)
+    page.query_selector_all("#tabs button")[1].click()
+    bring_row(page, 1100, 1200)
+    assert page.evaluate(LOOK, "B1101")["fill"] == "rgb(255, 255, 0)"
+    assert page.evaluate(LOOK, "B1100")["fill"] == NONE
+
+
+def test_an_xls_shows_its_fills_and_its_texts_colour_and_weight(viewer, page):
+    """Read from its own records: SheetJS reads an .xls's fills but no font, and no row or column"""
+    look = open_colours(viewer, page, "colours.xls")
+    # The page's own shade for a first row, which the file does not fill
+    assert look("A1")["fill"] == "rgb(242, 237, 228)"
+    assert look("A2")["fill"] == "rgb(255, 255, 0)"
+    # Blank cells, which SheetJS does not keep, written as one record for the two
+    assert look("B2")["fill"] == "rgb(255, 255, 0)"
+    assert look("C2")["fill"] == "rgb(255, 255, 0)"
+    # Navy with text given no colour, which takes white
+    assert look("A3")["fill"] == "rgb(0, 0, 128)"
+    assert look("A3")["ink"] == "rgb(255, 255, 255)"
+    assert look("A4")["ink"] == "rgb(255, 0, 0)"
+    assert look("A4")["weight"] == "700"
+
+
+def test_an_xls_fills_the_cells_not_written_in_a_filled_row_or_column(viewer, page):
+    look = open_colours(viewer, page, "colours.xls")
+    for address in ("B5", "C5"):
+        assert look(address)["fill"] == "rgb(153, 204, 0)", address
+    for address in ("D2", "D3", "D4"):
+        assert look(address)["fill"] == "rgb(255, 153, 0)", address
+    # Written with no style of its own where the row and the column cross
+    assert look("D5")["fill"] == NONE
+
+
+def test_a_workbook_whose_styles_cannot_be_read_is_drawn_plain_and_not_refused(viewer, page):
+    """The readers in xlsx-styles.js are newer than the sheet's drawing, and must not stop it"""
+    page.add_init_script(
+        "document.addEventListener('DOMContentLoaded', () => {"
+        " vwXlsxLooks = () => { throw new Error('unreadable styles'); }; })"
+    )
+    look = open_colours(viewer, page)
+    assert "Yellow" in page.text_content("#sheet")
+    assert look("A3")["fill"] == NONE
