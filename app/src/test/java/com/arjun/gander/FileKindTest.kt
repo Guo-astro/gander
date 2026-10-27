@@ -416,11 +416,14 @@ class FileKindTest {
         assertThat(FileKind.entries.filter { it.turnsOver }).containsExactly(PDF, PDF_SIMPLE, DOCX)
     }
 
-    /** Pages and pictures. A sheet keeps the WebView's own, which goes further in on a cell. */
+    /**
+     * Every page laid out wider than the phone and zoomed out to fit it: pages, pictures and
+     * sheets. Books, text and Markdown are laid out at the phone's own width.
+     */
     @Test
-    fun pagesAndPicturesInTheWebViewHaveTheAppsDoubleTap() {
+    fun pagesPicturesAndSheetsInTheWebViewHaveTheAppsDoubleTap() {
         assertThat(FileKind.entries.filter { it.zoomedOnDoubleTap })
-            .containsExactly(PDF, PDF_SIMPLE, DOCX, PROSE, PPTX, IMAGE_WEB)
+            .containsExactly(PDF, PDF_SIMPLE, DOCX, PROSE, PPTX, IMAGE_WEB, XLSX)
     }
 
     /**

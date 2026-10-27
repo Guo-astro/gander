@@ -53,7 +53,7 @@ Night mode, the page or place to resume at, and the title bar's height also trav
 
 ## The viewer's chrome
 
-A native fast-scroll thumb serves every WebView page but `imgweb.html`, reading the scroll through a `WebView` subclass, and keeps the back gesture off itself. A page readout shows "N / M" for PDFs and Word, or a percentage for books, and opens Go to page. The title bar scrolls away with a document (`DocumentChrome`). A double tap zooms PDFs, Word, prose, slides and pictures to twice the fitted width (`DoubleTapZoom`). Night mode darkens the parts around a turned-over page (`NightChrome`). Print sends a PDF's file, or a Word or prose page, to Android's print screen (`Print.kt`). The PDF page or book place is saved on stop under a fingerprint of the file (`Positions`), never for a file inside a zip. Save a copy writes the file wherever the picker points (`SaveCopy`).
+A native fast-scroll thumb serves every WebView page but `imgweb.html`, reading the scroll through a `WebView` subclass, and keeps the back gesture off itself. A page readout shows "N / M" for PDFs and Word, or a percentage for books, and opens Go to page. The title bar scrolls away with a document (`DocumentChrome`). A double tap zooms PDFs, Word, prose, slides, pictures and sheets to twice the fitted width (`DoubleTapZoom`). Night mode darkens the parts around a turned-over page (`NightChrome`). Print sends a PDF's file, or a Word or prose page, to Android's print screen (`Print.kt`). The PDF page or book place is saved on stop under a fingerprint of the file (`Positions`), never for a file inside a zip. Save a copy writes the file wherever the picker points (`SaveCopy`).
 
 ## WebView floors
 

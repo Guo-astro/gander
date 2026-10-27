@@ -60,12 +60,13 @@ enum class FileKind(val page: String) {
     /**
      * Has its double tap zoomed by [DoubleTapZoom], and its page turns the WebView's own off. A
      * page or a picture is about as wide as the screen, so the WebView's own went in by a fifth
-     * to two fifths. Not a sheet: its cells are narrow, and the WebView's own takes one to the
-     * sheet's own size, which is further in than this goes.
+     * to two fifths. On a sheet it went in by as much as the block under the finger allowed:
+     * 2.38 times on a narrow cell on a 411 dp phone, a fifth on a wide one or beside the table,
+     * and it moved the cell it picked into view rather than keep the place under the finger.
      */
     val zoomedOnDoubleTap: Boolean
         get() = this == PDF || this == PDF_SIMPLE || this == DOCX || this == PROSE || this == PPTX ||
-            this == IMAGE_WEB
+            this == IMAGE_WEB || this == XLSX
 
     companion object {
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")

@@ -68,6 +68,10 @@ class DoubleTapDeviceTest {
         zoomsInAboutThePlaceTappedAndBack("icon.svg", IMAGE_SHOWN)
 
     @Test
+    fun aSheetZoomsInAboutThePlaceTappedAndBack() =
+        zoomsInAboutThePlaceTappedAndBack("budget.xlsx", STATUS_DONE)
+
+    @Test
     fun aPhotoZoomsToTwiceItsFitAndBack() {
         openCameraPhoto().use { scenario -> photoZoomsAndComesBack(scenario) }
     }

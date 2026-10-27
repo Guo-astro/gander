@@ -30,6 +30,9 @@
   dark and dark ones light, each keeping its colour, and text on them stays readable. Colours
   Excel works out as a sheet opens, such as conditional formatting and a formatted table's
   stripes, still don't show, and an .xlsb or .ods file is still drawn plain.
+- A double tap on a spreadsheet zooms to twice its fitted width around the place tapped, and back,
+  as it does on a PDF. It went in more than twice on a narrow cell, only a little on a wide one or
+  beside the table, and jumped to the cell it picked.
 
 ## 2.7 (2026-10-25)
 
