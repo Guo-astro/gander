@@ -26,8 +26,8 @@ Where Gander and LibreOffice part, read the file before blaming the reader:
 
 - LibreOffice applies conditional formatting and Gander does not, so a sheet with any is charged
   for every cell a rule colours or uncolours.
-- LibreOffice leaves hidden sheets, rows and columns out of its export, which the viewer shows. The
-  harness takes them out before lining the two up, but a chart sheet can still be lined up with
+- LibreOffice leaves hidden sheets, rows and columns out of its export, and so does the viewer since
+  2026-10-28. The harness lines the two up by text, and a chart sheet can still be lined up with
   the wrong table.
 - In some .xls files LibreOffice draws no fill where a cell's own record gives one, and SheetJS
   reads that record as Gander does: `39634.xls`, `42464-ExpPtg-ok.xls` and `52447.xls`, where it
@@ -59,3 +59,13 @@ workbooks with, gives a cell no fill where Excel names its colour by palette num
 theme colour, moves every fill after a gradient onto other cells, and reads no font, no row and no
 column. ExcelJS 4.4.0 reads an .xlsx's styles whole, but is 863 KB minified, would read every
 workbook a second time, and reads no .xls.
+
+## 2026-10-28
+
+The viewer drew each sheet as one HTML table from SheetJS until now; it draws its own grid now, two
+tables a piece, with its letters, numbers, frozen panes, widths, heights and borders, and the
+harness reads each cell's address from the page (`vwCellOf`). On 50 of the picked files, 25 .xlsx
+and 25 .xls, the colours came out as before: .xlsx fills 100.0% alike against LibreOffice both
+before and after, text colour 98.6% against 98.5%; .xls fills 91.9% against 92.1%, the cells counted
+differing by the hidden rows now left out. All 746 of POI's files opened as before or better: 710
+against 709, none that opened before failing, in 56.2 s against 55.7 s.

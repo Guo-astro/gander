@@ -1389,6 +1389,188 @@ def sheet_colours() -> None:
     written(OUT / "colours.xlsx")
 
 
+def sheet_layout() -> None:
+    """
+    layout.xlsx: how a sheet is laid out and its cells are set, as Excel draws them and
+    xlsx-styles.js reads them, as openpyxl writes them. The second sheet is hidden and the third is
+    the one the workbook was saved showing.
+    """
+    from openpyxl import Workbook
+    from openpyxl.comments import Comment
+    from openpyxl.styles import Alignment, Border, Color, Font, PatternFill, Side
+
+    wb = Workbook()
+    cover = wb.active
+    cover.title = "Cover"
+    cover["A1"] = "The first sheet, not the one saved showing"
+    hidden = wb.create_sheet("Hidden")
+    hidden["A1"] = "Kept out of sight"
+    hidden.sheet_state = "hidden"
+
+    ws = wb.create_sheet("Layout")
+    ws.sheet_properties.tabColor = "FFC00000"
+    # 20 characters, 140 px; B hidden; C 6 characters, 42 px; the rest Excel's default 64 px
+    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["B"].width = 12
+    ws.column_dimensions["B"].hidden = True
+    ws.column_dimensions["C"].width = 6
+    ws.column_dimensions["E"].width = 10
+    # Row 2 30 points, 40 px; row 4 hidden; row 6 set by hand to 12 points, 16 px
+    ws.row_dimensions[2].height = 30
+    ws.row_dimensions[4].hidden = True
+    ws.row_dimensions[6].height = 12
+    ws.freeze_panes = "B3"
+
+    ws["A1"] = "A title long enough to run on over the empty cells beside it"
+    ws["A2"] = "Frozen row"
+    ws["B3"] = "In a hidden column"
+    ws["A3"] = "Row three"
+    # A number too wide for column C in the General format, and a date there in a format of its own
+    ws["C3"] = 1234567.891
+    ws["C5"] = datetime(2026, 10, 21)
+    ws["C5"].number_format = "dd-mm-yyyy"
+    ws["A4"] = "In a hidden row"
+    ws["D3"] = "Right"
+    ws["D3"].alignment = Alignment(horizontal="right")
+    ws["D5"] = "Middle"
+    ws["D5"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["D7"] = "In"
+    ws["D7"].alignment = Alignment(indent=2)
+    ws["E3"] = "Text that wraps onto the lines below it"
+    ws["E3"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["E6"] = "Wrapped text in a row set short by hand"
+    ws["E6"].alignment = Alignment(wrap_text=True)
+    ws["F3"] = 42
+    ws["G3"] = True
+    ws["A8"] = "Up"
+    ws["A8"].alignment = Alignment(text_rotation=90)
+    ws["E8"] = "Down"
+    ws["E8"].alignment = Alignment(text_rotation=180)
+    ws["F8"] = "Stack"
+    ws["F8"].alignment = Alignment(text_rotation=255)
+    ws["A9"] = "Big serif"
+    ws["A9"].font = Font(name="Times New Roman", size=20, bold=True)
+    ws["A10"] = "Typewriter"
+    ws["A10"].font = Font(name="Courier New", size=11)
+    ws["A11"] = "Calibri"
+    thin = Side(style="thin")
+    ws["E10"] = "Boxed"
+    ws["E10"].border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ws["E11"].border = Border(bottom=Side(style="medium", color="FF0000FF"))
+    ws["E12"].border = Border(bottom=Side(style="double"))
+    # A dashed red left side on F10, which the edge it shares with E10 draws, heavier than E10's thin
+    ws["F10"].border = Border(left=Side(style="mediumDashed", color="FFFF0000"))
+    ws["A12"] = "With a note"
+    ws["A12"].comment = Comment("A note about this cell", "Asha")
+    ws["A13"] = "A link"
+    ws["A13"].hyperlink = "https://example.com/report"
+    ws["A13"].font = Font(color="FF0563C1", underline="single")
+    ws.merge_cells("E14:G15")
+    ws["E14"] = "Merged"
+    ws["E14"].alignment = Alignment(horizontal="center")
+    ws["E16"] = -5
+    ws["E16"].number_format = "#,##0;[Red]-#,##0"
+    ws["F16"] = 5
+    ws["F16"].number_format = "#,##0;[Red]-#,##0"
+    # A filled cell hides the gridlines round it
+    ws["G18"].fill = PatternFill(fill_type="solid", fgColor=Color(rgb="FFFFFF00"))
+    ws["G18"] = "Filled"
+    # Text set right that runs on to the left over F19, and is cut off at E19, which holds something
+    ws["E19"] = "x"
+    ws["G19"] = "Runs on leftward"
+    ws["G19"].alignment = Alignment(horizontal="right")
+    wb.active = 2
+
+    plain = wb.create_sheet("No grid")
+    plain.sheet_view.showGridLines = False
+    plain["A1"] = "No gridlines here"
+    plain["B2"] = "Boxed"
+    plain["B2"].border = Border(bottom=thin)
+
+    bare = wb.create_sheet("No headings")
+    bare.sheet_view.showRowColHeaders = False
+    bare["A1"] = "No letters or numbers"
+
+    rtl = wb.create_sheet("Right to left")
+    rtl.sheet_view.rightToLeft = True
+    rtl["A1"] = "Start"
+    rtl["B1"] = "Next"
+
+    # Conditional formatting, one rule of each kind Gander draws, and one it leaves alone
+    from openpyxl.formatting.rule import CellIsRule, ColorScaleRule, DataBarRule, FormulaRule, Rule
+    from openpyxl.styles.differential import DifferentialStyle
+    rules = wb.create_sheet("Rules")
+    for r, (status, amount, scale, bar, mark) in enumerate(
+            [("Done", 5, 1, 10, "x"), ("Open", 50, 2, 20, "y"), ("Done", 120, 3, 30, "x"),
+             ("Late", 80, 4, 40, "z"), ("Open", 30, 5, 50, "w"), ("Done", 95, 6, 60, "y")], start=1):
+        rules.append((status, amount, scale, bar, mark, r))
+    red = PatternFill(fill_type="solid", bgColor="FFFFC7CE")
+    rules.conditional_formatting.add("B1:B6", CellIsRule(operator="greaterThan", formula=["100"], fill=red,
+                                                         font=Font(color="FF9C0006")))
+    rules.conditional_formatting.add("A1:A6", FormulaRule(formula=['$A1="Done"'],
+                                                          fill=PatternFill(fill_type="solid", bgColor="FFC6EFCE")))
+    rules.conditional_formatting.add("C1:C6", ColorScaleRule(start_type="min", start_color="FFF8696B",
+                                                             mid_type="percentile", mid_value=50, mid_color="FFFFEB84",
+                                                             end_type="max", end_color="FF63BE7B"))
+    rules.conditional_formatting.add("D1:D6", DataBarRule(start_type="min", end_type="max", color="FF638EC6"))
+    rules.conditional_formatting.add("B1:B6", Rule(type="top10", rank=1, dxf=DifferentialStyle(font=Font(bold=True))))
+    rules.conditional_formatting.add("A1:A6", Rule(type="containsText", operator="containsText", text="late",
+                                                   formula=['NOT(ISERROR(SEARCH("late",A1)))'],
+                                                   dxf=DifferentialStyle(font=Font(color="FFFF0000"))))
+    rules.conditional_formatting.add("E1:E6", Rule(type="duplicateValues",
+                                                   dxf=DifferentialStyle(fill=PatternFill(fill_type="solid", bgColor="FFFFEB9C"))))
+    # A formula with a range in it, which Gander does not work out, and so draws nothing for
+    rules.conditional_formatting.add("F1:F6", FormulaRule(formula=["COUNTIF($F$1:$F$6,F1)>0"],
+                                                          fill=PatternFill(fill_type="solid", bgColor="FF000000")))
+
+    # A range formatted as a table in Excel's default style, whose look the workbook names and never
+    # holds; C2, in a band the style fills, has a fill of its own, which wins, as a cell's formatting does
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    tabled = wb.create_sheet("Table")
+    tabled.append(("Name", "City", "Spend"))
+    for row in [("Asha", "Pune", 120), ("Ben", "Delhi", 80), ("Chen", "Mumbai", 95), ("Dev", "Pune", 60)]:
+        tabled.append(row)
+    tabled["C2"].fill = PatternFill(fill_type="solid", fgColor="FFFFFF00")
+    listed = Table(displayName="Spending", ref="A1:C5")
+    listed.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True, showColumnStripes=False,
+                                           showFirstColumn=False, showLastColumn=False)
+    tabled.add_table(listed)
+
+    # A picture at B2, 80 by 40 px, and a chart at E2, which Gander marks rather than draws
+    import io
+    from openpyxl.chart import BarChart, Reference
+    from openpyxl.drawing.image import Image as SheetImage
+    from PIL import Image
+    art = wb.create_sheet("Art")
+    picture = Image.new("RGB", (80, 40), (31, 78, 121))
+    png = io.BytesIO()
+    picture.save(png, format="PNG")
+    png.seek(0)
+    logo = SheetImage(png)
+    logo.anchor = "B2"
+    art.add_image(logo)
+    for row in [("City", "Spend"), ("Pune", 120), ("Delhi", 80)]:
+        art.append(row)
+    chart = BarChart()
+    chart.title = "Spend by city"
+    chart.add_data(Reference(art, min_col=2, min_row=1, max_row=3), titles_from_data=True)
+    chart.set_categories(Reference(art, min_col=1, min_row=2, max_row=3))
+    art.add_chart(chart, "E2")
+
+    # Frozen above row 60: 59 rows, more than half a phone's screen
+    tall = wb.create_sheet("Frozen tall")
+    for r in range(1, 200):
+        tall.cell(row=r, column=1, value=f"Row {r}")
+    tall.freeze_panes = "A60"
+
+    wb.properties.created = EPOCH
+    wb.properties.modified = EPOCH
+    wb.properties.creator = "Gander tests"
+    wb.save(str(OUT / "layout.xlsx"))
+    normalize_zip(OUT / "layout.xlsx")
+    written(OUT / "layout.xlsx")
+
+
 def xlsx() -> None:
     import csv
 
@@ -3514,6 +3696,95 @@ def biff8(workbook, styles=(), rows_styled=None, columns_styled=None) -> bytes:
     return head + bound(offsets) + sst + biff(0x000A) + b"".join(sheets)
 
 
+def sheet_layout_xls() -> bytes:
+    """
+    layout.xls's workbook stream: the layout of layout.xlsx that an .xls gives, in BIFF8 built by
+    hand from MS-XLS, for xlsx-styles.js's reader of Excel 97-2003's records. A first sheet, a hidden
+    second, a third saved as the one showing and frozen at B3, and a fourth with its gridlines off.
+    """
+    strings = ["The first sheet", "Kept out of sight", "A title", "Frozen row", "In a hidden column", "In a hidden row",
+               "Right", "Middle", "Text that wraps onto the lines below it", "Boxed", "Big serif", "Up",
+               "No gridlines here"]
+
+    def bof(kind: int) -> bytes:
+        return biff(0x0809, struct.pack("<HHHHII", 0x0600, kind, 0x0DBB, 0x07CC, 0, 6))
+
+    def font(height: int, weight: int, name: str) -> bytes:
+        return biff(0x0031, struct.pack("<HHHHHBBBB", height, 0, 0x7FFF, weight, 0, 0, 0, 0, 0) + biff_text(name, 1))
+
+    def xf(font_number=0, alc=0, wrap=0, valign=2, trot=0, lines=0, more=0) -> bytes:
+        return biff(0x00E0, struct.pack("<HHHBBBBIIH", font_number, 0, 0x0001, alc | wrap << 3 | valign << 4, trot,
+                                        0, 0, lines, more, (65 << 7) | 64))
+
+    style_xf = biff(0x00E0, struct.pack("<HHHBBBBIIH", 0, 0, 0xFFF5, 0x20, 0, 0, 0, 0, 0, 0x20C0))
+    # Cell XFs from 15: plain, right, centred across and down, wrapped, a thin bottom border in
+    # black (palette 8), the fifth font, which an XF numbers 5, and text turned up
+    cell_xfs = [xf(), xf(alc=3), xf(alc=2, valign=1), xf(wrap=1), xf(lines=1 << 12, more=8 << 7), xf(font_number=5),
+                xf(trot=90)]
+    PLAIN, RIGHT, MIDDLE, WRAP, BOXED, BIG, UP = range(15, 22)
+    head = (bof(0x0005)
+            + biff(0x0042, struct.pack("<H", 1200))
+            # WINDOW1: the third sheet is the one showing
+            + biff(0x003D, struct.pack("<HHHHHHHHH", 0, 0, 0x3000, 0x2000, 0x38, 2, 0, 1, 0x258))
+            + font(200, 400, "Arial") * 4 + font(400, 700, "Times New Roman")
+            + style_xf * 15 + b"".join(cell_xfs)
+            + biff(0x0293, struct.pack("<HBB", 0x8000, 0, 0xFF)))
+
+    def label(r, c, xf_number, text):
+        return biff(0x00FD, struct.pack("<HHHI", r, c, xf_number, strings.index(text)))
+
+    def window(grbit):
+        return biff(0x023E, struct.pack("<HHHHHHHI", grbit, 0, 0, 64, 0, 0, 0, 0))
+
+    cover = bof(0x0010) + label(0, 0, PLAIN, "The first sheet") + window(0x00B6) + biff(0x000A)
+    hidden = bof(0x0010) + label(0, 0, PLAIN, "Kept out of sight") + window(0x00B6) + biff(0x000A)
+    layout = (bof(0x0010)
+              # 12.75 points, Arial 10's own, and 8 characters
+              + biff(0x0225, struct.pack("<HH", 0, 255))
+              + biff(0x0055, struct.pack("<H", 8))
+              # COLINFO: A 20 characters, B hidden, C 6
+              + biff(0x007D, struct.pack("<HHHHHH", 0, 0, 20 * 256, PLAIN, 0x0002, 0))
+              + biff(0x007D, struct.pack("<HHHHHH", 1, 1, 12 * 256, PLAIN, 0x0003, 0))
+              + biff(0x007D, struct.pack("<HHHHHH", 2, 2, 6 * 256, PLAIN, 0x0002, 0))
+              + biff(0x0200, struct.pack("<IIHHH", 0, 10, 0, 6, 0))
+              # ROW: row 2 30 points set by hand, row 4 hidden; rows 10 and 6 nought high, which MS-XLS
+              # does not allow, row 6 by hand
+              + biff(0x0208, struct.pack("<HHHHHHHH", 1, 0, 1, 600, 0, 0, 0x0140, PLAIN))
+              + biff(0x0208, struct.pack("<HHHHHHHH", 3, 0, 1, 255, 0, 0, 0x0120, PLAIN))
+              + biff(0x0208, struct.pack("<HHHHHHHH", 9, 0, 5, 0, 0, 0, 0x0100, PLAIN))
+              + biff(0x0208, struct.pack("<HHHHHHHH", 5, 0, 1, 0, 0, 0, 0x0140, PLAIN))
+              + label(0, 0, PLAIN, "A title") + label(1, 0, PLAIN, "Frozen row")
+              + label(2, 1, PLAIN, "In a hidden column") + label(3, 0, PLAIN, "In a hidden row")
+              + label(2, 3, RIGHT, "Right") + label(4, 3, MIDDLE, "Middle")
+              + label(2, 4, WRAP, "Text that wraps onto the lines below it")
+              + label(9, 4, BOXED, "Boxed") + label(8, 0, BIG, "Big serif") + label(7, 0, UP, "Up")
+              # An embedded chart: a stream of its own, BOF to EOF, inside the sheet's and before its
+              # WINDOW2, as Excel writes one, which the sheet's records go on after
+              + bof(0x0020) + biff(0x1002, struct.pack("<IIII", 0, 0, 200 << 16, 100 << 16)) + biff(0x000A)
+              # Shown, selected, frozen at B3 without a split
+              + window(0x06B6 | 0x0008 | 0x0100)
+              + biff(0x0041, struct.pack("<HHHHBB", 1, 2, 2, 1, 0, 0))
+              + biff(0x000A))
+    plain = (bof(0x0010) + label(0, 0, PLAIN, "No gridlines here")
+             # As the others, less fDspGrid
+             + window(0x00B6 & ~0x0002) + biff(0x000A))
+    sheets = [cover, hidden, layout, plain]
+    names = ["Cover", "Hidden", "Layout", "No grid"]
+    total = 13
+    sst = biff(0x00FC, struct.pack("<II", total, len(strings)) + b"".join(biff_text(t, 2) for t in strings))
+
+    def bound(offsets) -> bytes:
+        return b"".join(biff(0x0085, struct.pack("<IBB", at, 1 if name == "Hidden" else 0, 0) + biff_text(name, 1))
+                        for n, (at, name) in enumerate(zip(offsets, names)))
+
+    at = len(head) + len(bound([0] * len(sheets))) + len(sst) + len(biff(0x000A))
+    offsets = []
+    for body in sheets:
+        offsets.append(at)
+        at += len(body)
+    return head + bound(offsets) + sst + biff(0x000A) + b"".join(sheets)
+
+
 def xls() -> None:
     """budget.xls, and colours.xls: the styles of colours.xlsx that an .xls can give."""
     (OUT / "budget.xls").write_bytes(one_stream_compound_file("Workbook", biff8(WORKBOOK)))
@@ -3529,6 +3800,8 @@ def xls() -> None:
     stream = biff8(colours, styles, rows_styled={"Colours": {4: 3}}, columns_styled={"Colours": {3: 4}})
     (OUT / "colours.xls").write_bytes(one_stream_compound_file("Workbook", stream))
     written(OUT / "colours.xls")
+    (OUT / "layout.xls").write_bytes(one_stream_compound_file("Workbook", sheet_layout_xls()))
+    written(OUT / "layout.xls")
 
 
 def brt(kind: int, body: bytes = b"") -> bytes:
@@ -4217,7 +4490,7 @@ def main() -> int:
     for step in (pdfs, wasm_decoded_images, docx, raised_runs, word_pages, word_columns, word_unrecorded, word_measured,
                  word_odd_even, word_measured_fit, word_measured_notes, word_measured_sections, word_measured_tails,
                  word_measured_tables, word_colours, word_lines,
-                 cell_directions, xlsx, sheet_colours, pptx,
+                 cell_directions, xlsx, sheet_colours, sheet_layout, pptx,
                  without_app_properties, freeforms, straight_lines, wrapping, weights, inherited_bold, line_breaks, unwrapped,
                  symbol_bullets, placed_by_design, unsized, unreadable, charted, undrawn, grounds, relatives, texts, images, audio,
                  photo_formats, zips, prose, workbooks, models, epubs):

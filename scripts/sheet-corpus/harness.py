@@ -81,10 +81,11 @@ class LibreOfficeTables(HTMLParser):
             self.cell["text"] += data
 
 
-READ_CELLS = """(most) => [...document.querySelectorAll('#sheet td')].slice(0, most).map(td => {
+# Each cell's address as the page maps its tables, so the frozen panes' tables and the rest line up
+READ_CELLS = """(most) => [...document.querySelectorAll('#grid td')].slice(0, most).map(td => {
   const cs = getComputedStyle(td);
-  return [td.id, td.classList.contains('vw-f'), cs.backgroundColor, cs.color, cs.fontWeight,
-          td.textContent, td.closest('table').classList.contains('vw-top') && td.parentElement.rowIndex === 0];
+  return [vwCellOf(td) || '', td.classList.contains('vw-f'), cs.backgroundColor, cs.color, cs.fontWeight,
+          td.textContent];
 })"""
 
 # Which sheets, rows and columns are hidden, as SheetJS reads them
@@ -93,6 +94,7 @@ READ_HIDDEN = """async () => {
     {type: 'array', cellStyles: true, dense: true});
   const hidden = list => (list || []).map((x, i) => x && x.hidden ? i : -1).filter(i => i >= 0);
   return wb.SheetNames.map((n, i) => ({
+    name: n,
     sheet: !!((wb.Workbook && wb.Workbook.Sheets && wb.Workbook.Sheets[i] || {}).Hidden),
     rows: hidden(wb.Sheets[n]['!rows']), cols: hidden(wb.Sheets[n]['!cols'])}));
 }"""
@@ -146,7 +148,7 @@ def score_sheet(mine, theirs):
         lo = theirs.get((r - dr, c - dc))
         if lo is None:
             continue
-        # A white fill is the paper's own colour, and the viewer draws it as none
+        # A white fill is the paper's own colour
         want = lo["fill"] if lo["fill"] not in (None, "#FFFFFF") else None
         if v["fill"] is None and want is None:
             pass
@@ -164,9 +166,7 @@ def score_sheet(mine, theirs):
         if v["text"]:
             kind = "ink_same" if near(v["ink"], lo["ink"] or "#000000") else "ink_differs"
             counts[kind] += 1
-            # The viewer's own heading row is bold whatever the file says
-            if not v["heading"]:
-                counts["bold_same" if v["b"] == lo["b"] else "bold_differs"] += 1
+            counts["bold_same" if v["b"] == lo["b"] else "bold_differs"] += 1
     return counts, disagreements[:12]
 
 
@@ -209,20 +209,23 @@ def main():
             if page.evaluate("() => document.getElementById('vw-status').classList.contains('vw-error')"):
                 entry["skip"] = "could not open it"
                 continue
-            tabs = page.query_selector_all("#tabs button")
             hidden = page.evaluate(READ_HIDDEN)
-            for k in range(max(1, len(tabs))):
+            # A hidden sheet has no tab, so each tab is found by its sheet's name
+            tabs = page.query_selector_all("#tabs button")
+            shown = [t.text_content() for t in tabs] or [None]
+            for k, tab_name in enumerate(shown):
                 if k:
                     tabs[k].click()
-                sheet = {"index": k}
+                index = next((i for i, h in enumerate(hidden) if h["name"] == tab_name), k)
+                sheet = {"index": index}
                 entry["sheets"].append(sheet)
-                if hidden[k]["sheet"]:
+                if hidden[index]["sheet"]:
                     sheet["skip"] = "hidden"
                     continue
                 rows, cols = set(hidden[k]["rows"]), set(hidden[k]["cols"])
                 mine = {}
-                for address, filled, fill, ink, weight, text, heading in page.evaluate(READ_CELLS, CELLS_READ):
-                    m = re.match(r"sjs-([A-Z]+)(\d+)$", address)
+                for address, filled, fill, ink, weight, text in page.evaluate(READ_CELLS, CELLS_READ):
+                    m = re.match(r"([A-Z]+)(\d+)$", address)
                     if not m:
                         continue
                     r, c = int(m.group(2)) - 1, column_of(m.group(1))
@@ -230,8 +233,10 @@ def main():
                         continue
                     # Where LibreOffice puts it, with the hidden rows and columns taken out
                     at = (r - sum(h < r for h in rows), c - sum(h < c for h in cols))
-                    mine[at] = {"fill": hex_of(fill) if filled else None, "ink": hex_of(ink),
-                                "b": int(weight) >= 600, "text": plain_text(text), "heading": heading}
+                    # White is the paper's own colour, which LibreOffice's export gives as none
+                    colour = hex_of(fill) if filled else None
+                    mine[at] = {"fill": None if colour == "#FFFFFF" else colour, "ink": hex_of(ink),
+                                "b": int(weight) >= 600, "text": plain_text(text)}
                 # The table with the most texts lined up at any one offset; summed over every offset,
                 # a table full of the same few numbers would win
                 best = max(((max(offsets(mine, t["cells"]).values(), default=0), i) for i, t in enumerate(lo.tables)),
