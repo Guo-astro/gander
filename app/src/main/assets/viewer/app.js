@@ -586,6 +586,12 @@ function vwFormatSize(bytes) {
   return (mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10) + " MB";
 }
 
+/*
+ * Except ResizeObserver's notice that sizes changed again within a frame, which is no failure: the
+ * observer gets them in the next one. Chromium 102 sends it as a sheet with wrapped text opens, and
+ * the card covered a sheet that had drawn.
+ */
 window.onerror = function (message) {
+  if (/ResizeObserver loop/.test(String(message))) return;
   vwError("Something went wrong while rendering", String(message));
 };
