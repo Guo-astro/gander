@@ -152,6 +152,10 @@ android {
                 // of the suite it found that heap nearly full: out of memory in two of three
                 // full runs on 2026-10-01, where on its own it takes half a second.
                 test.maxHeapSize = "1g"
+                // Robolectric 4.17 sets up Android 16's shared memory before each test through
+                // a JDK-internal class that Java 21 doesn't export, so without this every test
+                // on API 36 fails at setup. Drop it once robolectric/robolectric#11354 ships.
+                test.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
             }
         }
     }
@@ -273,10 +277,10 @@ androidComponents.onVariants { variant ->
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-    implementation("androidx.webkit:webkit:1.16.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("com.google.android.material:material:1.14.0")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("androidx.webkit:webkit:1.18.0")
     // Zoomable image view that tiles huge bitmaps
     implementation("com.davemorrissey.labs:subsampling-scale-image-view-androidx:3.10.0")
     // EXIF orientation for photos opened via SAF content URIs
@@ -288,7 +292,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.google.truth:truth:1.4.5")
     // 4.16.1 is the first to support SDK 36, which is why the toolchain has to be JDK 21.
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.test:core-ktx:1.7.0")
     testImplementation("androidx.test.ext:junit-ktx:1.3.0")
 
